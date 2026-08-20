@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
 """
-Demo der langfristigen Speicherarchitektur.
+Demo der langfristigen Speicherarchitektur im expliziten Mock-Modus.
 
-Führt zwei ähnliche Ziele hintereinander aus.
-Beim zweiten Lauf sollte das LTM relevantes Vorwissen liefern.
+Simulations-Runs werden nicht automatisch als Wissen konsolidiert. Deshalb wird
+zwischen den Läufen ein klar gekennzeichneter Demo-Eintrag manuell gespeichert.
 """
 
-from tankai import TankAI
-from tankai.core.long_term_memory import LongTermMemory
+from tankai import TankAI, get_llm
 
 
 def main() -> None:
-    # In dieser Umgebung nutzen wir In-Memory, damit keine Disk-I/O-Fehler auftreten.
-    # Für echte Persistenz: in_memory=False und Pfade angeben.
+    # Die Demo verwendet echte lokale Persistenz, aber ausdrücklich ein Mock-LLM.
     tank = TankAI(
+        llm=get_llm("mock"),
         verbose=True,
         use_ltm=True,
         ltm_db="tankai_ltm.db",
         ltm_vectors="tankai_vectors.npz",
     )
-    # Erzwinge In-Memory falls Disk Probleme macht
-    if tank.ltm is None or True:
-        tank.ltm = LongTermMemory(in_memory=True, embedder="torch")
+    # Demo-Modus bleibt ausdrücklich simuliert; Persistenz ist trotzdem real.
 
     print("\n========== LAUF 1 ==========\n")
     r1 = tank.run(
@@ -33,6 +30,15 @@ def main() -> None:
             "Strukturierte Gegenüberstellung mit mindestens drei Vorteilen und drei Risiken."
         ),
     )
+
+    if tank.ltm:
+        tank.ltm.add_semantic(
+            "Demo-Seed: Multi-Agenten-Systeme verteilen Aufgaben auf spezialisierte Rollen; "
+            "zusätzliche Orchestrierung erhöht jedoch Komplexität und Latenz.",
+            source="demo:manual_seed",
+            confidence=0.5,
+            metadata={"simulation_seed": True},
+        )
 
     print("\n========== LAUF 2 (ähnliches Ziel – sollte LTM nutzen) ==========\n")
     r2 = tank.run(

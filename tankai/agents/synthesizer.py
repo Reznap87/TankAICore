@@ -29,7 +29,8 @@ class Synthesizer(BaseAgent):
             "Du bist der Synthesizer. Deine Aufgabe ist es, aus den "
             "geprüften Zwischenergebnissen eine einzige klare, "
             "überprüfbare Endantwort zu formulieren, die die "
-            "Definition of Done erfüllt."
+            "Definition of Done erfüllt. Vorhandene Quellen-IDs im Format "
+            "[SRC-XXXXXXXX] müssen exakt erhalten bleiben; erfinde keine neuen IDs oder URLs."
         )
 
         results_text = "\n\n".join(
@@ -47,7 +48,7 @@ Geprüfte Zwischenergebnisse:
 Critic-Zusammenfassung:
 {critiques_summary or "Keine kritischen Issues"}
 
-Formuliere eine klare, vollständige Endantwort.
+Formuliere eine klare, vollständige Endantwort. Behalte die Quellenbelege unmittelbar an den zugehörigen Aussagen und führe eine kompakte Quellenliste aus den vorhandenen Zwischenergebnissen auf.
 """
 
         final = self.llm.complete(prompt, system=system)

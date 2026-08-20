@@ -7,7 +7,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from ..core.llm import BaseLLM
+from ..core.llm import BaseLLM, llm_identity
 from ..core.models import Receipt, Role
 
 
@@ -25,13 +25,15 @@ class BaseAgent(ABC):
         success: bool = True,
         details: dict[str, Any] | None = None,
     ) -> Receipt:
+        receipt_details = dict(details or {})
+        receipt_details.setdefault("llm_identity", llm_identity(self.llm))
         return Receipt(
             action=action,
             actor=self.role,
             input_summary=input_summary[:300],
             output_summary=output_summary[:300],
             success=success,
-            details=details or {},
+            details=receipt_details,
         )
 
     @abstractmethod

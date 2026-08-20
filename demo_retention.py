@@ -2,11 +2,20 @@
 """Demo: Retention-Policies und Cold-Storage."""
 
 from datetime import datetime, timezone, timedelta
+from tempfile import TemporaryDirectory
+from pathlib import Path
 from tankai.core.long_term_memory import LongTermMemory
 
 
 def main() -> None:
-    ltm = LongTermMemory(in_memory=True, embedder="torch")
+    temp = TemporaryDirectory()
+    base = Path(temp.name)
+    ltm = LongTermMemory(
+        db_path=base / "ltm.db",
+        vector_path=base / "vectors.npz",
+        cold_dir=base / "cold",
+        embedder="hashing",
+    )
 
     # Frische, wichtige Einträge
     ltm.add_semantic(
@@ -66,6 +75,7 @@ def main() -> None:
         print(f"  [{h['score']:.2f}|conf={h['confidence']:.2f}] {h['content'][:70]}...")
 
     ltm.close()
+    temp.cleanup()
 
 
 if __name__ == "__main__":

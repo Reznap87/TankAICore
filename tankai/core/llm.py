@@ -14,6 +14,10 @@ from typing import Any
 class BaseLLM(ABC):
     """Abstrakte Basis für alle LLM-Aufrufe."""
 
+    provider_name = "unknown"
+    model_name = "unknown"
+    is_simulation = False
+
     @abstractmethod
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
         """Gibt eine Textantwort zurück."""
@@ -26,6 +30,10 @@ class MockLLM(BaseLLM):
     Reagiert auf Schlüsselwörter im Prompt und liefert
     plausible, strukturierte Antworten.
     """
+
+    provider_name = "mock"
+    model_name = "deterministic-mock"
+    is_simulation = True
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
         prompt_lower = prompt.lower()
@@ -119,26 +127,15 @@ class MockLLM(BaseLLM):
 }"""
 
     def _mock_critique(self, prompt: str) -> str:
-        # Einfache Heuristik: wenn "mock" oder sehr kurz → eher ablehnen
-        if len(prompt) < 300:
-            return """{
+        # Ein Mock kann keine unabhängige inhaltliche Verifikation leisten.
+        return """{
   "passed": false,
-  "score": 0.35,
+  "score": 0.20,
   "issues": [
-    "Antwort ist zu generisch und enthält keine konkreten Belege",
-    "Definition of Done wurde nicht klar adressiert"
+    "Simulierter Critic: keine unabhängige inhaltliche Verifikation möglich"
   ],
   "suggestions": [
-    "Mehr spezifische Fakten und Quellen hinzufügen",
-    "Explizit gegen die Definition of Done prüfen"
-  ]
-}"""
-        return """{
-  "passed": true,
-  "score": 0.82,
-  "issues": [],
-  "suggestions": [
-    "Kleine stilistische Glättung möglich"
+    "Run mit einem explizit konfigurierten Live-Provider erneut ausführen"
   ]
 }"""
 
@@ -176,7 +173,7 @@ class MockLLM(BaseLLM):
                 "5. Risiko: Widersprüchliche Agenten-Outputs ohne klare Synthese-Regeln.\n"
                 f"Bezug zum Ziel: {topic[:100]}"
             )
-        if self._is_math(prompt):
+        if self._is_math(topic):
             return (
                 "Recherche-Ergebnis:\n"
                 "- Mathematische Teilaufgabe erkannt.\n"
@@ -262,7 +259,8 @@ class MockLLM(BaseLLM):
                 "3. Komplexeres Debugging über mehrere Schritte\n\n"
                 "**Empfehlung:** Für mehrstufige, prüfpflichtige Ziele einsetzen; "
                 "für einfache Einzelfragen ein einzelnes starkes Modell bevorzugen.\n\n"
-                f"_Synthese aus {len(chunks) or 'vorhandenen'} erkannten Zwischenbausteinen._"
+                f"_Simulierte Synthese aus {len(chunks) or 'vorhandenen'} erkannten Zwischenbausteinen. "
+                "Nicht inhaltlich verifiziert._"
             )
         # Generische, aber prompt-nähere Synthese
         topic = self._topic(prompt)
@@ -300,6 +298,10 @@ class MockLLM(BaseLLM):
 class EchoLLM(BaseLLM):
     """Sehr einfacher LLM, der den Prompt nur zurückgibt (zum Debuggen)."""
 
+    provider_name = "echo"
+    model_name = "echo"
+    is_simulation = True
+
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
         return f"[Echo]\nSystem: {system}\n\n{prompt}"
 
@@ -327,9 +329,11 @@ class OpenAILLM(BaseLLM):
       export OPENAI_API_KEY=sk-...
 
     Optional:
-      export OPENAI_MODEL=gpt-4o-mini
+      export OPENAI_MODEL=<modellname>
       export OPENAI_BASE_URL=...   # für kompatible Proxies / Azure
     """
+
+    provider_name = "openai"
 
     def __init__(
         self,
@@ -348,7 +352,10 @@ class OpenAILLM(BaseLLM):
             ) from e
 
         key = api_key or _require_env("OPENAI_API_KEY")
-        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        self.model = (model or os.environ.get("OPENAI_MODEL", "")).strip()
+        if not self.model:
+            raise RuntimeError("OPENAI_MODEL fehlt; Modell muss explizit konfiguriert werden")
+        self.model_name = self.model
         self.temperature = temperature
         self.max_tokens = max_tokens
 
@@ -381,8 +388,10 @@ class AnthropicLLM(BaseLLM):
       export ANTHROPIC_API_KEY=sk-ant-...
 
     Optional:
-      export ANTHROPIC_MODEL=claude-sonnet-4-20250514
+      export ANTHROPIC_MODEL=<modellname>
     """
+
+    provider_name = "anthropic"
 
     def __init__(
         self,
@@ -400,9 +409,10 @@ class AnthropicLLM(BaseLLM):
             ) from e
 
         key = api_key or _require_env("ANTHROPIC_API_KEY")
-        self.model = model or os.environ.get(
-            "ANTHROPIC_MODEL", "claude-sonnet-4-20250514"
-        )
+        self.model = (model or os.environ.get("ANTHROPIC_MODEL", "")).strip()
+        if not self.model:
+            raise RuntimeError("ANTHROPIC_MODEL fehlt; Modell muss explizit konfiguriert werden")
+        self.model_name = self.model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.client = anthropic.Anthropic(api_key=key)
@@ -455,18 +465,26 @@ def get_llm(provider: str | None = None, **kwargs: Any) -> BaseLLM:
       - anthropic
       - echo
 
-    Wenn provider=None, wird TANKAI_LLM aus der Umgebung gelesen (default: mock).
+    Wenn provider=None, muss TANKAI_LLM explizit gesetzt sein. Es gibt keinen stillen Mock-Fallback.
 
     Beispiele:
       get_llm()
       get_llm("openai")
-      get_llm("openai", model="gpt-4o")
-      get_llm("anthropic", model="claude-sonnet-4-20250514")
+      get_llm("openai", model="<modellname>")
+      get_llm("anthropic", model="<modellname>")
     """
     import os
 
     _load_dotenv_if_available()
-    p = (provider or os.environ.get("TANKAI_LLM") or "mock").lower().strip()
+    env_provider = os.environ.get("TANKAI_LLM", "").strip()
+    selected = provider.strip() if isinstance(provider, str) else env_provider
+    if not selected:
+        raise RuntimeError(
+            "Kein LLM-Provider konfiguriert. Setze TANKAI_LLM=openai oder "
+            "TANKAI_LLM=anthropic. Für eine ausdrücklich simulierte Ausführung "
+            "setze TANKAI_LLM=mock oder verwende --llm mock."
+        )
+    p = selected.lower()
 
     if p in ("mock", "default"):
         return MockLLM()
@@ -483,16 +501,68 @@ def get_llm(provider: str | None = None, **kwargs: Any) -> BaseLLM:
     )
 
 
+
+def llm_identity(llm: BaseLLM) -> str:
+    """Stabile Identität für Audit und Unabhängigkeitsprüfung."""
+    provider = str(getattr(llm, "provider_name", type(llm).__name__)).strip().lower()
+    model = str(getattr(llm, "model_name", getattr(llm, "model", type(llm).__name__))).strip().lower()
+    base_url = ""
+    client = getattr(llm, "client", None)
+    if client is not None:
+        base_url = str(getattr(client, "base_url", "")).rstrip("/").lower()
+    return f"{provider}:{model}:{base_url}"
+
+
+def get_critic_llm(default: BaseLLM | None = None) -> BaseLLM:
+    """Lädt einen separat konfigurierten Critic oder verwendet bewusst den Default.
+
+    Umgebungsvariablen:
+      TANKAI_CRITIC_LLM=openai|anthropic|mock|echo
+      TANKAI_CRITIC_MODEL=<Modell>
+      TANKAI_CRITIC_API_KEY=<optionaler separater Key>
+      TANKAI_CRITIC_BASE_URL=<nur OpenAI-kompatibel>
+    """
+    import os
+
+    _load_dotenv_if_available()
+    provider = os.environ.get("TANKAI_CRITIC_LLM", "").strip()
+    if not provider:
+        if default is None:
+            raise RuntimeError(
+                "Kein Critic-Provider konfiguriert. Setze TANKAI_CRITIC_LLM oder übergib ein Default-LLM."
+            )
+        return default
+
+    kwargs: dict[str, Any] = {}
+    model = os.environ.get("TANKAI_CRITIC_MODEL", "").strip()
+    if model:
+        kwargs["model"] = model
+    api_key = os.environ.get("TANKAI_CRITIC_API_KEY", "").strip()
+    if api_key:
+        kwargs["api_key"] = api_key
+    base_url = os.environ.get("TANKAI_CRITIC_BASE_URL", "").strip()
+    if base_url and provider.lower() in {"openai", "oai", "gpt"}:
+        kwargs["base_url"] = base_url
+    return get_llm(provider, **kwargs)
+
 def describe_llm_setup() -> str:
     """Hilfstext: welcher Provider wäre jetzt verfügbar?"""
     import os
     lines = ["LLM-Setup:"]
-    lines.append(f"  TANKAI_LLM={os.environ.get('TANKAI_LLM', 'mock')}")
+    lines.append(f"  TANKAI_LLM={os.environ.get('TANKAI_LLM', 'nicht gesetzt')}")
+    lines.append(f"  TANKAI_CRITIC_LLM={os.environ.get('TANKAI_CRITIC_LLM', 'nicht gesetzt (gleich Hauptmodell)')}")
+    lines.append(f"  TANKAI_CRITIC_MODEL={os.environ.get('TANKAI_CRITIC_MODEL', 'nicht gesetzt')}")
     lines.append(
         f"  OPENAI_API_KEY={'gesetzt' if os.environ.get('OPENAI_API_KEY') else 'fehlt'}"
     )
     lines.append(
+        f"  OPENAI_MODEL={os.environ.get('OPENAI_MODEL', 'fehlt')}"
+    )
+    lines.append(
         f"  ANTHROPIC_API_KEY={'gesetzt' if os.environ.get('ANTHROPIC_API_KEY') else 'fehlt'}"
+    )
+    lines.append(
+        f"  ANTHROPIC_MODEL={os.environ.get('ANTHROPIC_MODEL', 'fehlt')}"
     )
     try:
         import openai  # noqa: F401

@@ -6,12 +6,12 @@ Startet einen kompletten PLAN → ROUTE → VERIFY → LEARN Durchlauf
 mit dem eingebauten MockLLM und persistentem Memory.
 """
 
-from tankai import TankAI
+from tankai import TankAI, get_llm
 
 
 def main() -> None:
     # memory_db sorgt dafür, dass Wissen zwischen Läufen erhalten bleibt
-    tank = TankAI(verbose=True, memory_db="tankai_memory.db")
+    tank = TankAI(llm=get_llm("mock"), verbose=True, memory_db="tankai_memory.db")
 
     result = tank.run(
         goal_description=(
