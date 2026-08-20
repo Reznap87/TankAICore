@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite3
+*.jsonl
+.env
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+tankai_selftest_result.json
