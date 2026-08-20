@@ -1,0 +1,20 @@
+{
+  "name": "tankaicore-cloudflare",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cf:types": "wrangler types",
+    "cf:check": "tsc --noEmit",
+    "cf:deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260820.1",
+    "typescript": "7.0.2",
+    "wrangler": "4.124.0"
+  }
+}
