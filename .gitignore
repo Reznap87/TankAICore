@@ -11,3 +11,7 @@ build/
 .pytest_cache/
 .mypy_cache/
 tankai_selftest_result.json
+node_modules/
+.wrangler/
+.dev.vars*
+worker-configuration.d.ts

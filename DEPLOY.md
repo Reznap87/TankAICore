@@ -155,3 +155,29 @@ Online gehen = dieser Stack **zuverlässig betrieben** + mit dem besten verfügb
 3. User-Accounts statt nur Basic-Auth  
 4. Observability (Request-Logs, Latenz, Token-Kosten)  
 5. Canary: neues Prompt/Routing nur für % der Requests  
+
+## 11. Cloudflare Containers
+
+Der vorhandene Python-Dienst kann als Cloudflare Container hinter einem Worker
+laufen. Dafür werden der Workers-Paid-Tarif, Docker und eine authentifizierte
+Wrangler-Installation benötigt.
+
+```bash
+npm ci
+npm run cf:types
+npm run typecheck
+npx wrangler deploy
+```
+
+Die Produktionskonfiguration bindet `tankaicore.com` als Custom Domain ein.
+Ein bestehender CNAME oder eine Weiterleitung auf `tankaicore-com.l.ink` muss
+vor dem ersten Deployment aus der Cloudflare-DNS-Zone entfernt werden.
+
+Der Container startet zunächst bewusst mit `TANKAI_LLM=mock`. API-Schlüssel
+werden nicht in Git oder `wrangler.jsonc` gespeichert. Echte Provider werden
+erst später über Cloudflare Secrets aktiviert.
+
+Wichtig: Das Container-Dateisystem ist flüchtig. Der aktuelle Stand speichert
+Läufe deshalb nur temporär unter `/tmp`. Dauerhafte Speicherung muss vor
+einem produktiven Mehrbenutzerbetrieb auf D1, R2 oder einen externen Datendienst
+umgestellt werden.

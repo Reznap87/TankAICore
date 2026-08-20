@@ -1,0 +1,16 @@
+.git
+.github
+.tankai
+.env
+.env.*
+.dev.vars*
+.venv
+node_modules
+.wrangler
+__pycache__
+*.py[cod]
+*.db
+*.sqlite3
+*.jsonl
+tankai_selftest_result.json
+TankAICore-v0.5-recovery.zip

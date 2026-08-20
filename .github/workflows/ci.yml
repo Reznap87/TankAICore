@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  python-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -27,3 +27,19 @@ jobs:
           TANKAI_LLM: mock
           TANKAI_EMBEDDER: hashing
         run: python -m tankai.selftest
+
+  cloudflare-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate Cloudflare binding types
+        run: npm run cf:types
+      - name: Type-check Worker
+        run: npm run typecheck
