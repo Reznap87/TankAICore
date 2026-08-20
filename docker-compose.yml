@@ -1,0 +1,17 @@
+services:
+  tankai:
+    build: .
+    ports:
+      - "8765:8765"
+    env_file:
+      - .env
+    environment:
+      TANKAI_HOST: "0.0.0.0"
+      TANKAI_PORT: "8765"
+      TANKAI_RUN_STORE: "/app/data/runs.jsonl"
+    volumes:
+      - tankai_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  tankai_data:
