@@ -9,6 +9,10 @@
     {
       "pattern": "tankaicore.com",
       "custom_domain": true
+    },
+    {
+      "pattern": "www.tankaicore.com",
+      "custom_domain": true
     }
   ],
   "containers": [
