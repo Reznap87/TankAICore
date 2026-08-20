@@ -1,20 +1,32 @@
-Diese Datei erklärt, wie man als Entwickler*in mit dem aktuellen Repository arbeitet, solange der Quellcode als Archiv vorliegt.
+# Entwicklung
 
-Voraussetzungen
-- Git, unzip, eine aktuelle Go/Python/Node-Umgebung falls benötigt (abhängig vom Projektinhalt).
+Der TankAI-Core liegt vollständig entpackt im Repository. Das frühere
+`tankai-project.zip` und die versehentlich eingecheckte Digital-Clocks-Demo
+gehören nicht mehr zum aktiven Projektstand.
 
-Schnelleinrichtung
-1. Repository klonen:
-   git clone https://github.com/Reznap87/TankAICore.git
-2. Archiv entpacken:
-   unzip tankai-project.zip -d tankai-project
-3. Ins Projektverzeichnis wechseln und Abhängigkeiten installieren (siehe README in entpacktem Projekt).
+## Lokale Einrichtung
 
-Architektur- und Governance-Dokumentation
-- Alle Architekturgrundlagen befinden sich in .tankai/
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m tankai.selftest
+```
 
-Code-Qualität und Tests
-- Ziel: Automatisierte Tests, Linter und Sicherheits-Scans via CI (GitHub Actions). Noch nicht implementiert.
+Der Self-Test verwendet ausschließlich das Mock-LLM und Hashing-Embeddings. Es
+sind keine externen API-Schlüssel erforderlich.
 
-Contribution
-- Bitte PRs gegen main. Verwende Templates in .tankai/TEMPLATES/.
+## Web-UI
+
+```bash
+TANKAI_LLM=mock TANKAI_EMBEDDER=hashing python -m tankai.web.server
+```
+
+Die Anwendung ist danach unter `http://127.0.0.1:8765` erreichbar.
+
+## Qualitätsregeln
+
+- Änderungen über Pull Requests gegen `main` einreichen.
+- `python -m tankai.selftest` muss erfolgreich durchlaufen.
+- Keine `.env`, API-Schlüssel, Datenbanken oder Laufprotokolle committen.
+- Architekturänderungen als ADR unter `.tankai/ADR/` dokumentieren.
