@@ -1,9 +1,15 @@
 name: Deploy to Cloudflare
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: "Select DEPLOY to publish main to production"
+        required: true
+        type: choice
+        options:
+          - CANCEL
+          - DEPLOY
 
 permissions:
   contents: read
@@ -15,6 +21,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy Worker and container
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_production == 'DEPLOY' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: production

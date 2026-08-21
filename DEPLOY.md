@@ -193,6 +193,12 @@ printf '%s\n' 'REPLACE_WITH_A_LONG_PASSWORD' | docker compose exec -T tankai \
 
 Der Webcontainer besitzt ein read-only Root-Dateisystem, keine Linux-Capabilities und nur `/app/data` sowie `/tmp` sind beschreibbar. **Keinen Docker-/Podman-Socket in diesen Webcontainer mounten.** Development-Worker laufen über einen separat gestarteten Runner.
 
+### 8.1 Cloudflare-Produktion bewusst freigeben
+
+Ein Merge oder Push auf `main` veröffentlicht nicht automatisch. Nach erfolgreichem CI muss ein berechtigter Operator in GitHub Actions den Workflow **Deploy to Cloudflare** auf dem Ref `main` manuell starten und für `confirm_production` ausdrücklich `DEPLOY` wählen. `CANCEL`, ein anderer Ref oder eine fehlende Eingabe überspringt den Deployment-Job.
+
+Der Job bleibt an das GitHub-Environment `production` und die exklusive Concurrency-Gruppe `cloudflare-production` gebunden. Die Cloudflare-Zugangsdaten dürfen ausschließlich als Environment-/Repository-Secrets vorliegen; sie gehören weder in das Repository noch in Workflow-Eingaben oder Receipts.
+
 ## 9. Persistente Development-Queue und Admission-Control
 
 Die Queue ist standardmäßig deaktiviert. Für kontrollierte Online-Codeausführung werden Webdienst, Queue-Administration und Runner getrennt betrieben:
