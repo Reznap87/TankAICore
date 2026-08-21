@@ -27,3 +27,21 @@ jobs:
         run: python -m pytest -q
       - name: Self-test
         run: python -m tankai --selftest
+
+  cloudflare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked Cloudflare dependencies
+        run: npm ci --ignore-scripts
+      - name: Generate bindings, typecheck and build dry-run
+        run: npm run cf:check
+      - name: Verify Worker artifact
+        run: test -s dist/cloudflare.js
+      - name: Build production container
+        run: docker build --tag "tankai-core-ci:${GITHUB_SHA}" .
