@@ -11,7 +11,13 @@ TankAI CLI
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "1" if default else "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,12 +42,33 @@ def main(argv: list[str] | None = None) -> int:
         "--llm",
         default=None,
         choices=["mock", "openai", "anthropic", "echo"],
-        help="LLM-Provider (default: TANKAI_LLM oder mock)",
+        help="LLM-Provider (sonst muss TANKAI_LLM gesetzt sein)",
     )
     parser.add_argument(
         "--model",
         default=None,
-        help="Modellname (z.B. gpt-4o-mini, claude-sonnet-4-20250514)",
+        help="Expliziter Modellname des Hauptproviders",
+    )
+    parser.add_argument(
+        "--critic-llm",
+        default=None,
+        choices=["mock", "openai", "anthropic", "echo"],
+        help="Separater Critic-Provider (sonst TANKAI_CRITIC_LLM oder Hauptmodell)",
+    )
+    parser.add_argument(
+        "--critic-model",
+        default=None,
+        help="Separates Critic-Modell",
+    )
+    parser.add_argument(
+        "--require-independent-critic",
+        action="store_true",
+        help="Abbruch, falls Critic und Hauptmodell dieselbe Provider-/Modellidentität haben",
+    )
+    parser.add_argument(
+        "--strict-web-research",
+        action="store_true",
+        help="Abbruch beim Start, wenn kein funktionierender Suchanbieter konfiguriert ist",
     )
     parser.add_argument(
         "--history",
@@ -64,12 +91,15 @@ def main(argv: list[str] | None = None) -> int:
             print("Keine gespeicherten Runs.")
             return 0
         for r in rows:
-            print(f"{r.get('ts','?')[:19]}  {r.get('status')}  {r.get('goal','')[:70]}")
+            mode = r.get("execution_mode", "unknown")
+            print(f"{r.get('ts','?')[:19]}  {r.get('status')}  {mode}  {r.get('goal','')[:70]}")
         return 0
 
     if args.setup:
         from tankai.core.llm import describe_llm_setup
+        from tankai.core.web_research import describe_web_research_setup
         print(describe_llm_setup())
+        print(describe_web_research_setup())
         return 0
 
     if args.selftest:
@@ -93,30 +123,61 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     from tankai import TankAI, get_llm
-    from tankai.core.long_term_memory import LongTermMemory
-
+    from tankai.core.llm import get_critic_llm
     llm_kwargs = {}
     if args.model:
         llm_kwargs["model"] = args.model
     try:
         llm = get_llm(args.llm, **llm_kwargs)
-        provider = args.llm or "env/mock"
+        provider = args.llm or "env"
         if not args.quiet:
-            print(f"LLM: {type(llm).__name__} (provider={provider})")
+            mode = "simulation" if llm.is_simulation else "live"
+            print(f"LLM: {type(llm).__name__} (provider={provider}, mode={mode})")
     except Exception as e:
-        print(f"LLM-Fehler ({args.llm}): {e}", file=sys.stderr)
-        print("Fallback auf MockLLM.", file=sys.stderr)
-        llm = get_llm("mock")
+        print(f"LLM-Konfigurationsfehler: {e}", file=sys.stderr)
+        return 3
 
-    tank = TankAI(
-        llm=llm,
-        verbose=not args.quiet,
-        use_ltm=True,
-        parallel=args.parallel,
-        enable_tools=not args.no_tools,
-    )
-    tank.ltm = LongTermMemory(in_memory=True, embedder="hashing")
+    try:
+        critic_llm = llm
+        if args.critic_llm:
+            critic_kwargs = {}
+            if args.critic_model:
+                critic_kwargs["model"] = args.critic_model
+            critic_llm = get_llm(args.critic_llm, **critic_kwargs)
+        elif os.environ.get("TANKAI_CRITIC_LLM", "").strip():
+            if args.critic_model:
+                os.environ["TANKAI_CRITIC_MODEL"] = args.critic_model
+            critic_llm = get_critic_llm(default=llm)
 
+        tank = TankAI(
+            llm=llm,
+            critic_llm=critic_llm,
+            require_independent_critic=(
+                args.require_independent_critic
+                or _env_bool("TANKAI_REQUIRE_INDEPENDENT_CRITIC", False)
+            ),
+            require_research_evidence=_env_bool(
+                "TANKAI_REQUIRE_RESEARCH_EVIDENCE", True
+            ),
+            verbose=not args.quiet,
+            use_ltm=True,
+            parallel=args.parallel,
+            enable_tools=not args.no_tools,
+            strict_web_research=(
+                args.strict_web_research
+                or _env_bool("TANKAI_STRICT_WEB_RESEARCH", False)
+            ),
+        )
+    except Exception as e:
+        print(f"TankAI-Konfigurationsfehler: {e}", file=sys.stderr)
+        return 3
+
+    if not args.quiet:
+        print(
+            f"Critic: {tank.critic_llm_identity} "
+            f"(independent={tank.critic_independent}) | "
+            f"Web research={tank.tools.web_research_status()}"
+        )
     result = tank.run(goal_description=goal, definition_of_done=args.dod)
 
     if args.json:
@@ -126,6 +187,17 @@ def main(argv: list[str] | None = None) -> int:
             "goal": goal,
             "definition_of_done": args.dod,
             "status": result.status.value,
+            "execution_mode": result.execution_mode,
+            "main_llm_identity": result.main_llm_identity,
+            "critic_llm_identity": result.critic_llm_identity,
+            "critic_independent": result.critic_independent,
+            "verification_passed": result.verification_passed,
+            "release_ready": result.release_ready,
+            "plan_gate_passed": result.plan_gate_passed,
+            "failed_step_ids": result.failed_step_ids,
+            "web_research_provider": result.web_research_provider,
+            "source_ids": result.source_ids,
+            "source_urls": result.source_urls,
             "final_answer": result.final_answer,
             "duration_seconds": result.duration_seconds,
             "receipts": [
@@ -134,6 +206,7 @@ def main(argv: list[str] | None = None) -> int:
                     "action": r.action,
                     "success": r.success,
                     "output_summary": r.output_summary,
+                    "details": r.details,
                 }
                 for r in result.receipts
             ],
@@ -167,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if tank.ltm:
         tank.ltm.close()
-    return 0 if result.status.value == "completed" else 2
+    return 0 if result.status.value == "completed" else (4 if result.status.value == "simulated" else 2)
 
 
 if __name__ == "__main__":

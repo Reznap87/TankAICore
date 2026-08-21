@@ -14,6 +14,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from .web_research import WebResearchTool, build_web_research_tool_from_env
+
 
 class BaseTool(ABC):
     name: str
@@ -173,7 +175,14 @@ class ToolRegistry:
         lines = [f"- {t.name}: {t.description}" for t in self._tools.values()]
         return "\n".join(lines)
 
-    def register_defaults(self, ltm: Any = None) -> None:
+    def register_defaults(
+        self,
+        ltm: Any = None,
+        *,
+        enable_web_research: bool = True,
+        strict_web_research: bool = False,
+        web_research_tool: WebResearchTool | None = None,
+    ) -> None:
         self.register(CalculatorTool())
         self.register(DateTimeTool())
         self.register(HashTool())
@@ -181,3 +190,17 @@ class ToolRegistry:
         self.register(JsonTool())
         if ltm is not None:
             self.register(MemorySearchTool(ltm))
+        if enable_web_research:
+            tool = web_research_tool or build_web_research_tool_from_env(
+                strict=strict_web_research
+            )
+            if tool is not None:
+                self.register(tool)
+
+    def web_research_status(self) -> str:
+        tool = self.get("web_research")
+        if tool is None:
+            return "disabled"
+        backend = getattr(tool, "backend", None)
+        provider = getattr(backend, "provider_name", "configured")
+        return str(provider)

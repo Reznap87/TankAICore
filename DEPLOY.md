@@ -1,65 +1,117 @@
-# TankAI – Deploy-Anleitung
+# TankAI 1.4 — sicherer Online-Grundbetrieb
 
-Ziel: **öffentlich erreichbare Demo** mit HTTPS, optional Basic-Auth und echtem LLM.
-Das ist kein fertiges „bestes KI-Produkt“, sondern ein **betriebsfähiger Multi-Agenten-Kern**, den man iterativ verbessern kann.
+Diese Anleitung beschreibt TankAI hinter einem HTTPS-Reverse-Proxy auf einem Linux-Server. Version 1.4 ergänzt externe monotone Lease-Fences und ein mechanisches Rootless-Runtime-Gate für Development-Worker. Der öffentliche Webdienst und der privilegierte Runner müssen getrennte Prozesse und getrennte Dienstkonten bleiben; deshalb bleibt `production_ready=false`.
 
-## 1. Voraussetzungen (Server)
+## 1. Voraussetzungen
 
-- Linux VPS (Ubuntu 22.04/24.04 o.ä.)
-- Python 3.11+
-- Domain + DNS A-Record auf die Server-IP
-- Optional: Docker
+- Linux-Server
+- Python 3.11 oder neuer
+- Nginx oder Caddy
+- TLS-Zertifikat
+- getrennte Live-Provider für Hauptmodell und Critic
+- Brave- oder Tavily-Suchzugang
+- für Development-Worker: dedizierter nicht-root Runner-Host mit rootless Docker oder Podman
 
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx
-```
-
-## 2. App einrichten
+## 2. Installation
 
 ```bash
 sudo useradd -m -s /bin/bash tankai || true
-sudo mkdir -p /opt/tankai
-sudo chown tankai:tankai /opt/tankai
+sudo mkdir -p /opt/tankai/.tankai/data
+sudo chown -R tankai:tankai /opt/tankai
 
-# Code nach /opt/tankai kopieren (git clone / scp / rsync)
 cd /opt/tankai
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install pydantic rich numpy
-# echtes LLM:
-pip install openai
-# optional:
-# pip install anthropic python-dotenv
+pip install -r requirements.txt
+pip install openai anthropic
 ```
 
-## 3. Umgebungsvariablen
+## 3. Konfiguration
 
 ```bash
 sudo -u tankai tee /opt/tankai/.env <<'ENV'
 TANKAI_LLM=openai
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=REPLACE_MAIN_KEY
+OPENAI_MODEL=REPLACE_MAIN_MODEL
+
+TANKAI_CRITIC_LLM=anthropic
+ANTHROPIC_API_KEY=REPLACE_CRITIC_KEY
+TANKAI_CRITIC_MODEL=REPLACE_CRITIC_MODEL
+TANKAI_REQUIRE_INDEPENDENT_CRITIC=1
+
+TANKAI_SEARCH_PROVIDER=brave
+BRAVE_SEARCH_API_KEY=REPLACE_SEARCH_KEY
+TANKAI_STRICT_WEB_RESEARCH=1
+TANKAI_REQUIRE_RESEARCH_EVIDENCE=1
+TANKAI_WEB_FETCH=1
+
 TANKAI_HOST=127.0.0.1
 TANKAI_PORT=8765
-TANKAI_BASIC_AUTH_USER=admin
-TANKAI_BASIC_AUTH_PASS=CHANGE_ME_STRONG
-TANKAI_RUN_STORE=/opt/tankai/data/runs.jsonl
+TANKAI_AUTH_MODE=session
+TANKAI_DATA_ROOT=/opt/tankai/.tankai/data
+TANKAI_AUTH_DB=/opt/tankai/.tankai/data/auth.db
+TANKAI_SESSION_HOURS=12
+TANKAI_COOKIE_SECURE=1
+TANKAI_ALLOW_REGISTRATION=0
+TANKAI_LOGIN_ATTEMPTS=5
+TANKAI_LOGIN_WINDOW=300
+TANKAI_LOGIN_BLOCK=900
+TANKAI_EMBEDDER=hashing
 ENV
-mkdir -p /opt/tankai/data
-chown -R tankai:tankai /opt/tankai
+
+sudo chmod 600 /opt/tankai/.env
+sudo chmod 700 /opt/tankai/.tankai /opt/tankai/.tankai/data
+sudo chown -R tankai:tankai /opt/tankai
 ```
 
-**Ohne API-Key bleibt der Mock aktiv** – für eine echte Demo ist `OPENAI_API_KEY` Pflicht.
+`TANKAI_COOKIE_SECURE=1` ist für HTTPS verbindlich. Direkter HTTP-Zugriff auf Port 8765 kann die Secure-Cookie nicht verwenden und ist nur für den Reverse Proxy vorgesehen.
 
-## 4. Systemd-Service
+## 4. Ersten Benutzer anlegen
+
+Passwort nicht als Kommandozeilenargument übergeben:
 
 ```bash
-sudo tee /etc/systemd/system/tankai.service <<'UNIT'
+sudo -u tankai bash -lc "cd /opt/tankai && source .venv/bin/activate && \
+  printf '%s\n' 'REPLACE_WITH_A_LONG_PASSWORD' | \
+  python -m tankai.web.auth_cli \
+    --db /opt/tankai/.tankai/data/auth.db \
+    create-user \
+    --email admin@example.com \
+    --name Administrator \
+    --tenant TankAI \
+    --workspace Standard \
+    --password-stdin"
+```
+
+Weitere Verwaltungsbefehle:
+
+```bash
+python -m tankai.web.auth_cli --db /opt/tankai/.tankai/data/auth.db list-users
+printf '%s\n' 'NEW-LONG-PASSWORD' | python -m tankai.web.auth_cli \
+  --db /opt/tankai/.tankai/data/auth.db set-password \
+  --email admin@example.com --password-stdin
+```
+
+Ein Passwortwechsel widerruft alle Sessions des Nutzers.
+
+## 5. Tests vor dem Start
+
+```bash
+sudo -u tankai bash -lc 'cd /opt/tankai && source .venv/bin/activate && python -m compileall -q tankai'
+sudo -u tankai bash -lc 'cd /opt/tankai && source .venv/bin/activate && python -m pytest -q'
+sudo -u tankai bash -lc 'cd /opt/tankai && source .venv/bin/activate && python -m tankai --selftest'
+```
+
+Reale Provider- und Suchaufrufe benötigen zusätzlich einen kontrollierten Smoke-Test mit Kostenlimit.
+
+## 6. Systemd
+
+```ini
 [Unit]
 Description=TankAI Web Intelligence OS
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -70,114 +122,412 @@ EnvironmentFile=/opt/tankai/.env
 ExecStart=/opt/tankai/.venv/bin/python -m tankai.web.server
 Restart=on-failure
 RestartSec=5
-# Sicherheit
+TimeoutStopSec=30
+
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tankai/.tankai/data
+RestrictSUIDSGID=true
+LockPersonality=true
 
 [Install]
 WantedBy=multi-user.target
-UNIT
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now tankai
-sudo systemctl status tankai
 ```
 
-## 5. Nginx + HTTPS
+## 7. Nginx und HTTPS
 
-```bash
-sudo tee /etc/nginx/sites-available/tankai <<'NGX'
+```nginx
+limit_req_zone $binary_remote_addr zone=tankai_login:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=tankai_run:10m rate=3r/m;
+
 server {
     listen 80;
     server_name tankai.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name tankai.example.com;
+
+    client_max_body_size 220k;
+
+    location = /api/auth/login {
+        limit_req zone=tankai_login burst=5 nodelay;
+        proxy_pass http://127.0.0.1:8765;
+        include proxy_params;
+    }
+
+    location = /api/run {
+        limit_req zone=tankai_run burst=2 nodelay;
+        proxy_pass http://127.0.0.1:8765;
+        include proxy_params;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8765;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        include proxy_params;
         proxy_read_timeout 300s;
     }
 }
-NGX
-
-sudo ln -sf /etc/nginx/sites-available/tankai /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d tankai.example.com
 ```
 
-## 6. Docker (Alternative)
+Der Anwendungscode wertet keine vom Client übermittelte Nutzer-ID aus. Die aktive Workspace-ID wird aus der serverseitigen Session geladen und gegen die Membership-Tabelle geprüft.
+
+## 8. Docker
 
 ```bash
-cd /opt/tankai
+cp .env.example .env
+# Live-Provider, Critic und Suche konfigurieren.
 docker compose up -d --build
+
+printf '%s\n' 'REPLACE_WITH_A_LONG_PASSWORD' | docker compose exec -T tankai \
+  python -m tankai.web.auth_cli --db /app/data/auth.db create-user \
+  --email admin@example.com --name Administrator --tenant TankAI \
+  --workspace Standard --password-stdin
 ```
 
-Siehe `docker-compose.yml`. HTTPS weiterhin über Nginx/Caddy auf dem Host oder Traefik.
+Der Webcontainer besitzt ein read-only Root-Dateisystem, keine Linux-Capabilities und nur `/app/data` sowie `/tmp` sind beschreibbar. **Keinen Docker-/Podman-Socket in diesen Webcontainer mounten.** Development-Worker laufen über einen separat gestarteten Runner.
 
-## 7. Smoke-Test nach Deploy
+### 8.1 Cloudflare-Produktion bewusst freigeben
+
+Ein Merge oder Push auf `main` veröffentlicht nicht automatisch. Nach erfolgreichem CI muss ein berechtigter Operator in GitHub Actions den Workflow **Deploy to Cloudflare** auf dem Ref `main` manuell starten und für `confirm_production` ausdrücklich `DEPLOY` wählen. `CANCEL`, ein anderer Ref oder eine fehlende Eingabe überspringt den Deployment-Job.
+
+Der Job bleibt an das GitHub-Environment `production` und die exklusive Concurrency-Gruppe `cloudflare-production` gebunden. Die Cloudflare-Zugangsdaten dürfen ausschließlich als Environment-/Repository-Secrets vorliegen; sie gehören weder in das Repository noch in Workflow-Eingaben oder Receipts.
+
+## 9. Persistente Development-Queue und Admission-Control
+
+Die Queue ist standardmäßig deaktiviert. Für kontrollierte Online-Codeausführung werden Webdienst, Queue-Administration und Runner getrennt betrieben:
+
+```text
+Browser → HTTPS-Webdienst → development-jobs.db ← dedizierter Queue-Runner
+                             ↑              ↕ fence.db      ↓
+                  Auth/Workspace-Prüfung      registrierte Repositories
+                                               rootless Docker/Podman
+```
+
+Wichtige Trennung:
+
+- Der Webdienst erhält **keinen** Docker-/Podman-Socket und benötigt keine Repository-Mounts.
+- Der Queue-Runner benötigt **keinen** Zugriff auf `auth.db`.
+- Nur ein administrativer Einrichtungsprozess benötigt gleichzeitig Auth-Datenbank, Queue-Datenbank und Repository-Pfade.
+- `development-jobs.db` und die getrennte `development-fences.db` müssen auf lokalem Dateisystem liegen. Beide dürfen nicht dieselbe Datei sein und nicht über NFS geteilt werden.
+
+Webdienst aktivieren:
+
+```dotenv
+TANKAI_DEV_QUEUE_ENABLED=1
+TANKAI_DEV_QUEUE_DB=/app/data/development-jobs.db
+# Runner/Operator-CLI: /srv/tankai/fences/development-fences.db getrennt mounten
+TANKAI_REPOSITORY_BASE=/srv/tankai/repositories
+TANKAI_WORKTREE_BASE=/srv/tankai/worktrees
+TANKAI_STATE_BASE=/srv/tankai/states
+```
+
+Die drei Basisverzeichnisse sind im Webprozess logische Allowlist-Werte. Sie müssen dort nicht gemountet sein, müssen aber exakt mit der Runner-Konfiguration übereinstimmen.
+
+### 9.1 Admission-Richtlinie setzen
+
+Zuerst das unveränderliche Worker-Image bauen und dessen Digest ermitteln:
 
 ```bash
-curl -s https://tankai.example.com/api/health
-# mit Basic-Auth:
-curl -s -u admin:PASS https://tankai.example.com/api/health
+docker build -f Dockerfile.worker -t tankai-worker:1.6.0 .
+docker image inspect tankai-worker:1.6.0 --format '{{.Id}}'
 ```
 
-Erwartet: `{"ok": true, ...}`
-
-## 8. Sicherheits-Checkliste (Minimum)
-
-- [ ] Starke `TANKAI_BASIC_AUTH_PASS`
-- [ ] HTTPS (Let's Encrypt)
-- [ ] App lauscht nur auf `127.0.0.1`, öffentlich nur Nginx
-- [ ] API-Keys nur in `.env`, nie im Git
-- [ ] Firewall: nur 80/443 offen (`ufw allow 80,443/tcp`)
-- [ ] Rate-Limits / Budget-Alerts beim LLM-Anbieter
-- [ ] Regelmäßige Backups von `data/`
-
-## 9. Was „beste KI“ hier bedeutet
-
-TankAI ist **kein neues Frontier-Modell**. Stärke kommt aus:
-
-1. **Zielkontrolle** (Definition of Done)
-2. **Routing + Spezialisten**
-3. **Critic / Receipts**
-4. **Langzeitgedächtnis + Procedural Patterns**
-5. **Echtes starkes Backend-LLM** (GPT/Claude/…)
-
-Online gehen = dieser Stack **zuverlässig betrieben** + mit dem besten verfügbaren Modell gefüttert + Feedback-Schleife (Evals, Consolidation, Retention).
-
-## 10. Nächste Qualitätsstufen nach Go-Live
-
-1. Golden-Set an Testzielen + automatischer Self-Test gegen echtes LLM  
-2. Bessere Embeddings (`sentence-transformers` oder OpenAI Embeddings)  
-3. User-Accounts statt nur Basic-Auth  
-4. Observability (Request-Logs, Latenz, Token-Kosten)  
-5. Canary: neues Prompt/Routing nur für % der Requests  
-
-## 11. Cloudflare Containers
-
-Der vorhandene Python-Dienst kann als Cloudflare Container hinter einem Worker
-laufen. Dafür werden der Workers-Paid-Tarif, Docker und eine authentifizierte
-Wrangler-Installation benötigt.
+Anschließend pro Workspace eine Richtlinie setzen:
 
 ```bash
-npm ci
-npm run cf:types
-npm run typecheck
-npx wrangler deploy
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  set-policy \
+  --actor-email admin@example.com \
+  --workspace-id WORKSPACE_UUID \
+  --allowed-image sha256:ACTUAL_64_HEX_IMAGE_ID \
+  --max-queued 20 \
+  --max-running 2 \
+  --max-memory-mb 2048 \
+  --max-cpus 4 \
+  --max-pids 512 \
+  --max-runtime-seconds 3600 \
+  --max-attempts 3 \
+  --max-jobs-per-user-hour 20
 ```
 
-Die Produktionskonfiguration bindet `tankaicore.com` als Custom Domain ein.
-Ein bestehender CNAME oder eine Weiterleitung auf `tankaicore-com.l.ink` muss
-vor dem ersten Deployment aus der Cloudflare-DNS-Zone entfernt werden.
+Standardmäßig dürfen nur `owner` und `admin` Jobs einreichen. Eine ausdrückliche Freigabe für Mitglieder erfolgt mit zusätzlichem `--submit-role member`; Mitglieder dürfen trotzdem keine erhöhte Queue-Priorität setzen.
 
-Der Container startet zunächst bewusst mit `TANKAI_LLM=mock`. API-Schlüssel
-werden nicht in Git oder `wrangler.jsonc` gespeichert. Echte Provider werden
-erst später über Cloudflare Secrets aktiviert.
+### 9.2 Repository registrieren
 
-Wichtig: Das Container-Dateisystem ist flüchtig. Der aktuelle Stand speichert
-Läufe deshalb nur temporär unter `/tmp`. Dauerhafte Speicherung muss vor
-einem produktiven Mehrbenutzerbetrieb auf D1, R2 oder einen externen Datendienst
-umgestellt werden.
+Hostpfade werden nicht aus Webrequests übernommen. Owner/Admin registrieren sie operatorseitig:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  register-repository \
+  --actor-email admin@example.com \
+  --workspace-id WORKSPACE_UUID \
+  --name Main \
+  --repository /srv/tankai/repositories/WORKSPACE_UUID/main \
+  --worktrees /srv/tankai/worktrees/WORKSPACE_UUID/main \
+  --state /srv/tankai/states/WORKSPACE_UUID/main.json
+```
+
+### 9.3 Queue-Runner starten
+
+Der dauerhafte Runner benötigt keine Auth-Datenbank:
+
+```bash
+export TANKAI_REQUIRE_WORKER_ISOLATION=1
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  run-worker \
+  --worker-id runner-01 \
+  --container-runtime docker \
+  --lease-seconds 300 \
+  --poll-seconds 2
+```
+
+Vor dem Start die Runtime mechanisch prüfen:
+
+```bash
+python -m tankai.dev_orchestrator.runtime_cli --container-runtime docker
+```
+
+Der Befehl muss `"rootless": true` und `"os_type": "linux"` liefern. Rootful-Runtimes werden für Online-Queue-Worker blockiert.
+
+Der Runner beansprucht Jobs atomar und erhält zusätzlich eine monotone Fence-Epoche aus der getrennten Fence-Datenbank. Heartbeats erneuern Queue-Lease und Fence. Start, Kommandophasen, Commit und Abschluss validieren beide Nachweise; eine neuere Epoche entzieht einem alten Worker sofort die Freigabe für weitere kontrollierte Mutationen.
+
+Operator-Prüfung und bewusstes Recovery:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  fence-status --actor-email admin@example.com \
+  --workspace-id WORKSPACE_UUID --repository-id REPOSITORY_UUID
+
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  force-expire-fence --actor-email admin@example.com \
+  --workspace-id WORKSPACE_UUID --repository-id REPOSITORY_UUID \
+  --expected-epoch 7 --expected-job-id JOB_UUID
+```
+
+`force-expire-fence` darf erst ausgeführt werden, nachdem der alte Prozess beziehungsweise dessen Container nachweislich beendet wurde. Die exakte Epoche und Job-ID verhindern, dass versehentlich ein neuerer Worker widerrufen wird.
+
+**Betriebsgrenze:** SQLite-Queue und SQLite-Fence sind weiterhin nur für einen lokalen Single-Host-Betrieb freigegeben. Multi-Host-Runner benötigen einen externen transaktionalen Koordinator.
+
+### 9.4 Web-API
+
+Nach Session-Login und CSRF-Prüfung stehen bereit:
+
+- `GET /api/dev/repositories`
+- `GET /api/dev/jobs`
+- `POST /api/dev/jobs`
+- `POST /api/dev/jobs/<job-uuid>/cancel`
+
+Ein Jobrequest enthält nur `repository_id`, `idempotency_key`, optionale `priority` und einen validierten `pipeline`-Payload. Nutzer-, Mandanten- und Workspace-ID stammen ausschließlich aus der serverseitigen Session.
+
+## 10. Separater Worker-Runner
+
+Der Worker-Runner darf nicht im öffentlich erreichbaren Webprozess laufen. Empfohlene Trennung:
+
+```text
+Internet → HTTPS-Reverse-Proxy → TankAI-Webdienst (kein Runtime-Socket)
+                              ↘ persistente Job-Queue
+                                 dedizierter nicht-root Runner
+                                 ↘ rootless Docker/Podman
+```
+
+Worker-Image bauen:
+
+```bash
+docker build -f Dockerfile.worker -t tankai-worker:1.6.0 .
+docker image inspect tankai-worker:1.6.0 --format '{{.Id}}'
+```
+
+Die Ausgabe des zweiten Befehls wird als `isolation.image` im Job verwendet. Produktive Jobs akzeptieren standardmäßig unveränderliche `sha256:<64-hex>`-Image-IDs oder Registry-Referenzen im Format `name@sha256:<64-hex>`.
+
+Runner-Konfiguration:
+
+```bash
+export TANKAI_REQUIRE_WORKER_ISOLATION=1
+export TANKAI_WORKER_CONTAINER_RUNTIME=docker
+```
+
+Die Isolationsrichtlinie erzwingt:
+
+- `network=none`,
+- read-only Root-Dateisystem,
+- keine Linux-Capabilities,
+- `no-new-privileges`,
+- private IPC,
+- feste CPU-, RAM-/Swap-, PID- und Dateideskriptorgrenzen,
+- read-only Worktree für Tests und Gates,
+- schreibbare Mounts nur für aus `allowed_paths` abgeleitete Implementierungsbereiche; vorhandene exakt erlaubte Dateien werden einzeln gemountet,
+- verdeckte `.git`-Metadaten,
+- keine Vererbung der Host-Umgebung,
+- begrenzte Prozessausgabe und erzwungene Container-Bereinigung bei Timeout.
+
+Beispiel für die Job-Richtlinie:
+
+```json
+{
+  "isolation": {
+    "backend": "docker",
+    "image": "registry.example.invalid/tankai-worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "require_image_digest": true,
+    "network_mode": "none",
+    "read_only_root": true,
+    "memory_mb": 512,
+    "cpus": 1.0,
+    "pids_limit": 128,
+    "tmpfs_mb": 128,
+    "build_tmpfs_mb": 512,
+    "nofile_limit": 1024,
+    "user": "10001:10001"
+  }
+}
+```
+
+Die Beispiel-Domain ist absichtlich nicht routbar. Im realen Job muss das zuvor lokal gebaute oder aus einer kontrollierten Registry geladene Image mit seinem tatsächlichen Digest stehen.
+
+Mehrere bereits genehmigte und konfliktfreie Agenten können über einen Pool-Job ausgeführt werden:
+
+```bash
+python -m tankai.dev_orchestrator.cli \
+  --state .tankai/project-state.json \
+  run-pool \
+  --repository /srv/tankai/repositories/WORKSPACE \
+  --workspace-root /srv/tankai/worktrees/WORKSPACE \
+  --job worker-pool.json \
+  --require-container-isolation
+```
+
+Der Pool erzeugt keine Agenten und keine Aufgaben. Er akzeptiert nur bereits aktive, exklusiv zugewiesene Programmier-Agenten mit getrennten Schreibbereichen. Die Integration nach `main` erfolgt anschließend weiterhin einzeln über die exklusive Merge-Warteschlange.
+
+
+### 10.1 Aktiver Lease-/Fence-Abbruch
+
+Der Queue-Runner prüft Heartbeat und externen Fence während jedes laufenden Befehls. Bei Verlust wird die Prozessgruppe beendet. Bei Container-Ausführung wird der benannte Container zusätzlich mit `docker rm -f` beziehungsweise `podman rm -f` entfernt. Für den Produktivbetrieb muss der Runner deshalb Zugriff auf dieselbe rootless Runtime besitzen, über die der Container gestartet wurde.
+
+### 10.2 Verwaiste Worktrees prüfen und bereinigen
+
+Zuerst immer Dry-Run:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/queue/development-fences.db \
+  --auth-db /srv/tankai/auth/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  reap-worktrees \
+  --actor-email operator@example.com \
+  --workspace-id WORKSPACE_ID \
+  --repository-id REPOSITORY_ID \
+  --min-age-seconds 3600
+```
+
+Erst nach Prüfung mit `--apply` ausführen. Der Reaper blockiert bei aktivem Fence oder aktivem Queue-Job. Schmutzige Worktrees werden nicht gelöscht. Git-Branches bleiben erhalten. Für einen stale nicht-terminalen ProjectState-Run muss die konkrete Run-ID mit `--expected-stale-run-id` bestätigt werden.
+
+## 11. Datentrennung
+
+Die verbindliche Struktur lautet:
+
+```text
+DATA_ROOT/
+  auth.db
+  tenants/<tenant-id>/workspaces/<workspace-id>/
+    memory.db
+    ltm.db
+    vectors.npz
+    runs.jsonl
+    web_history.jsonl
+    cold/
+```
+
+Alle Tenant- und Workspace-IDs werden serverseitig aus der Auth-Datenbank bezogen. Direkte Pfadangaben aus Requests werden nicht akzeptiert.
+
+## 12. Backup und Wiederherstellung
+
+Konsistent sichern:
+
+- `auth.db`, `development-jobs.db` und die getrennte `development-fences.db` einschließlich jeweiliger `-wal`/`-shm`, falls Dienste laufen,
+- kompletten Ordner `tenants/`,
+- Provider-Secrets getrennt und verschlüsselt.
+
+Für einen einfachen konsistenten Dateisystem-Snapshot den Dienst stoppen oder SQLite-Backup-APIs verwenden. `ltm.db` und `vectors.npz` sind weiterhin keine gemeinsame atomare Transaktion.
+
+Alte globale Dateien aus Version 1.0 liegen im Release unter `legacy-global-state/` und werden nicht automatisch einem Mandanten zugeordnet. Eine manuelle Kopie in einen Workspace ist nicht empfohlen, weil IDs und Provenance geprüft werden müssen.
+
+## 13. Offene Betriebsrisiken
+
+- Die Container-Isolation ist implementiert, aber in diesem Release nicht gegen eine reale Docker-/Podman-Runtime im CI ausgeführt worden.
+- SQLite-Queue und separate Fence-Datenbank sind auf einen einzelnen Host und lokales Dateisystem begrenzt; Multi-Host-Runner benötigen einen externen transaktionalen Koordinator.
+- Ein Fence-Verlust beendet laufende lokale Prozessgruppen aktiv. Bei Container-Ausführung wird zusätzlich der eindeutig benannte Container entfernt; die reale Daemon-/Kernel-Durchsetzung muss auf dem Zielhost dennoch per End-to-End-Test bestätigt werden.
+- Rootless-Betrieb wird mechanisch geprüft; Image-Signaturprüfung und Registry-Allowlist müssen weiterhin im Zielsystem eingerichtet werden.
+- Login-Limits in der Anwendung sind prozesslokal; der Reverse Proxy muss zusätzlich limitieren.
+- Es fehlen persistente Nutzerquoten, Kostenbudgets und Abrechnung.
+- Audit-Ereignisse sind persistent, aber nicht extern manipulationsgeschützt.
+- Es fehlen zentrale Metriken, Alarmierung und verteiltes Tracing.
+- Keine E-Mail-Verifikation, Passwort-Reset-Mail oder MFA.
+- Reale Provider-/Search-E2E-Tests wurden ohne Testkonten nicht automatisiert.
+
+Deshalb bleibt `production_ready=false`, obwohl authentifizierter Onlinebetrieb für kontrollierte Nutzer technisch möglich ist.
+## 14. Verwaiste Container kontrolliert bereinigen
+
+Der Container-Reaper ist standardmäßig ein Dry-Run und benötigt Owner-/Admin-Rechte sowie eine rootless Linux-Runtime:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/queue/development-fences.db \
+  --auth-db /srv/tankai/auth/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  reap-containers \
+  --actor-email operator@example.com \
+  --workspace-id WORKSPACE_ID \
+  --repository-id REPOSITORY_ID \
+  --container-runtime docker \
+  --min-age-seconds 3600
+```
+
+Für tatsächlich abgeschlossene Jobs ergänzt der Betreiber `--apply`. Bei einem unbekannten oder im Queue-State noch nicht terminalen stale Job sind zusätzlich beide Werte zwingend:
+
+```text
+--expected-stale-job-id JOB_ID
+--expected-fence-epoch EPOCH
+```
+
+Container eines aktiven Queue-Leases oder des aktuellen Repository-Fence werden unabhängig von `--apply` geschützt. Container mit fremder Mandanten-, Workspace- oder Repository-Bindung werden übersprungen.

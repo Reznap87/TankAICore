@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "cf:types": "wrangler types",
-    "cf:check": "wrangler check",
+    "cf:check": "wrangler types && tsc --noEmit && wrangler deploy --dry-run --outdir dist",
     "cf:deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
@@ -13,7 +13,7 @@
     "@cloudflare/containers": "0.3.7"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260820.1",
+    "@types/node": "22.20.1",
     "typescript": "7.0.2",
     "wrangler": "4.124.0"
   }

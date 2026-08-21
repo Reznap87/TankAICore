@@ -25,6 +25,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     ROLLED_BACK = "rolled_back"
+    SIMULATED = "simulated"
 
 
 class Role(str, Enum):
@@ -122,6 +123,18 @@ class RunResult(BaseModel):
     goal_id: str
     final_answer: str
     status: TaskStatus
+    definition_of_done: str = ""
+    execution_mode: str = "live"
+    main_llm_identity: str = ""
+    critic_llm_identity: str = ""
+    critic_independent: bool = False
+    verification_passed: bool = False
+    release_ready: bool = False
+    plan_gate_passed: bool = False
+    failed_step_ids: list[str] = Field(default_factory=list)
+    web_research_provider: str = "disabled"
+    source_ids: list[str] = Field(default_factory=list)
+    source_urls: list[str] = Field(default_factory=list)
     plan: Optional[Plan] = None
     critiques: list[Critique] = Field(default_factory=list)
     receipts: list[Receipt] = Field(default_factory=list)

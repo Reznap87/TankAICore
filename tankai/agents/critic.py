@@ -123,10 +123,22 @@ Antworte im JSON-Format:
                 "suggestions": ["Erneute Prüfung empfohlen"],
             }
 
+        try:
+            score = min(max(float(data.get("score", 0.5)), 0.0), 1.0)
+        except (TypeError, ValueError):
+            score = 0.0
+        issues_raw = data.get("issues", [])
+        suggestions_raw = data.get("suggestions", [])
+        issues = [str(item)[:1000] for item in issues_raw] if isinstance(issues_raw, list) else ["Ungültiges Issues-Format"]
+        suggestions = [str(item)[:1000] for item in suggestions_raw] if isinstance(suggestions_raw, list) else []
+        passed = data.get("passed", False) is True
+        if score < 0.5:
+            passed = False
+
         return Critique(
             target_id=target_id,
-            passed=bool(data.get("passed", False)),
-            issues=data.get("issues", []),
-            suggestions=data.get("suggestions", []),
-            score=float(data.get("score", 0.5)),
+            passed=passed,
+            issues=issues,
+            suggestions=suggestions,
+            score=score,
         )

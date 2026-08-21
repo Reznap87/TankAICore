@@ -1,0 +1,26 @@
+ARG PYTHON_BASE_IMAGE=python:3.12-slim
+FROM ${PYTHON_BASE_IMAGE}
+
+# For production, pass a verified digest through PYTHON_BASE_IMAGE. The built
+# worker image itself is referenced by digest in WorkerIsolationSpec.
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       ca-certificates \
+       git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+COPY requirements.txt requirements-dev.txt /tmp/tankai-requirements/
+RUN pip install --no-cache-dir -r /tmp/tankai-requirements/requirements.txt \
+    && pip install --no-cache-dir -r /tmp/tankai-requirements/requirements-dev.txt
+
+# The runtime overrides the UID:GID with the dedicated non-root runner account.
+# No entrypoint is used; every job supplies an explicit argv array.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+CMD ["python", "-V"]

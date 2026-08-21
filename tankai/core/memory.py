@@ -63,12 +63,20 @@ class Memory:
     def get(self, entry_id: str) -> Optional[MemoryEntry]:
         return self._entries.get(entry_id)
 
-    def search(self, query: str, limit: int = 10) -> list[MemoryEntry]:
-        """Einfache keyword-basierte Suche (später durch Embeddings ersetzbar)."""
+    def search(
+        self,
+        query: str,
+        limit: int = 10,
+        *,
+        include_unverified: bool = False,
+    ) -> list[MemoryEntry]:
+        """Keyword-Suche; standardmäßig werden nur validierte Einträge zurückgegeben."""
         query_lower = query.lower()
         results = [
-            e for e in self._entries.values()
-            if query_lower in e.content.lower()
+            entry
+            for entry in self._entries.values()
+            if query_lower in entry.content.lower()
+            and (include_unverified or entry.validity == "valid")
         ]
         results.sort(key=lambda e: e.confidence, reverse=True)
         return results[:limit]
@@ -106,10 +114,11 @@ class Memory:
     def summary(self) -> str:
         valid = sum(1 for e in self._entries.values() if e.validity == "valid")
         conflicting = sum(1 for e in self._entries.values() if e.validity == "conflicting")
+        unknown = sum(1 for e in self._entries.values() if e.validity == "unknown")
         mode = f"sqlite:{self.db_path.name}" if self.db_path else "in-memory"
         return (
             f"Memory ({mode}): {len(self)} Einträge | "
-            f"valid={valid} | conflicting={conflicting}"
+            f"valid={valid} | unknown={unknown} | conflicting={conflicting}"
         )
 
     def close(self) -> None:

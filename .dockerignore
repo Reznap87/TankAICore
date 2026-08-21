@@ -3,6 +3,7 @@
 .tankai
 .env
 .env.*
+!.env.example
 .dev.vars*
 .venv
 node_modules

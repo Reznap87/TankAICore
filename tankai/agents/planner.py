@@ -22,6 +22,7 @@ class Planner(BaseAgent):
         self,
         goal: Goal,
         procedural_context: Optional[str] = None,
+        critic_feedback: Optional[str] = None,
     ) -> tuple[Plan, Any]:
         """
         Erstellt einen Plan für das gegebene Ziel.
@@ -51,6 +52,13 @@ wenn sie zum aktuellen Ziel passen. Begründe in der rationale,
 ob und wie du ein Muster wiederverwendet hast.
 """
 
+        feedback_block = ""
+        if critic_feedback:
+            feedback_block = f"""
+Der vorherige Plan wurde vom Critic abgelehnt. Repariere diese Punkte zwingend:
+{critic_feedback}
+"""
+
         prompt = f"""Erstelle einen Plan für folgendes Ziel:
 
 Ziel: {goal.description}
@@ -59,6 +67,7 @@ Definition of Done: {goal.definition_of_done}
 
 Constraints: {goal.constraints or "keine"}
 {memory_block}
+{feedback_block}
 Antworte im JSON-Format:
 {{
   "rationale": "...",
@@ -94,6 +103,7 @@ Antworte im JSON-Format:
                 "version": plan.version,
                 "reused_pattern": reused,
                 "had_procedural_context": bool(procedural_context),
+                "had_critic_feedback": bool(critic_feedback),
             },
         )
         return plan, receipt
@@ -123,17 +133,37 @@ Antworte im JSON-Format:
                 ],
             }
 
-        steps = [
-            PlanStep(
-                description=s.get("description", "Unbekannter Schritt"),
-                specialist_type=s.get("specialist_type", "other"),
-                expected_output=s.get("expected_output", ""),
-            )
-            for s in data.get("steps", [])
-        ]
+        allowed_types = {"research", "analysis", "code", "writing", "other"}
+        raw_steps = data.get("steps", [])
+        if not isinstance(raw_steps, list):
+            raw_steps = []
+        steps = []
+        for item in raw_steps[:5]:
+            if not isinstance(item, dict):
+                continue
+            description = str(item.get("description") or "").strip()
+            expected = str(item.get("expected_output") or "").strip()
+            specialist_type = str(item.get("specialist_type") or "other").lower().strip()
+            if specialist_type not in allowed_types:
+                specialist_type = "other"
+            if not description:
+                continue
+            steps.append(PlanStep(
+                description=description[:2000],
+                specialist_type=specialist_type,
+                expected_output=expected[:2000],
+            ))
+        if not steps:
+            steps = [
+                PlanStep(
+                    description="Ziel analysieren und überprüfbare Antwort erstellen",
+                    specialist_type="analysis",
+                    expected_output="Klare Antwort gegen die Definition of Done",
+                )
+            ]
 
-        rationale = data.get("rationale", "")
-        if data.get("reused_pattern"):
+        rationale = str(data.get("rationale") or "")[:4000]
+        if data.get("reused_pattern") is True:
             rationale = f"[Pattern wiederverwendet] {rationale}"
 
         return Plan(

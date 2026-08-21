@@ -1,12 +1,9 @@
-# Kern (bereits typischerweise vorhanden)
-pydantic>=2.0
-rich>=13.0
-numpy>=1.24
+pydantic>=2.0,<3
+rich>=13.0,<15
+numpy>=1.24,<3
 
-# Optional: echte LLMs
-# openai>=1.0
-# anthropic>=0.40
-
-# Optional: stärkere Embeddings
-# sentence-transformers>=2.0
-# torch  # falls nicht vorhanden
+# Provider-Adapter bei Bedarf zusätzlich installieren:
+# openai
+# anthropic
+# python-dotenv
+# sentence-transformers

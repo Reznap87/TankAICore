@@ -1,16 +1,35 @@
 services:
   tankai:
     build: .
+    # Der Dienst bleibt hinter Nginx/Caddy auf Loopback.
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"
     env_file:
       - .env
     environment:
       TANKAI_HOST: "0.0.0.0"
       TANKAI_PORT: "8765"
-      TANKAI_RUN_STORE: "/app/data/runs.jsonl"
+      TANKAI_AUTH_MODE: "session"
+      TANKAI_DATA_ROOT: "/app/data"
+      TANKAI_AUTH_DB: "/app/data/auth.db"
+      TANKAI_COOKIE_SECURE: "1"
+      TANKAI_ALLOW_REGISTRATION: "0"
+      TANKAI_DEV_QUEUE_ENABLED: "${TANKAI_DEV_QUEUE_ENABLED:-0}"
+      TANKAI_DEV_QUEUE_DB: "/app/data/development-jobs.db"
+      # Logische Pfade; der Webcontainer benötigt dafür keine Repository-Mounts.
+      TANKAI_REPOSITORY_BASE: "${TANKAI_REPOSITORY_BASE:-/srv/tankai/repositories}"
+      TANKAI_WORKTREE_BASE: "${TANKAI_WORKTREE_BASE:-/srv/tankai/worktrees}"
+      TANKAI_STATE_BASE: "${TANKAI_STATE_BASE:-/srv/tankai/states}"
     volumes:
       - tankai_data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     restart: unless-stopped
 
 volumes:

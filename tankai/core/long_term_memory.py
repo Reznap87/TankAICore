@@ -39,16 +39,14 @@ class LongTermMemory:
         in_memory: bool = False,
         embedder: str | BaseEmbedder = "hashing",
         cold_dir: str | Path = "tankai_cold",
+        allow_in_memory_fallback: bool = False,
     ) -> None:
         self.db_path = Path(db_path) if not in_memory else None
         self.vector_path = Path(vector_path)
         self.cold_dir = Path(cold_dir)
         self._in_memory = in_memory
         if not in_memory:
-            try:
-                self.cold_dir.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass
+            self.cold_dir.mkdir(parents=True, exist_ok=True)
 
         if in_memory:
             self._conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -59,8 +57,12 @@ class LongTermMemory:
                 self._conn = sqlite3.connect(
                     str(self.db_path), check_same_thread=False, timeout=30
                 )
-            except sqlite3.Error:
-                print("[LTM] Disk nicht verfügbar – falle auf In-Memory zurück")
+            except sqlite3.Error as exc:
+                if not allow_in_memory_fallback:
+                    raise RuntimeError(
+                        f"LTM-Datenbank konnte nicht geöffnet werden: {self.db_path}"
+                    ) from exc
+                print("[LTM] Disk nicht verfügbar – expliziter In-Memory-Fallback aktiv")
                 self._conn = sqlite3.connect(":memory:", check_same_thread=False)
                 self._in_memory = True
 
@@ -73,12 +75,30 @@ class LongTermMemory:
             emb = get_embedder(embedder, dim=embedding_dim) if embedder == "hashing" else get_embedder(embedder)
         else:
             emb = embedder
-        self.vectors = VectorStore(dim=emb.dim, persist_path=vpath, embedder=emb)
+        try:
+            self.vectors = VectorStore(dim=emb.dim, persist_path=vpath, embedder=emb)
+        except Exception:
+            self._conn.close()
+            raise
 
     # ────────────────────────── Schema ──────────────────────────
 
+    SCHEMA_VERSION = 2
+
+    def _table_columns(self, table: str) -> set[str]:
+        rows = self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return {str(row[1]) for row in rows}
+
+    def _ensure_column(self, table: str, column: str, declaration: str) -> None:
+        if column not in self._table_columns(table):
+            self._conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN {column} {declaration}"
+            )
+
     def _init_schema(self) -> None:
-        self._conn.executescript("""
+        """Erstellt und migriert das SQLite-Schema atomar und idempotent."""
+        table_statements = [
+            """
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
                 goal_description TEXT NOT NULL,
@@ -88,8 +108,9 @@ class LongTermMemory:
                 duration_seconds REAL,
                 created_at TEXT NOT NULL,
                 metadata TEXT
-            );
-
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS receipts (
                 id TEXT PRIMARY KEY,
                 run_id TEXT,
@@ -101,45 +122,68 @@ class LongTermMemory:
                 details TEXT,
                 timestamp TEXT,
                 FOREIGN KEY (run_id) REFERENCES runs(id)
-            );
-
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS memory_entries (
                 id TEXT PRIMARY KEY,
                 content TEXT NOT NULL,
                 source TEXT NOT NULL,
-                memory_type TEXT NOT NULL,  -- episodic | semantic | procedural
+                memory_type TEXT NOT NULL,
                 validity TEXT NOT NULL,
                 confidence REAL NOT NULL,
                 related_goal_id TEXT,
                 related_run_id TEXT,
                 conflicts_with TEXT,
-                provenance TEXT,            -- JSON list of receipt/run ids
+                provenance TEXT,
                 created_at TEXT NOT NULL,
                 last_accessed TEXT,
                 access_count INTEGER DEFAULT 0,
-                retention_policy TEXT DEFAULT 'hot',  -- hot | warm | cold
+                retention_policy TEXT DEFAULT 'hot',
                 metadata TEXT
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_entries(memory_type);
-            CREATE INDEX IF NOT EXISTS idx_memory_goal ON memory_entries(related_goal_id);
-            CREATE INDEX IF NOT EXISTS idx_memory_retention ON memory_entries(retention_policy);
-        """)
+            )
+            """,
+        ]
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS idx_receipts_run ON receipts(run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_entries(memory_type)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_goal ON memory_entries(related_goal_id)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_run ON memory_entries(related_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_retention ON memory_entries(retention_policy)",
+        ]
         try:
+            self._conn.execute("PRAGMA foreign_keys = ON")
+            self._conn.execute("BEGIN IMMEDIATE")
+            for statement in table_statements:
+                self._conn.execute(statement)
+
+            # Migrationen müssen vor Indizes laufen. Genau daran scheiterte die alte DB.
+            self._ensure_column("runs", "definition_of_done", "TEXT")
+            self._ensure_column("runs", "metadata", "TEXT")
+            self._ensure_column("memory_entries", "last_accessed", "TEXT")
+            self._ensure_column("memory_entries", "access_count", "INTEGER DEFAULT 0")
+            self._ensure_column(
+                "memory_entries", "retention_policy", "TEXT DEFAULT 'hot'"
+            )
+            self._ensure_column("memory_entries", "metadata", "TEXT")
+            self._conn.execute(
+                "UPDATE memory_entries SET retention_policy = 'hot' "
+                "WHERE retention_policy IS NULL OR retention_policy = ''"
+            )
+            self._conn.execute(
+                "UPDATE memory_entries SET access_count = 0 WHERE access_count IS NULL"
+            )
+
+            for statement in index_statements:
+                self._conn.execute(statement)
+            self._conn.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
             self._conn.commit()
-        except sqlite3.Error as e:
-            print(f"[LTM] SQLite-Warnung: {e}")
-
-        # Migration: Spalte nachträglich hinzufügen falls alte DB
-        try:
-            cols = [r[1] for r in self._conn.execute("PRAGMA table_info(memory_entries)").fetchall()]
-            if "retention_policy" not in cols:
-                self._conn.execute(
-                    "ALTER TABLE memory_entries ADD COLUMN retention_policy TEXT DEFAULT 'hot'"
-                )
-                self._conn.commit()
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as exc:
+            try:
+                self._conn.rollback()
+            except sqlite3.Error:
+                pass
+            raise RuntimeError("LTM-Schema konnte nicht erstellt oder migriert werden") from exc
 
     # ────────────────────────── Episodic ──────────────────────────
 
@@ -645,8 +689,8 @@ Regeln:
                 continue
 
             if target == "cold":
-                self._move_to_cold(eid)
-                stats["to_cold"] += 1
+                if self._move_to_cold(eid):
+                    stats["to_cold"] += 1
             elif target == "warm":
                 self._set_retention(eid, "warm")
                 # Warm bleibt im Vector-Index, aber markiert
@@ -698,15 +742,19 @@ Regeln:
             "archived_at": utcnow().isoformat(),
         }
 
-        if not self._in_memory:
-            try:
-                cold_file = self.cold_dir / "memory_archive.jsonl"
-                with open(cold_file, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            except OSError as e:
-                print(f"[LTM] Cold-Write Warnung: {e}")
+        if self._in_memory:
+            # Ohne persistentes Archiv darf der Volltext nicht vernichtet werden.
+            return False
+        try:
+            cold_file = self.cold_dir / "memory_archive.jsonl"
+            with open(cold_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.flush()
+        except OSError as e:
+            print(f"[LTM] Cold-Write Warnung: {e}")
+            return False
 
-        # Vector entfernen (spart RAM / Suchraum)
+        # Erst nach erfolgreich persistiertem Archiv-Eintrag aus dem Index entfernen.
         self.vectors.delete(entry_id)
 
         # Stub in DB behalten (content gekürzt)
