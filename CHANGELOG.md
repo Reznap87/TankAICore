@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.10.0-module-ownership
+
+**Releasevertrag: `TankAI-Core-1.10.0-module-ownership` · ProjectState Schema 6**
+
+### Capability- und Modulownership
+
+- `ProjectState` Schema 6 mit persistentem Capability-Register eingeführt.
+- Capability-Verträge binden stabile Capability- und Modul-IDs an Owner, Status, Source-Referenz, Abhängigkeiten, Schnittstelle und Abnahmetests.
+- Task-Verträge können eine Capability und eine explizite Aktion (`CREATE`, `EXTEND`, `FIX`, `TEST`, `REVIEW`, `INTEGRATE`) referenzieren.
+- Doppelte `CREATE`-Arbeit, implizite Erstellung durch andere Aktionen und parallele aktive Tasks für dieselbe Capability werden fail-closed blockiert.
+- Registrierung unbekannter Capability-Abhängigkeiten wird abgewiesen.
+- Schema-5-Zustände werden verlustarm auf Schema 6 migriert und erhalten ein leeres Capability-Register sowie explizite Task-Bindungsfelder.
+
+### Release- und Deployment-Härtung
+
+- Die bestehende Cloudflare-Worker-/Container-Konfiguration wurde mit dem verifizierten 1.10.0-Core zusammengeführt.
+- Der CI-Pfad erzeugt Wrangler-Bindungstypen, führt den strikten TypeScript-Check aus, baut den Worker als Deployment-Dry-Run, prüft das Worker-Artefakt und baut das Produktions-Containerimage.
+- Der Produktionsworkflow besitzt keinen automatischen Push-Trigger und verlangt auf `main` die exakte manuelle Bestätigung `DEPLOY`, das Environment `production` und serielle Concurrency.
+- Alle externen GitHub Actions sind auf vollständige Commit-SHAs festgesetzt; der Produktionsworkflow verwendet Wrangler `4.124.0`.
+
+### Tests
+
+- Drei Regressionstests decken Schema-5-Migration, Capability-Persistenz sowie Aktions- und Parallelitätssperren ab.
+- Drei Regressionstests erzwingen die manuelle Produktionsgrenze; zwei weitere erzwingen unveränderlich gepinnte externe Actions.
+- Der vollständige Vertrag umfasst 159 Pytests und 24 TankAI-Self-Tests.
+
 ## 1.9.0-agent-governance-v2
 
 ### Agenten-Governance

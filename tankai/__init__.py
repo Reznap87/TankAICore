@@ -11,7 +11,7 @@ Multi-Agenten-Kern mit:
 - kontrolliertem Development-Orchestrator
 """
 
-__version__ = "1.9.0-agent-governance-v2"
+__version__ = "1.10.0-module-ownership"
 
 from .core.llm import (
     AnthropicLLM,

@@ -1,6 +1,8 @@
 # TankAI — Web Intelligence OS
 
-**Version 1.9.0-agent-governance-v2**
+**Version 1.10.0-module-ownership**
+
+**Releasevertrag: `TankAI-Core-1.10.0-module-ownership` · ProjectState Schema 6**
 
 TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists, getrennt konfigurierbarem Critic, Synthesizer, Receipts, Webrecherche und langfristigem Speicher. Es ist **kein eigenes trainiertes Basismodell**.
 
@@ -21,6 +23,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Quellenbelege | Stabile `[SRC-XXXXXXXX]`-IDs, Receipt-Provenance und Quellenkatalog |
 | Deterministische Quellenprüfung | Fehlende oder erfundene Quellen-IDs blockieren Live-Freigabe |
 | Development Orchestrator | TECH-AI-V2-Rollenkatalog, persistente Agentenverträge, Entwicklungszyklen, Spawn-Limits und Datei-Sperren |
+| Capability-/Modulregister | Persistente Capability-Verträge, Modulzuordnung, Abhängigkeiten, Ownership und Abnahmetests in ProjectState Schema 6 |
 | Git-Isolation | Eigene Branches und Worktrees pro Entwicklungsagent |
 | Worker-Runner | Explizite argv-Befehle; optional in gehärteten OCI/Docker-Containern |
 | Paralleler Worker-Pool | Bis zu zwölf vorab genehmigte, konfliktfreie Programmier-Agenten mit getrennten Worktrees |
@@ -31,7 +34,8 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| GitHub CI | Compile, Pytest, Self-Test, Release-Backup und Publikationsplan |
+| CI-Vertrag / belegte Baseline | Python-Compile, 159 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Admission-Control | Bindung an Nutzer, Mandant, Workspace, registriertes Repository, Rollen, Image-Digest und Ressourcenbudget |
 | Development-API | Authentifiziertes Einreichen, Auflisten und Abbrechen noch nicht geleaster Jobs |
@@ -42,6 +46,17 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
 | Produktionsreife | Kontrollierter Single-Host-Betrieb möglich; reale Runtime-E2E-Prüfung, Multi-Host-Koordination, Image-Signaturprüfung, Credential-Broker und Monitoring fehlen |
+
+## Was 1.10.0 zusätzlich umsetzt
+
+- `ProjectState` Schema 6 ergänzt ein persistentes Capability-Register mit stabiler Capability-ID, Modul-ID, Owner, Status, Source-Referenz, Abhängigkeiten, Schnittstellenvertrag und Abnahmetests.
+- Tasks können über `capability_id` und die expliziten Aktionen `CREATE`, `EXTEND`, `FIX`, `TEST`, `REVIEW` oder `INTEGRATE` an genau eine Capability gebunden werden.
+- `CREATE` ist nur für noch nicht begonnene Capabilities zulässig; andere Aktionen können keine nicht begonnene Capability implizit erzeugen.
+- Gleichzeitig aktive konkurrierende Tasks für dieselbe Capability werden blockiert, und Capability-Abhängigkeiten müssen vor der Registrierung bereits bekannt sein.
+- Bestehende Schema-5-Zustände werden ohne Verlust ihrer bisherigen Tasks und Agenten auf Schema 6 migriert; das Capability-Register und die Task-Bindungen werden dabei explizit ergänzt.
+- Der Cloudflare-Build ist in den bestehenden CI-Pfad integriert: Bindungstypen werden aus `wrangler.jsonc` erzeugt, TypeScript wird strikt geprüft, der Worker wird nur als Dry-Run gebaut und das Produktions-Containerimage wird gebaut.
+- Der Produktionsdeploy ist vom Merge getrennt und nur manuell auf `main` mit exakter Bestätigung, Bindung an das GitHub-Environment `production` und serieller Produktions-Concurrency möglich; dessen externe Schutzregeln sind vor einem Deploy live zu verifizieren.
+- Externe GitHub Actions sind auf vollständige Commit-SHAs und Wrangler ist für den Produktionsworkflow auf `4.124.0` festgesetzt.
 
 ## Was 1.9.0 zusätzlich umsetzt
 

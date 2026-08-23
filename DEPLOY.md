@@ -1,6 +1,6 @@
-# TankAI 1.4 — sicherer Online-Grundbetrieb
+# TankAI 1.10.0 — sicherer Online-Grundbetrieb
 
-Diese Anleitung beschreibt TankAI hinter einem HTTPS-Reverse-Proxy auf einem Linux-Server. Version 1.4 ergänzt externe monotone Lease-Fences und ein mechanisches Rootless-Runtime-Gate für Development-Worker. Der öffentliche Webdienst und der privilegierte Runner müssen getrennte Prozesse und getrennte Dienstkonten bleiben; deshalb bleibt `production_ready=false`.
+Diese Anleitung beschreibt TankAI Core 1.10.0 hinter einem HTTPS-Reverse-Proxy auf einem Linux-Server sowie den getrennten manuellen Cloudflare-Produktionspfad. Die seit 1.4 vorhandenen externen monotonen Lease-Fences und das mechanische Rootless-Runtime-Gate für Development-Worker bleiben verbindlich. Der öffentliche Webdienst und der privilegierte Runner müssen getrennte Prozesse und getrennte Dienstkonten bleiben; deshalb bleibt `production_ready=false`.
 
 ## 1. Voraussetzungen
 
@@ -235,8 +235,8 @@ Die drei Basisverzeichnisse sind im Webprozess logische Allowlist-Werte. Sie mü
 Zuerst das unveränderliche Worker-Image bauen und dessen Digest ermitteln:
 
 ```bash
-docker build -f Dockerfile.worker -t tankai-worker:1.6.0 .
-docker image inspect tankai-worker:1.6.0 --format '{{.Id}}'
+docker build -f Dockerfile.worker -t tankai-worker:1.10.0 .
+docker image inspect tankai-worker:1.10.0 --format '{{.Id}}'
 ```
 
 Anschließend pro Workspace eine Richtlinie setzen:
@@ -369,8 +369,8 @@ Internet → HTTPS-Reverse-Proxy → TankAI-Webdienst (kein Runtime-Socket)
 Worker-Image bauen:
 
 ```bash
-docker build -f Dockerfile.worker -t tankai-worker:1.6.0 .
-docker image inspect tankai-worker:1.6.0 --format '{{.Id}}'
+docker build -f Dockerfile.worker -t tankai-worker:1.10.0 .
+docker image inspect tankai-worker:1.10.0 --format '{{.Id}}'
 ```
 
 Die Ausgabe des zweiten Befehls wird als `isolation.image` im Job verwendet. Produktive Jobs akzeptieren standardmäßig unveränderliche `sha256:<64-hex>`-Image-IDs oder Registry-Referenzen im Format `name@sha256:<64-hex>`.
