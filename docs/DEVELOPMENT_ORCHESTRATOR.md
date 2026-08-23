@@ -78,7 +78,7 @@ Nicht implementiert sind derzeit:
 python -m tankai.dev_orchestrator.cli \
   --state .tankai/project-state.json \
   init \
-  --version 1.9.0-agent-governance-v2 \
+  --version 1.10.0-module-ownership \
   --branch main \
   --commit "$(git rev-parse HEAD)"
 ```
@@ -103,7 +103,7 @@ from tankai.dev_orchestrator import (
 commit = "abc123"
 orchestrator = DevelopmentOrchestrator.initialize(
     ".tankai/project-state.json",
-    current_version="1.9.0-agent-governance-v2",
+    current_version="1.10.0-module-ownership",
     current_branch="main",
     current_commit=commit,
 )
