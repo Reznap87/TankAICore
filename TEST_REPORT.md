@@ -8,9 +8,10 @@
 
 Die Synchronisierung begann auf dem öffentlichen `main`-Commit
 `bf8df633fd8f961108278c6e9a09348da3934cd4` mit dem Git-Tree
-`df8440b82fb95dceac6b9c78e25dde11cf36a7d6`. Die aktuelle Arbeitskopie ändert
-Release-, Betriebs- und Dokumentationsmetadaten, aber keine Orchestrierungslogik.
-Sie wurde weder gepusht noch produktiv deployed.
+`df8440b82fb95dceac6b9c78e25dde11cf36a7d6`. Der Synchronisationspatch ändert
+Release-, Betriebs- und Dokumentationsmetadaten, aber keine Orchestrierungslogik. Er wird auf dem
+Branch `docs/1.10.0-release-sync` über [PR #12](https://github.com/Reznap87/TankAICore/pull/12)
+geprüft; dieser Bericht dokumentiert weder einen Merge noch einen produktiven Deploy.
 
 Das veraltete Root-Receipt `tankai_selftest_result.json` wurde unverändert nach
 `docs/history/tankai_selftest_result_1.8.0-publication-ledger_2026-07-29.json` verschoben. Beide
@@ -24,9 +25,8 @@ testete GitHubs synthetischen PR-Merge `9fb6449ee8bb573bf9d91b3b257fa7a35de0fd03
 Beide Jobs einschließlich Compile, Test, Self-Test, Cloudflare-Typgenerierung, TypeScript,
 Wrangler-Dry-Run, Worker-Artefaktprüfung und Produktions-Container-Build sind grün. Der Masterplan
 und die statische Testinventur weisen dafür 159/159 Pytests und 24/24 TankAI-Self-Tests aus. Dieser
-externe Referenzlauf belegt damit den in `main` übernommenen Basistree; er ist kein neuer
-Linux-CI-Receipt für die noch nicht gepushte Metadatenänderung und kein Beleg für einen
-Live-Produktionsdeploy.
+externe Referenzlauf belegt damit den in `main` übernommenen Basistree; er ist kein CI-Receipt für
+einen späteren PR-Head dieses Synchronisationspatches und kein Beleg für einen Live-Produktionsdeploy.
 
 ## Umgesetzt und synchronisiert
 
@@ -100,8 +100,8 @@ Docker nicht ausführbar. WSL ist ebenfalls nicht installiert.
 Nicht ausgeführt und nicht behauptet wurden ein Live-Cloudflare-Deploy, die externe Verifikation der
 GitHub-Environment-Schutzregeln, DNS-/HTTPS-Abnahme, Landingpage-/Readiness-/Auth-Prüfung,
 Provideraktivierung, reale Modellaufrufe oder Secret-Änderungen.
-Ein frischer vollständiger Linux-CI-Run für die aktuelle Arbeitskopie erfordert einen bewusst
-freigegebenen Push/PR oder eine lokale Linux-/Docker-Laufzeit.
+Der vollständige Linux-/Cloudflare-/Container-CI-Status ist für jeden konkreten PR-Head extern in
+GitHub Actions zu prüfen; ein grüner Lauf autorisiert weder Merge noch Deploy.
 
 ---
 
