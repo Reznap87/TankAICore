@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 
@@ -9,6 +10,7 @@ SCRIPT = Path(__file__).parents[1] / ".github" / "scripts" / "production_preflig
 SPEC = importlib.util.spec_from_file_location("production_preflight_readonly", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
