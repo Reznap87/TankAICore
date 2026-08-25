@@ -11,29 +11,42 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
-def test_branch_gate_requires_protection_exact_sha_and_checks() -> None:
-    payload = {
-        "commit": {"sha": "abc"},
-        "protected": True,
-        "protection": {
-            "required_status_checks": {
-                "contexts": ["test"],
-                "checks": [{"context": "cloudflare"}],
-            }
-        },
-    }
-    assert MODULE.evaluate_branch(payload, "abc") == []
+def test_branch_gate_requires_protection_and_exact_sha() -> None:
+    assert MODULE.evaluate_branch({"commit": {"sha": "abc"}, "protected": True}, "abc") == []
 
     failures = MODULE.evaluate_branch(
-        {
-            "commit": {"sha": "wrong"},
-            "protected": False,
-            "protection": {"required_status_checks": {"contexts": ["test"], "checks": []}},
-        },
+        {"commit": {"sha": "wrong"}, "protected": False},
         "abc",
     )
     assert any("head mismatch" in item for item in failures)
     assert "main is not protected" in failures
+
+
+def test_rules_gate_requires_test_and_cloudflare() -> None:
+    payload = [
+        {"type": "pull_request", "parameters": {}},
+        {
+            "type": "required_status_checks",
+            "parameters": {
+                "required_status_checks": [
+                    {"context": "test", "integration_id": 15368},
+                    {"context": "cloudflare", "integration_id": 15368},
+                ],
+                "strict_required_status_checks_policy": False,
+            },
+        },
+        {"type": "non_fast_forward"},
+    ]
+    assert MODULE.evaluate_rules(payload) == []
+
+    failures = MODULE.evaluate_rules(
+        [
+            {
+                "type": "required_status_checks",
+                "parameters": {"required_status_checks": [{"context": "test"}]},
+            }
+        ]
+    )
     assert any("cloudflare" in item for item in failures)
 
 
