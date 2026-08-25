@@ -25,4 +25,4 @@ def test_workflows_contain_external_actions_to_validate() -> None:
     for workflow in sorted(WORKFLOWS.glob("*.yml")):
         actions.extend(USES_PATTERN.findall(workflow.read_text(encoding="utf-8")))
 
-    assert len(actions) == 10
+    assert len(actions) == 13

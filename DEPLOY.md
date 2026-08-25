@@ -199,6 +199,8 @@ Ein Merge oder Push auf `main` veröffentlicht nicht automatisch. Nach erfolgrei
 
 Der Job bleibt an das GitHub-Environment `production` und die exklusive Concurrency-Gruppe `cloudflare-production` gebunden. Die Cloudflare-Zugangsdaten dürfen ausschließlich als Environment-/Repository-Secrets vorliegen; sie gehören weder in das Repository noch in Workflow-Eingaben oder Receipts.
 
+Der API-Token muss auf exakt das konfigurierte Konto begrenzt sein und mindestens `Workers Scripts Edit` sowie `Containers Edit` besitzen. Der getrennte Read-only-Preflight führt vor jeder Freigabe `wrangler containers list` aus. Damit werden ein ungültiger Token, eine falsche Account-ID oder fehlender Container-Lesezugriff erkannt, bevor ein Deployment Worker- oder Containerartefakte verändert. Ein bestandener Lesecheck ersetzt nicht die manuelle Prüfung der benötigten Schreibrechte.
+
 ## 9. Persistente Development-Queue und Admission-Control
 
 Die Queue ist standardmäßig deaktiviert. Für kontrollierte Online-Codeausführung werden Webdienst, Queue-Administration und Runner getrennt betrieben:

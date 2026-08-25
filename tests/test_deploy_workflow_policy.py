@@ -36,5 +36,7 @@ def test_production_deploy_remains_serial_and_environment_scoped() -> None:
     assert "environment: production" in text
     assert "production_deploy_gate.py" in text
     assert "Verify production secret presence" in text
+    assert "npm ci --ignore-scripts" in text
+    assert "npx --no-install wrangler containers list >/dev/null" in text
     assert "apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}" in text
     assert "accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" in text
