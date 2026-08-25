@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.5.0
+Version: 5.6.0
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 24. August 2026
+Statusdatum: 25. August 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 24. August 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 25. August 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und zugleich der Startpunkt der weiteren
 Ausführung. Historische Releaseabschnitte bleiben als Entwicklungsnachweis erhalten, dürfen aber
@@ -40,49 +40,58 @@ läuft jede davon unabhängige sichere Arbeit weiter.
 
 Aktives Core-Repository: Reznap87/TankAICore, Branch main.
 
-main steht auf Merge-Commit 50547cf1d20a4ae8273774c2c14f0a4849b23a84.
+main steht auf Integrationscommit d7edb12b764310f00804c724ad6d3b4bbc96b54a.
 
-Der zugehörige Git-Tree ist 7814a1977e631dd45492ce4c1c1b2a38286bc645.
+Der zugehörige Git-Tree ist f318d8ca72500b03f19635af0834c36d151ab232.
 
-PR #12 docs/1.10.0-release-sync wurde laut lokal verifizierter Git-Historie nach main gemergt.
-Der Merge-Commit hat den Tree 7814a1977e631dd45492ce4c1c1b2a38286bc645 und enthält die
-synchronisierten Release-, Test- und Versionsmarker.
-
-Eine erneute Live-Abfrage der GitHub-PR-Oberfläche über gh war für diesen Stand nicht
-verfügbar. Das ist ein offen ausgewiesener Toolblocker und kein Widerspruch zum lokal
-verifizierten Git-Objekt. Es wird keine darüber hinausgehende GitHub-Livebehauptung erfunden.
+GitHub ist live verifiziert und nicht STALE_REMOTE. PR #21
+fix/cloudflare-container-auth-preflight wurde auf dem unabhängig geprüften Head
+c83f5ced1734b09d4a537ca365cae649f284dbac per SHA-geschütztem Squash-Merge integriert.
+GitHub CI #32 auf dem Integrationscommit bestand die Jobs test und cloudflare einschließlich
+Produktionscontainer-Build, Runtime-Smoke und Cleanup.
 
 Verbindlicher Releasevertrag: TankAI-Core-1.10.0-module-ownership.
 
 Verbindlicher Zustandsvertrag: ProjectState Schema 6.
 
-Verifizierte Testbaseline: 159 Pytests und 24 TankAI-Self-Tests.
+Verifizierte Testbaseline: 169 Pytests und 24 TankAI-Self-Tests.
 
 0.3 Verifizierter und nicht behaupteter Status
 
 Verifiziert sind:
 
-main-Commit 50547cf1d20a4ae8273774c2c14f0a4849b23a84,
+main-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
-Git-Tree 7814a1977e631dd45492ce4c1c1b2a38286bc645,
+Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
 
 Core-Version 1.10.0-module-ownership,
 
 ProjectState Schema 6,
 
-159 Pytests,
+169 Pytests,
 
 24 TankAI-Self-Tests,
 
-PR-#12-Dokumentations-Synchronisation im lokalen Git-main-Verlauf.
+aktiver GitHub-Ruleset-Schutz mit Pull-Request-Pfad, blockierten Force-Pushes und Löschungen
+sowie den erforderlichen Checks test und cloudflare,
+
+ops.container.web_runtime_smoke auf main einschließlich Containerstart, Runtime-Prüfung und
+Cleanup,
+
+der manuelle read-only Production-Preflight #1 auf Commit
+8818eff98227808143a546101dcf1492acaa2ca0,
+
+ops.production.preflight_readonly als integrierte Capability mit frühem read-only
+Cloudflare-Containers-Zugriffscheck auf d7edb12b764310f00804c724ad6d3b4bbc96b54a,
+
+Issue #14 als abgeschlossen sowie Issue #20 als aktiver externer Produktionsblocker.
 
 Nicht aus diesem Stand ableitbar sind:
 
-ein erfolgreich gestarteter produktionsnaher Web-Runtime-Container,
+ein aktuell auf d7edb12 bestandener externer Produktions-Preflight mit dem gehärteten
+Containers-Zugriffscheck,
 
-ein aktuell bestandener externer Produktions-Preflight,
-
-ein ausgeführter Live-Produktionsdeploy,
+ein insgesamt erfolgreicher Live-Produktionsdeploy,
 
 eine öffentlich erreichbare Produktionsinstanz,
 
@@ -93,8 +102,12 @@ eine Merge- oder Deploy-Autorisierung für zukünftige Änderungen.
 Ein erfolgreicher Build, ein Dry-Run, eine vorhandene Workflowdatei oder ein Merge ist kein
 Beleg für einen ausgeführten Live-Deploy.
 
-Für einen Live-Produktionsdeploy liegt in diesem Reality Contract kein neuer Deployment
-Receipt vor. Deshalb wird kein Deployment behauptet.
+Der autorisierte Deploy-Lauf #2 auf 8818eff bestand Governance-Gate und Secret-Präsenz,
+lud den Worker hoch und baute das Container-Image, scheiterte danach jedoch in der
+Cloudflare-Containerphase mit Unauthorized. Da dieser Ablauf nicht transaktional ist, wird eine
+mögliche partielle Produktionsänderung ausdrücklich festgehalten. Der Gesamtdeploy ist FAILED,
+nicht erfolgreich; öffentliche Erreichbarkeit, Container-Rollout und Readiness sind nicht
+verifiziert. Issue #20 führt die notwendige Credential-Scope-Reparatur.
 
 0.4 Status- und Ausführungsvertrag
 
@@ -122,59 +135,34 @@ vor.
 FERTIG oder BEENDET darf nur für einen klar abgegrenzten Task verwendet werden. Der
 Gesamtplan bleibt aktiv, solange TankAI weiterentwickelt wird.
 
-0.5 Aktives Gate
+0.5 Abgeschlossene Gates und aktives Gate
+
+ops.container.web_runtime_smoke ist VERIFIED auf main. Der Produktionscontainer wurde in CI
+reproduzierbar gebaut, gestartet, geprüft und kontrolliert bereinigt.
+
+ops.production.preflight_readonly ist als gehärtete, ausschließlich lesende Capability VERIFIED
+und an d7edb12b764310f00804c724ad6d3b4bbc96b54a gebunden. Der aktualisierte Preflight prüft vor
+jeder mutierenden Aktion Token, Account und Containers-Lesezugriff, ohne Secretwerte auszugeben.
 
 Das nächste aktive Gate ist:
 
-ops.container.web_runtime_smoke
+ops.production.cloudflare_container_authorization
 
-Ziel dieses Gates ist ein reproduzierbarer Smoke-Receipt für den produktionsnahen
-Web-Runtime-Container in einer sicheren lokalen oder isolierten Umgebung.
-
-Das Gate prüft mindestens:
-
-die tatsächlich vorgesehene Containerdefinition,
-
-den reproduzierbaren Build,
-
-den Start des Containerprozesses,
-
-die vertraglich definierte HTTP-, Readiness- oder Prozessprüfung,
-
-die kontrollierte Beendigung und Bereinigung,
-
-die Geheimnisfreiheit der ausgegebenen Logs,
-
-die betroffenen automatisierten Tests.
-
-Ein vorhandenes Dockerfile ist kein Runtime-Receipt. Ein statischer Build ersetzt keinen
-erfolgreichen Prozessstart. Ein älterer Lauf auf einem anderen Commit ersetzt keinen aktuellen
-Receipt.
-
-Der Receipt muss Commit, Tree, Containerdefinition, Befehle, Exit-Codes, Prüfergebnis,
-Testresultate und den eindeutigen Status PASS oder FAIL enthalten.
-
-Schlägt das Gate fehl, gilt unmittelbar:
-
-Smoke-Fehler -> reproduzierbare Ursache -> kleinste Codeänderung -> Regressionstest ->
-erneuter Smoke.
+Status: EXTERN BLOCKIERT durch Issue #20. Der für das GitHub-Environment production verwendete
+Cloudflare-Token muss für exakt dasselbe Konto Workers Scripts Edit und Containers Edit besitzen.
+Es wird kein alternativer Auth-, Deployment- oder Credential-Pfad gebaut.
 
 0.6 Nächster Übergang
 
-Nach einem bestandenen ops.container.web_runtime_smoke wird unmittelbar dieses Gate aktiv:
+Nach der secret-freien Bestätigung des korrigierten Token-Scopes wird zuerst der aktualisierte
+read-only Production-Preflight auf dem dann aktuellen main-Commit ausgeführt. Ein bestandener
+Lesecheck beweist nicht allein die Schreibberechtigung.
 
-ops.production.preflight_readonly
-
-Der Produktions-Preflight ist ausschließlich lesend. Er prüft den exakten Ziel-Commit, das
-Build-Artefakt, Workflow- und Runtime-Konfiguration, erforderliche Konfigurationsschlüssel ohne
-Offenlegung ihrer Werte, Zielumgebung, Schutzregeln, externe Abhängigkeiten, CI-Nachweise und
-Rollback-Pfad.
-
-Der Preflight verändert keine Produktionsressource und führt kein Deployment aus.
-
-Sein Receipt klassifiziert jeden Prüfpunkt als PASS, FAIL oder UNKNOWN. UNKNOWN darf nicht
-als PASS umgedeutet werden. Fehlender Zugriff wird als externer Blocker geführt und in einen
-konkreten Folgetask überführt.
+Ein erneuter Live-Deploy benötigt danach eine neue, getrennte Autorisierung für exakt diesen
+main-Commit und die eindeutig benannte Produktionsumgebung. Die Autorisierung des fehlgeschlagenen
+Laufs auf 8818eff wird nicht auf d7edb12 oder einen neueren Commit übertragen. Erst ein
+vollständig erfolgreicher Workflow plus externe HTTPS-, Routing- und Readiness-Prüfung darf den
+Gesamtdeploy auf VERIFIED setzen.
 
 0.7 Getrennte Autorisierungsgrenzen
 
@@ -1196,69 +1184,59 @@ einer Statusfeststellung und nicht mit einem bestandenen Gate.
 
 1. Baseline binden.
 
-Jeder neue Lauf nennt main-Commit 50547cf1d20a4ae8273774c2c14f0a4849b23a84 und Tree
-7814a1977e631dd45492ce4c1c1b2a38286bc645 oder weist einen neueren, ausdrücklich
+Jeder neue Lauf nennt main-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a und Tree
+f318d8ca72500b03f19635af0834c36d151ab232 oder weist einen neueren, ausdrücklich
 verifizierten Ausgangsstand nach.
 
-2. ops.container.web_runtime_smoke bearbeiten.
+2. Abgeschlossene Gates nicht wiederholen.
 
-Die vorhandenen Container-, Worker- und Runtime-Verträge werden gegen den aktuellen Tree
-gelesen. Fehlende Smoke-Automatisierung wird als Code oder ausführbares Skript ergänzt. Es
-wird kein paralleles zweites Deployment-System gebaut.
+ops.container.web_runtime_smoke und die Implementierung von ops.production.preflight_readonly
+sind VERIFIED. Sie dürfen nur mit TEST, REVIEW, FIX, EXTEND oder INTEGRATE weiterbearbeitet
+werden; ein zweites CREATE oder paralleles Deployment-System ist unzulässig.
 
-3. Container-Build und Runtime-Smoke ausführen.
+3. Issue #20 als einzigen Credential-Remediation-Track führen.
 
-Der tatsächliche Produktionscontainer-Pfad wird in einer sicheren lokalen oder isolierten
-Umgebung gebaut und gestartet. Die vertragliche HTTP-, Readiness- oder Prozessprüfung wird
-ausgeführt. Start, Prüfung, Shutdown und Cleanup werden mit Exit-Codes erfasst.
+Der bestehende Cloudflare-Token wird auf exakten Account-Scope, Workers Scripts Edit und
+Containers Edit geprüft beziehungsweise außerhalb des Repositorys korrigiert. Secretwerte
+werden weder in Logs noch in Issues, Commits oder Receipts geschrieben.
 
-4. Fehler programmatisch beheben.
+4. Aktualisierten read-only Preflight ausführen.
 
-Jeder reproduzierbare Fehler erhält einen engen Reparatur-Task, eine minimale Codeänderung,
-einen Regressionstest und einen erneuten Smoke-Lauf. Eine Fehlerbeschreibung ohne
-anschließenden ausführbaren Reparaturschritt ist unvollständig.
+Nach der Credential-Korrektur wird Production Preflight manuell auf dem exakten aktuellen
+main-Commit ausgeführt. Token-, Account- und Containers-Lesezugriff müssen PASS melden; FAIL oder
+UNKNOWN bleiben Blocker.
 
-5. Smoke-Receipt abschließen.
+5. Schreibrechte getrennt bestätigen.
 
-Der Receipt enthält Datum, Repository, Branch, Commit, Tree, Werkzeugversionen, Befehle,
-Exit-Codes, Testzahlen, secret-freie Logs, Artefakte und PASS oder FAIL.
+Der read-only Check ersetzt nicht die manuelle Prüfung von Workers Scripts Edit und Containers
+Edit. Der Nachweis nennt nur Scope und Ergebnis, niemals Tokenwerte.
 
-6. ops.production.preflight_readonly aktivieren.
+6. Deploy-Gate getrennt halten.
 
-Sobald der Runtime-Smoke bestanden ist, wird ohne Abschlussunterbrechung der ausschließlich
-lesende Produktions-Preflight ausgeführt.
+Ein erneuter Live-Deploy erfolgt ausschließlich nach neuer ausdrücklicher Autorisierung für den
+exakten dann aktuellen main-Commit und die eindeutig benannte Produktionsumgebung.
 
-7. Preflight-Lücken in Tasks überführen.
+7. Teilfehler nicht als Erfolg umdeuten.
 
-Jeder FAIL- oder UNKNOWN-Punkt erhält Quelle, Risiko, verantwortlichen Task, erlaubten Scope und
-Abnahmekriterium. Kein UNKNOWN wird als Produktionsbereitschaft ausgegeben.
+Der Lauf #2 auf 8818eff bleibt FAILED. Worker-Upload und Container-Build allein belegen keinen
+erfolgreichen Container-Rollout und keine vollständig verifizierte Produktion.
 
-8. Integrationsbereitschaft herstellen.
+8. Autorisierten Recovery-Deploy vollständig prüfen.
 
-Erforderliche Änderungen werden auf einem begrenzten Branch implementiert, vollständig getestet
-und mit exaktem Head, geprüftem Diff und Receipt integrationsbereit gemacht.
+Nur nach neuer Autorisierung werden Image-Push, Container-Rollout, Workflowabschluss, DNS,
+HTTPS, tankaicore.com, www.tankaicore.com, Readiness und Rollback-Fähigkeit geprüft.
 
-9. Merge-Gate getrennt halten.
+9. Finalen Deployment-Receipt binden.
 
-Ein Merge erfolgt ausschließlich nach ausdrücklicher Autorisierung für den exakten Head. Fehlt
-diese Autorisierung, bleiben Branch, Tests, Review und sichere Folgearbeit aktiv.
+Der Receipt bindet Commit, Tree, Workflow-Run, Containerartefakt, externe Prüfergebnisse und die
+Recovery des nicht transaktionalen Teilfehlers. Erst dann darf der Produktionsdeploy VERIFIED
+werden.
 
-10. Nach einem autorisierten Merge erneut verifizieren.
+10. Unabhängige sichere Arbeit fortsetzen.
 
-main-Commit, Tree, CI, vollständige Tests und relevante Runtime-Gates werden erneut gelesen oder
-ausgeführt. Frühere Receipts werden nicht stillschweigend auf einen neuen Commit übertragen.
-
-11. Deploy-Gate getrennt halten.
-
-Ein Live-Deploy erfolgt ausschließlich nach eigener ausdrücklicher Deploy-Autorisierung für
-exakten Commit oder Artefakt und eindeutig benannte Zielumgebung.
-
-12. Nur nach autorisiertem Deploy extern verifizieren.
-
-Erst nach einem tatsächlich ausgeführten autorisierten Deploy werden Deployment Receipt, DNS,
-HTTPS, Landingpage, Readiness, Auth-Grenze, Monitoring und Rollback-Fähigkeit extern geprüft.
-
-Ohne einen solchen Receipt bleibt Live-Produktionsdeploy NICHT BEHAUPTET.
+Solange das externe Credential-Gate blockiert ist, bleibt sichere, nicht konkurrierende Arbeit
+in anderen Modulen zulässig. Sie darf Issue #20 weder duplizieren noch die Deploy-Autorisierung
+umgehen.
 
 15.2 Agenten-Ausführungsvertrag
 
@@ -1401,7 +1379,7 @@ Ergebnisstatus,
 
 nächsten Task.
 
-Die Baseline von 159 Pytests und 24 Self-Tests ist der aktuell bestätigte Vertrag. Ändert sich die
+Die Baseline von 169 Pytests und 24 Self-Tests ist der aktuell bestätigte Vertrag. Ändert sich die
 Testinventur legitim, wird sie durch aktuelle Collection- und Laufnachweise ersetzt und nicht
 geschätzt.
 
@@ -1422,13 +1400,26 @@ Danach wird der nächste Task aktiv.
 Der Masterplan selbst bleibt AKTIV, solange TankAI weiterentwickelt wird. Er wird nur durch eine
 neuere Masterplan-Version oder durch eine ausdrückliche Projektbeendigung außer Kraft gesetzt.
 
-Der unmittelbar nächste Schritt bleibt ops.container.web_runtime_smoke. Danach folgt
-ops.production.preflight_readonly. Merge und Deploy benötigen jeweils eine eigene ausdrückliche
-Autorisierung.
+Der unmittelbar nächste Produktionsschritt ist die externe Credential-Scope-Reparatur aus
+Issue #20. Danach folgen der aktualisierte read-only Preflight und nur bei neuer ausdrücklicher
+Autorisierung ein Recovery-Deploy auf dem exakten aktuellen main-Commit. Bereits verifizierte
+Smoke- und Preflight-Implementierungen werden nicht neu gebaut.
 
 Die Arbeit endet nicht hier. Von der verifizierten Realität aus beginnt die nächste Umsetzung.
 
 16. Versionshistorie
+
+5.6.0: Reality Contract auf den am 25. August 2026 live verifizierten GitHub-main-Stand
+d7edb12b764310f00804c724ad6d3b4bbc96b54a, Tree
+f318d8ca72500b03f19635af0834c36d151ab232 aktualisiert. Schema 6 und Releasevertrag 1.10.0
+bleiben verbindlich; 169 Pytests, 24 Self-Tests und GitHub CI #32 sind bestätigt.
+ops.container.web_runtime_smoke und die gehärtete Implementierung von
+ops.production.preflight_readonly als VERIFIED gebunden. Den autorisierten Deploy-Lauf #2 auf
+8818eff als nicht transaktionalen Teilfehler dokumentiert: Governance, Worker-Upload und
+Container-Build bestanden, Cloudflare-Containerphase Unauthorized, Gesamtstatus FAILED.
+Issue #20 als einzigen extern blockierten Credential-Remediation-Track und eine neue exakte
+Deploy-Autorisierung als Pflicht vor jedem Recovery-Deploy festgelegt. Issue #14 bleibt
+abgeschlossen; ältere Reality-Abschnitte bleiben ausdrücklich historische Nachweise.
 
 5.5.0: Reality Contract und kontinuierlichen Ausführungsvertrag auf den am 24. August 2026
 lokal verifizierten TankAI-Core-main-Stand aktualisiert: main =
