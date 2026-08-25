@@ -13,5 +13,6 @@ def test_production_preflight_is_manual_read_only_and_environment_scoped() -> No
     assert "github.ref == 'refs/heads/main'" in text
     assert "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}" in text
     assert "CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" in text
-    assert "wrangler" not in text.lower()
+    assert "npm ci --ignore-scripts" in text
+    assert "npx --no-install wrangler containers list >/dev/null" in text
     assert "deploy" not in text.lower()
