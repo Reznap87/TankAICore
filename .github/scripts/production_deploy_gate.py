@@ -50,28 +50,33 @@ def evaluate_branch(payload: object, expected_sha: str) -> list[str]:
     sha = commit.get("sha") if isinstance(commit, dict) else None
     if sha != expected_sha:
         failures.append(f"main head mismatch: expected {expected_sha}, got {sha}")
-
     if payload.get("protected") is not True:
         failures.append("main is not protected")
+    return failures
 
-    protection = payload.get("protection")
-    if not isinstance(protection, dict):
-        failures.append("branch protection summary missing")
-        return failures
 
-    required = protection.get("required_status_checks")
-    if not isinstance(required, dict):
-        failures.append("required status checks are not configured")
-        return failures
+def evaluate_rules(payload: object) -> list[str]:
+    if not isinstance(payload, list):
+        return ["effective branch rules are not a list"]
 
-    contexts = set(required.get("contexts") or [])
-    for item in required.get("checks") or []:
-        if isinstance(item, dict) and isinstance(item.get("context"), str):
-            contexts.add(item["context"])
+    contexts: set[str] = set()
+    for rule in payload:
+        if not isinstance(rule, dict) or rule.get("type") != "required_status_checks":
+            continue
+        parameters = rule.get("parameters")
+        if not isinstance(parameters, dict):
+            continue
+        checks = parameters.get("required_status_checks")
+        if not isinstance(checks, list):
+            continue
+        for item in checks:
+            if isinstance(item, dict) and isinstance(item.get("context"), str):
+                contexts.add(item["context"])
+
     missing = sorted(REQUIRED_CHECKS - contexts)
     if missing:
-        failures.append("required CI checks missing: " + ", ".join(missing))
-    return failures
+        return ["required CI checks missing: " + ", ".join(missing)]
+    return []
 
 
 def evaluate_ci(payload: object, expected_sha: str) -> list[str]:
@@ -116,17 +121,23 @@ def main() -> int:
         return 2
 
     base = f"/repos/{quote(owner)}/{quote(repo)}"
-    branch_path = f"{base}/branches/{quote(args.branch, safe='')}"
-    branch_code, branch_payload = get_json(branch_path)
-
+    branch = quote(args.branch, safe="")
     failures: list[str] = []
+
+    branch_code, branch_payload = get_json(f"{base}/branches/{branch}")
     if branch_code != 200:
         failures.append(f"branch metadata unavailable: HTTP {branch_code or 'transport-error'}")
     else:
         failures.extend(evaluate_branch(branch_payload, args.expected_sha))
 
+    rules_code, rules_payload = get_json(f"{base}/rules/branches/{branch}?per_page=100")
+    if rules_code != 200:
+        failures.append(f"effective branch rules unavailable: HTTP {rules_code or 'transport-error'}")
+    else:
+        failures.extend(evaluate_rules(rules_payload))
+
     workflow = quote(args.workflow, safe="")
-    ci_path = f"{base}/actions/workflows/{workflow}/runs?branch={quote(args.branch)}&event=push&per_page=20"
+    ci_path = f"{base}/actions/workflows/{workflow}/runs?branch={branch}&event=push&per_page=20"
     ci_code, ci_payload = get_json(ci_path)
     if ci_code != 200:
         failures.append(f"CI metadata unavailable: HTTP {ci_code or 'transport-error'}")
@@ -139,7 +150,7 @@ def main() -> int:
             print(f"- {failure}", file=sys.stderr)
         return 1
 
-    print(f"production gate PASS: protected main + required CI + successful exact-SHA CI ({args.expected_sha})")
+    print(f"production gate PASS: protected main + ruleset CI + successful exact-SHA CI ({args.expected_sha})")
     return 0
 
 
