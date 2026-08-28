@@ -1,0 +1,20 @@
+from pathlib import Path
+
+path = Path("TANKAI_MASTERPLAN.md")
+text = path.read_text(encoding="utf-8")
+
+replacements = {
+    "Version: 5.6.0": "Version: 5.6.1",
+    "Aktives Core-Repository: Reznap87/TankAICore, Branch main.\n\nAktueller verifizierter main-Commit:\n\nd7edb12b764310f00804c724ad6d3b4bbc96b54a\n\nZugehöriger Git-Tree:\n\nf318d8ca72500b03f19635af0834c36d151ab232\n\nCommit-Titel:\n\nfix(deployment): validate Cloudflare Containers access (#21)": "Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head wird live\naus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit\ngleichzusetzen.\n\nVerifizierter Production-Runtime-Basis-Commit:\n\nd7edb12b764310f00804c724ad6d3b4bbc96b54a\n\nZugehöriger Runtime-Basis-Git-Tree:\n\nf318d8ca72500b03f19635af0834c36d151ab232\n\nDeployment-Basis-Commit-Titel:\n\nfix(deployment): validate Cloudflare Containers access (#21)\n\nPR #23 synchronisierte den Masterplan und erzeugte anschließend den signierten docs-only\nMerge-Commit 681b678b25f624a15a322c1de944401c0249d0da mit Tree\n83e179c64762d6edfae9734c37164cfa327f8b70. Dieser Dokumentations-Merge änderte weder\nRuntimecode noch den bereits ausgeführten Cloudflare-Deploy und ist deshalb nicht der\nProduction-Runtime-Commit.",
+    "main-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,": "Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,",
+    "0.10 Unmittelbare Ausführungsreihenfolge\n\n1. Diesen Reality Contract über einen geschützten Pull Request nach main bringen und Issue #19\n   nach grünem CI und Merge als completed schließen.\n\n2. Für ops.production.live_provider_readiness einen read-only Provider-/Secret-/Kosten-/Rollback-\n   Receipt erzeugen; keine Secret-Werte offenlegen und noch keinen neuen Deploy ausführen.\n\n3. Erst nach einer ausdrücklichen Entscheidung die benötigten serverseitigen Provider-, Critic-\n   und optionalen Search-Secrets konfigurieren.\n\n4. Danach vollständige CI, Runtime-Smoke und Production Preflight für den dann aktuellen exakten\n   main-SHA wiederholen.\n\n5. Einen weiteren Production-Deploy nur nach neuer exakter Autorisierung ausführen.\n\n6. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,\n   unabhängiger Fehlerprüfung und vollständigem Receipt ausführen. Erst dieser Nachweis darf einen\n   realen produktiven Modellpfad als VERIFIED markieren.": "0.10 Unmittelbare Ausführungsreihenfolge\n\n1. Für ops.production.live_provider_readiness einen read-only Provider-/Secret-/Kosten-/Rollback-\n   Receipt erzeugen; keine Secret-Werte offenlegen und noch keinen neuen Deploy ausführen.\n\n2. Erst nach einer ausdrücklichen Entscheidung die benötigten serverseitigen Provider-, Critic-\n   und optionalen Search-Secrets konfigurieren.\n\n3. Danach vollständige CI, Runtime-Smoke und Production Preflight für den dann aktuellen exakten\n   main-SHA wiederholen.\n\n4. Einen weiteren Production-Deploy nur nach neuer exakter Autorisierung ausführen.\n\n5. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,\n   unabhängiger Fehlerprüfung und vollständigem Receipt ausführen. Erst dieser Nachweis darf einen\n   realen produktiven Modellpfad als VERIFIED markieren.",
+    "0.12 Reality-Contract-Versionshistorie\n\n5.6.0, 28. August 2026:": "0.12 Reality-Contract-Versionshistorie\n\n5.6.1, 28. August 2026:\n\nRepository-Head und tatsächlich deployter Runtime-Basis-Commit werden ausdrücklich getrennt;\nPR #23 / Merge-Commit 681b678b25f624a15a322c1de944401c0249d0da ist als docs-only\nSynchronisations-Commit dokumentiert; die unmittelbare Ausführungsreihenfolge beginnt nach\nabgeschlossenem Masterplan-Sync direkt mit ops.production.live_provider_readiness.\n\n5.6.0, 28. August 2026:"
+}
+
+for old, new in replacements.items():
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"expected exactly one match, got {count}: {old[:80]!r}")
+    text = text.replace(old, new, 1)
+
+path.write_text(text, encoding="utf-8")
