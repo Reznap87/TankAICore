@@ -1,0 +1,94 @@
+name: One-shot LLM call budget patch
+
+on:
+  push:
+    branches:
+      - ops/live-provider-call-budget
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Add shared run-scoped LLM call budget
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, got {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          llm = Path("tankai/core/llm.py")
+          replace_once(
+              llm,
+              "from abc import ABC, abstractmethod\nfrom typing import Any\n",
+              "from abc import ABC, abstractmethod\nimport threading\nfrom typing import Any\n",
+              "llm imports",
+          )
+          replace_once(
+              llm,
+              '''    @abstractmethod\n    def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:\n        """Gibt eine Textantwort zurück."""\n        ...\n\n\nclass MockLLM(BaseLLM):\n''',
+              '''    @abstractmethod\n    def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:\n        """Gibt eine Textantwort zurück."""\n        ...\n\n\nclass LLMCallBudget:\n    """Thread-sicheres, zwischen Hauptmodell und Critic geteiltes Run-Budget."""\n\n    def __init__(self, max_calls: int) -> None:\n        if isinstance(max_calls, bool):\n            raise ValueError("max_calls muss eine ganze Zahl sein")\n        try:\n            parsed = int(max_calls)\n        except (TypeError, ValueError) as exc:\n            raise ValueError("max_calls muss eine ganze Zahl sein") from exc\n        if parsed < 1 or parsed > 1000:\n            raise ValueError("max_calls muss zwischen 1 und 1000 liegen")\n        self.max_calls = parsed\n        self._used = 0\n        self._lock = threading.Lock()\n\n    def reset(self) -> None:\n        with self._lock:\n            self._used = 0\n\n    def consume(self, identity: str) -> int:\n        with self._lock:\n            if self._used >= self.max_calls:\n                raise RuntimeError(\n                    "LLM-Call-Budget erschöpft: "\n                    f"{self._used}/{self.max_calls}; nächster Aufruf an {identity} blockiert"\n                )\n            self._used += 1\n            return self._used\n\n    def snapshot(self) -> dict[str, int]:\n        with self._lock:\n            return {"used": self._used, "max": self.max_calls, "remaining": self.max_calls - self._used}\n\n\nclass BudgetedLLM(BaseLLM):\n    """Delegiert LLM-Aufrufe erst nach atomarem Verbrauch des gemeinsamen Run-Budgets."""\n\n    def __init__(self, delegate: BaseLLM, budget: LLMCallBudget) -> None:\n        self.delegate = delegate\n        self.budget = budget\n        self.provider_name = str(getattr(delegate, "provider_name", type(delegate).__name__))\n        self.model_name = str(getattr(delegate, "model_name", getattr(delegate, "model", "unknown")))\n        self.is_simulation = bool(getattr(delegate, "is_simulation", False))\n        client = getattr(delegate, "client", None)\n        if client is not None:\n            self.client = client\n\n    def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:\n        identity = f"{self.provider_name}:{self.model_name}".lower()\n        self.budget.consume(identity)\n        return self.delegate.complete(prompt, system=system, **kwargs)\n\n\nclass MockLLM(BaseLLM):\n''',
+              "budget classes",
+          )
+          replace_once(
+              llm,
+              '''def llm_identity(llm: BaseLLM) -> str:\n    """Stabile Identität für Audit und Unabhängigkeitsprüfung."""\n    provider = str(getattr(llm, "provider_name", type(llm).__name__)).strip().lower()\n''',
+              '''def llm_identity(llm: BaseLLM) -> str:\n    """Stabile Identität für Audit und Unabhängigkeitsprüfung."""\n    delegate = getattr(llm, "delegate", None)\n    if isinstance(delegate, BaseLLM):\n        llm = delegate\n    provider = str(getattr(llm, "provider_name", type(llm).__name__)).strip().lower()\n''',
+              "identity unwrap",
+          )
+
+          loop = Path("tankai/core/loop.py")
+          replace_once(
+              loop,
+              "from .llm import BaseLLM, get_llm, llm_identity\n",
+              "from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, get_llm, llm_identity\n",
+              "loop llm imports",
+          )
+          replace_once(
+              loop,
+              '''        require_research_evidence: bool = True,\n        max_retries: int = 2,\n        verbose: bool = True,\n''',
+              '''        require_research_evidence: bool = True,\n        max_retries: int = 2,\n        max_llm_calls_per_run: int = 40,\n        verbose: bool = True,\n''',
+              "loop init signature",
+          )
+          replace_once(
+              loop,
+              '''        self.llm = llm if llm is not None else get_llm()\n        self.critic_llm = critic_llm if critic_llm is not None else self.llm\n        self.main_llm_identity = llm_identity(self.llm)\n        self.critic_llm_identity = llm_identity(self.critic_llm)\n        self.critic_independent = self.main_llm_identity != self.critic_llm_identity\n''',
+              '''        main_llm = llm if llm is not None else get_llm()\n        raw_critic_llm = critic_llm if critic_llm is not None else main_llm\n        self.main_llm_identity = llm_identity(main_llm)\n        self.critic_llm_identity = llm_identity(raw_critic_llm)\n        self.critic_independent = self.main_llm_identity != self.critic_llm_identity\n        self.llm_call_budget = LLMCallBudget(max_llm_calls_per_run)\n        self.llm = BudgetedLLM(main_llm, self.llm_call_budget)\n        self.critic_llm = (\n            self.llm\n            if raw_critic_llm is main_llm\n            else BudgetedLLM(raw_critic_llm, self.llm_call_budget)\n        )\n''',
+              "loop shared budget setup",
+          )
+          replace_once(
+              loop,
+              '''        start = time.perf_counter()\n\n        goal = Goal(\n''',
+              '''        start = time.perf_counter()\n        self.llm_call_budget.reset()\n\n        goal = Goal(\n''',
+              "run budget reset",
+          )
+          replace_once(
+              loop,
+              '''        if self.run_store is not None:\n            try:\n                self.run_store.append(result, goal.description)\n            except Exception:\n                pass\n''',
+              '''        budget_snapshot = self.llm_call_budget.snapshot()\n        budget_receipt = Receipt(\n            action="llm_call_budget",\n            actor=Role.COMMANDER,\n            input_summary=goal.description,\n            output_summary=(\n                f"used={budget_snapshot['used']}/{budget_snapshot['max']}, "\n                f"remaining={budget_snapshot['remaining']}"\n            ),\n            success=True,\n            details={\n                **budget_snapshot,\n                "shared_main_and_critic": True,\n                "reset_scope": "run",\n            },\n        )\n        self.receipts.append(budget_receipt)\n        result.receipts = list(self.receipts)\n\n        if self.run_store is not None:\n            try:\n                self.run_store.append(result, goal.description)\n            except Exception:\n                pass\n''',
+              "budget receipt",
+          )
+          PY
+
+      - name: Commit final patch and remove helper workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/patch-llm-call-budget-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tankai/core/llm.py tankai/core/loop.py .github/workflows/patch-llm-call-budget-once.yml
+          git commit -m "ops: enforce shared per-run LLM call budget"
+          git push origin HEAD:ops/live-provider-call-budget
