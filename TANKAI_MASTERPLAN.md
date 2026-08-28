@@ -1,18 +1,19 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.5.0
+Version: 5.6.0
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 24. August 2026
+Statusdatum: 28. August 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 24. August 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 28. August 2026
 
-Dieser Abschnitt ist der aktuelle Reality Contract und zugleich der Startpunkt der weiteren
-Ausführung. Historische Releaseabschnitte bleiben als Entwicklungsnachweis erhalten, dürfen aber
-keinen neueren verifizierten Stand überschreiben.
+Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
+Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
+ab Abschnitt 1 bleiben als Entwicklungsnachweis unverändert erhalten. Historische Statussätze
+sind keine aktuelleren Behauptungen als dieser Reality Contract.
 
-Der Reality Contract beendet die Arbeit nicht. Sobald die Realität gebunden ist, beginnt der
-nächste sichere, ausführbare und überprüfbare Schritt.
+Der Reality Contract beendet die Arbeit nicht. Sobald ein Stand durch Commit, CI, Receipt und
+externen Check gebunden ist, wird das nächste sichere Gate aktiv.
 
 0.1 Verbindlicher Grundsatz
 
@@ -26,80 +27,144 @@ EIN GATE IST EIN ÜBERGANG UND KEIN ENDPUNKT.
 
 EIN TOOLBLOCKER IST KEIN TASK-ENDE.
 
-FEHLENDE MERGE- ODER DEPLOY-AUTORISIERUNG STOPPT NICHT DIE SICHERE ENTWICKLUNG.
+EINE FRÜHERE AUTORISIERUNG GILT NICHT AUTOMATISCH FÜR EINEN NEUEN COMMIT ODER EINEN NEUEN
+PRODUKTIONSMUTATIONSSCHRITT.
 
 Der verbindliche Arbeitsfluss lautet:
 
 Realität -> Task -> Code -> Test -> Receipt -> Gate -> nächster Task.
 
-Nach jedem bestandenen Gate wird unverzüglich das nächste Gate aktiv. Nach jedem
-fehlgeschlagenen Gate wird ein konkreter Reparatur-Task aktiv. Ist ein Gate extern blockiert,
-läuft jede davon unabhängige sichere Arbeit weiter.
+Nach jedem bestandenen Gate wird das nächste Gate ausdrücklich benannt. Nach jedem
+fehlgeschlagenen Gate wird ein konkreter Reparatur-Task aktiv. Ein externer Blocker stoppt nur
+den davon abhängigen Schritt.
 
 0.2 Aktive Source of Truth
 
 Aktives Core-Repository: Reznap87/TankAICore, Branch main.
 
-main steht auf Merge-Commit 50547cf1d20a4ae8273774c2c14f0a4849b23a84.
+Aktueller verifizierter main-Commit:
 
-Der zugehörige Git-Tree ist 7814a1977e631dd45492ce4c1c1b2a38286bc645.
+d7edb12b764310f00804c724ad6d3b4bbc96b54a
 
-PR #12 docs/1.10.0-release-sync wurde laut lokal verifizierter Git-Historie nach main gemergt.
-Der Merge-Commit hat den Tree 7814a1977e631dd45492ce4c1c1b2a38286bc645 und enthält die
-synchronisierten Release-, Test- und Versionsmarker.
+Zugehöriger Git-Tree:
 
-Eine erneute Live-Abfrage der GitHub-PR-Oberfläche über gh war für diesen Stand nicht
-verfügbar. Das ist ein offen ausgewiesener Toolblocker und kein Widerspruch zum lokal
-verifizierten Git-Objekt. Es wird keine darüber hinausgehende GitHub-Livebehauptung erfunden.
+f318d8ca72500b03f19635af0834c36d151ab232
+
+Commit-Titel:
+
+fix(deployment): validate Cloudflare Containers access (#21)
 
 Verbindlicher Releasevertrag: TankAI-Core-1.10.0-module-ownership.
 
 Verbindlicher Zustandsvertrag: ProjectState Schema 6.
 
-Verifizierte Testbaseline: 159 Pytests und 24 TankAI-Self-Tests.
+main ist durch einen aktiven GitHub-Ruleset geschützt. Der Pull-Request-Pfad ist erzwungen,
+Force-Pushes und Branch-Löschung sind blockiert. Die verpflichtenden GitHub-Actions-Checks für
+den Merge-Pfad sind:
 
-0.3 Verifizierter und nicht behaupteter Status
+test
+
+cloudflare
+
+Die alte Reality-Contract-Identität 50547cf1d20a4ae8273774c2c14f0a4849b23a84 mit Tree
+7814a1977e631dd45492ce4c1c1b2a38286bc645 ist nur historisch und darf nicht mehr als aktueller
+Source-of-Truth-Stand interpretiert werden.
+
+0.3 Aktuell verifizierter Betriebs- und Deploymentstatus
 
 Verifiziert sind:
 
-main-Commit 50547cf1d20a4ae8273774c2c14f0a4849b23a84,
+main-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
-Git-Tree 7814a1977e631dd45492ce4c1c1b2a38286bc645,
+Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
 
 Core-Version 1.10.0-module-ownership,
 
 ProjectState Schema 6,
 
-159 Pytests,
+GitHub-Ruleset-Schutz für main mit den Pflichtchecks test und cloudflare,
 
-24 TankAI-Self-Tests,
+TankAI Core CI Run #32 für exakt d7edb12b764310f00804c724ad6d3b4bbc96b54a: completed/success,
 
-PR-#12-Dokumentations-Synchronisation im lokalen Git-main-Verlauf.
+ops.container.web_runtime_smoke: VERIFIED,
 
-Nicht aus diesem Stand ableitbar sind:
+der Production-Deploy-Gate ist fail-closed, prüft den exakten main-SHA, Ruleset-/CI-Zustand und
+verweigert einen Deploy bei nicht erfüllten Voraussetzungen,
 
-ein erfolgreich gestarteter produktionsnaher Web-Runtime-Container,
+der Deploy-Gate ist Ruleset-aware und verwendet die effektiven Branch-Regeln statt nur die alte
+Branch-Protection-Zusammenfassung,
 
-ein aktuell bestandener externer Produktions-Preflight,
+Production Preflight #2, Run 33208563241, auf exakt
+d7edb12b764310f00804c724ad6d3b4bbc96b54a: completed/success,
 
-ein ausgeführter Live-Produktionsdeploy,
+der Preflight-Schritt Verify Cloudflare token, account, and Containers access: PASS,
 
-eine öffentlich erreichbare Produktionsinstanz,
+die Production-Secrets CLOUDFLARE_API_TOKEN und CLOUDFLARE_ACCOUNT_ID waren für die Jobs
+vorhanden; ihre Werte wurden nicht in Receipts übernommen,
 
-aktivierte Provider-Secrets,
+Issue #14 zu Production-Preflight-Governance: CLOSED/completed,
 
-eine Merge- oder Deploy-Autorisierung für zukünftige Änderungen.
+Deploy to Cloudflare #4, Run 33209014964, für exakt
+d7edb12b764310f00804c724ad6d3b4bbc96b54a: completed/success,
 
-Ein erfolgreicher Build, ein Dry-Run, eine vorhandene Workflowdatei oder ein Merge ist kein
-Beleg für einen ausgeführten Live-Deploy.
+Cloudflare Worker-Upload: PASS,
 
-Für einen Live-Produktionsdeploy liegt in diesem Reality Contract kein neuer Deployment
-Receipt vor. Deshalb wird kein Deployment behauptet.
+Container-Image-Build: PASS,
 
-0.4 Status- und Ausführungsvertrag
+Cloudflare-Registry-Push: PASS,
 
-VERIFIZIERT bedeutet: durch aktuelle Git-Objekte, Code, Tests oder einen belastbaren Receipt
-belegt.
+Container-Anwendung tankai-core-tankaicontainer: CREATED,
+
+Container Application ID: a0378ad1-191f-4114-ab2f-9c2c906484a0,
+
+Container-Image-Digest:
+sha256:9caef24aa0c09c29a8fdfbb5cf24c09611f753ffe8a370911551e64748356917,
+
+Cloudflare Worker Version ID: ba23e917-33f5-46c5-9316-b03ec33bc852,
+
+Custom Domains tankaicore.com und www.tankaicore.com: deployed,
+
+externer HTTPS-Healthcheck https://tankaicore.com/api/health: live mit ok=true und
+version=1.10.0-module-ownership,
+
+Issue #20 zum Cloudflare-Container-Authorization-Blocker: CLOSED/completed.
+
+Der frühere Unauthorized-Fehler im Container-Deploy ist damit behoben. Der Cloudflare-Account
+ist für den Containerpfad freigeschaltet und der verwendete Token besitzt den benötigten
+Containerzugriff.
+
+0.4 Explizite Grenzen des aktuellen Produktionsstands
+
+Der erfolgreiche Infrastruktur-Deploy ist kein Beleg dafür, dass jede TankAI-Produktfähigkeit
+allgemein produktionsreif ist.
+
+Der externe Healthcheck meldet production_ready=false. Das ist im aktuellen Releasevertrag
+bewusst so vorgesehen, solange öffentlicher Webdienst und privilegierter Development-Runner als
+getrennte Prozesse und Dienstkonten behandelt werden müssen.
+
+Die aktuell deployte Cloudflare-Containerkonfiguration setzt TANKAI_LLM=mock und
+TANKAI_EMBEDDER=hashing. Damit ist die öffentlich erreichbare Web-/Container-Runtime real und
+verifiziert, aber dieser Receipt behauptet keinen produktiven Live-LLM-Providerbetrieb.
+
+Ebenfalls nicht aus dem Deploy-Receipt ableitbar sind:
+
+eine aktivierte persistente Development-Queue,
+
+ein produktiver privilegierter Development-Runner,
+
+eine allgemeine Product-Readiness-Freigabe,
+
+ein realer OpenAI-/Anthropic-/xAI-/Gemini-Produktionslauf,
+
+eine aktivierte produktive Suchproviderkette,
+
+eine Autorisierung für einen weiteren Production-Deploy oder eine andere neue
+Produktionsmutation.
+
+0.5 Status- und Ausführungsvertrag
+
+VERIFIZIERT bedeutet: durch aktuelle Git-Objekte, Code, Tests, Receipts oder einen externen
+Live-Check belegt.
 
 AKTIV bedeutet: der nächste primäre Ausführungsschritt.
 
@@ -107,7 +172,7 @@ BEREIT bedeutet: ausführbar, sobald seine technischen Vorgates erfüllt sind.
 
 OFFEN bedeutet: noch nicht umgesetzt oder noch nicht ausreichend geprüft.
 
-TOOLBLOCKER bedeutet: ein Werkzeug oder Zugriff fehlt; Fallbacks und sichere Parallelaufgaben
+TOOLBLOCKER bedeutet: ein Werkzeug oder Zugriff fehlt; sichere Fallbacks und unabhängige Tasks
 bleiben verpflichtend.
 
 EXTERN BLOCKIERT bedeutet: von einem externen System, Zugriff oder einer fremden Entscheidung
@@ -119,106 +184,128 @@ Aktion ist nicht freigegeben.
 NICHT BEHAUPTET bedeutet: es liegt kein ausreichender Receipt für eine positive Statusaussage
 vor.
 
-FERTIG oder BEENDET darf nur für einen klar abgegrenzten Task verwendet werden. Der
-Gesamtplan bleibt aktiv, solange TankAI weiterentwickelt wird.
+DEPLOYED bedeutet: der konkrete, exakt benannte Commit wurde durch einen erfolgreichen
+Deployment-Receipt in die benannte Zielumgebung ausgerollt. DEPLOYED ist nicht synonym mit
+vollständiger Product Readiness.
 
-0.5 Aktives Gate
+FERTIG oder BEENDET darf nur für einen klar abgegrenzten Task verwendet werden. Der Gesamtplan
+bleibt aktiv, solange TankAI weiterentwickelt wird.
+
+0.6 Abgeschlossene Gates dieser Produktionslinie
+
+Die folgenden Gates sind für den oben gebundenen Stand abgeschlossen:
+
+ops.container.web_runtime_smoke -> VERIFIED,
+
+ops.production.preflight_readonly -> VERIFIED,
+
+ops.production.cloudflare_deploy -> VERIFIED,
+
+ops.production.external_health -> VERIFIED.
+
+Der produktionsnahe Container wurde nicht nur gebaut, sondern gestartet und über den
+verpflichtenden Runtime-Smoke geprüft. Der Read-only-Preflight prüfte vor dem mutierenden Deploy
+den GitHub-/Cloudflare-Zugriff. Der eigentliche Cloudflare-Deploy erhielt eine separate exakte
+Autorisierung und wurde anschließend durch den öffentlichen Health-Endpunkt extern bestätigt.
+
+0.7 Aktives Gate
 
 Das nächste aktive Gate ist:
 
-ops.container.web_runtime_smoke
+ops.production.live_provider_readiness
 
-Ziel dieses Gates ist ein reproduzierbarer Smoke-Receipt für den produktionsnahen
-Web-Runtime-Container in einer sicheren lokalen oder isolierten Umgebung.
+Begründung: Die produktive Web-/Container-Infrastruktur ist live, die aktuelle
+Containerkonfiguration nutzt aber weiterhin TANKAI_LLM=mock. Der nächste sinnvolle Schritt ist
+deshalb nicht ein weiterer blinder Deploy, sondern die kontrollierte Vorbereitung eines echten
+serverseitigen Providerbetriebs.
 
-Das Gate prüft mindestens:
+Dieses Gate ist zunächst lesend und vorbereitend. Es muss mindestens klären:
 
-die tatsächlich vorgesehene Containerdefinition,
+welche Live-Provider für Hauptmodell und unabhängigen Critic freigegeben werden sollen,
 
-den reproduzierbaren Build,
+welche serverseitigen Secret-Namen und Modell-IDs dafür benötigt werden, ohne Secret-Werte in
+Logs oder Receipts zu schreiben,
 
-den Start des Containerprozesses,
+welche Kosten-, Token-, Laufzeit- und Rate-Limits vor dem ersten Live-Providerlauf gelten,
 
-die vertraglich definierte HTTP-, Readiness- oder Prozessprüfung,
+ob die geforderte Trennung von Hauptmodell und Critic tatsächlich erfüllbar ist,
 
-die kontrollierte Beendigung und Bereinigung,
+welcher Suchprovider und welche Evidence-Regeln für produktive Recherche gelten,
 
-die Geheimnisfreiheit der ausgegebenen Logs,
+welcher minimale kontrollierte Live-Smoke-Test nach der Konfiguration ausgeführt wird,
 
-die betroffenen automatisierten Tests.
+welcher Rollback den Stand wieder auf den verifizierten Mock-/Hashing-Betrieb oder den vorherigen
+Worker-/Containerstand zurückführt.
 
-Ein vorhandenes Dockerfile ist kein Runtime-Receipt. Ein statischer Build ersetzt keinen
-erfolgreichen Prozessstart. Ein älterer Lauf auf einem anderen Commit ersetzt keinen aktuellen
-Receipt.
+Das Gate selbst autorisiert weder das Setzen neuer Secret-Werte noch einen weiteren
+Production-Deploy noch kostenpflichtige Modellaufrufe.
 
-Der Receipt muss Commit, Tree, Containerdefinition, Befehle, Exit-Codes, Prüfergebnis,
-Testresultate und den eindeutigen Status PASS oder FAIL enthalten.
+0.8 Getrennte Autorisierungsgrenzen
 
-Schlägt das Gate fehl, gilt unmittelbar:
+Die für Deploy #4 erteilte Freigabe war an exakt
+d7edb12b764310f00804c724ad6d3b4bbc96b54a gebunden und ist durch diesen Deploy verbraucht.
 
-Smoke-Fehler -> reproduzierbare Ursache -> kleinste Codeänderung -> Regressionstest ->
-erneuter Smoke.
+Jeder spätere Production-Deploy benötigt erneut:
 
-0.6 Nächster Übergang
+den dann aktuellen exakten main-SHA,
 
-Nach einem bestandenen ops.container.web_runtime_smoke wird unmittelbar dieses Gate aktiv:
+erfolgreiche verpflichtende CI für genau diesen SHA,
 
-ops.production.preflight_readonly
+einen aktuellen Production Preflight,
 
-Der Produktions-Preflight ist ausschließlich lesend. Er prüft den exakten Ziel-Commit, das
-Build-Artefakt, Workflow- und Runtime-Konfiguration, erforderliche Konfigurationsschlüssel ohne
-Offenlegung ihrer Werte, Zielumgebung, Schutzregeln, externe Abhängigkeiten, CI-Nachweise und
-Rollback-Pfad.
+die erforderlichen Runtime-/Provider-Receipts,
 
-Der Preflight verändert keine Produktionsressource und führt kein Deployment aus.
+einen klaren Rollback-Pfad,
 
-Sein Receipt klassifiziert jeden Prüfpunkt als PASS, FAIL oder UNKNOWN. UNKNOWN darf nicht
-als PASS umgedeutet werden. Fehlender Zugriff wird als externer Blocker geführt und in einen
-konkreten Folgetask überführt.
+eine neue ausdrückliche Deploy-Autorisierung für genau diesen Stand.
 
-0.7 Getrennte Autorisierungsgrenzen
+Ein Merge, erfolgreiche CI, ein bestandener Preflight, ein früherer erfolgreicher Deploy oder eine
+vorhandene Produktionsumgebung ist keine automatische Autorisierung für den nächsten Deploy.
 
-Ein Merge ist eine eigene, ausdrücklich zu autorisierende Aktion.
+Auch das Setzen oder Austauschen produktiver Provider-Secrets und das Aktivieren kostenpflichtiger
+Live-Provider sind eigene Produktionsmutationen und werden nicht aus diesem Dokument abgeleitet.
 
-Vor einem Merge müssen der exakte Branch oder PR, der exakte Head-Commit, passende erfolgreiche
-CI für genau diesen Head, der geprüfte Diff-Scope und alle erforderlichen Receipts feststehen.
+0.9 Toolblocker-Vertrag
 
-Ohne Merge-Autorisierung bleibt die Änderung auf ihrem Branch prüfbar. Tests, Review,
-Fehlerbehebung und konfliktfreie sichere Folgearbeit laufen weiter. Es wird nicht gemergt.
-
-Ein Deployment ist von Merge und Preflight strikt getrennt.
-
-Vor einem Deployment müssen der exakte Commit oder das unveränderliche Artefakt, die eindeutige
-Zielumgebung, Runtime-Smoke, aktueller Read-only-Preflight, Post-Merge-Verifikation,
-Rollback-Pfad und eine ausdrückliche Deploy-Autorisierung für genau diesen Stand vorliegen.
-
-Ein Merge, erfolgreiche CI, ein Dry-Run, ein bestandener Preflight oder eine vorbereitete
-Produktionsumgebung ist keine Deploy-Autorisierung.
-
-Bis zur ausdrücklichen Deploy-Autorisierung wird nicht deployt, kein Produktionsbetrieb
-behauptet und jede sichere Code-, Test- und Vorbereitungstätigkeit fortgesetzt.
-
-0.8 Toolblocker-Vertrag
-
-Wenn gh, eine Container-Runtime, ein Provider oder eine externe Plattform nicht erreichbar ist,
-wird der genaue Blocker mit Zeitpunkt und Fehlermeldung dokumentiert.
+Wenn GitHub, eine Container-Runtime, Cloudflare, ein Provider oder eine externe Plattform nicht
+erreichbar ist, wird der genaue Blocker mit Zeitpunkt und Fehlermeldung dokumentiert.
 
 Danach werden in dieser Reihenfolge geprüft:
 
-ein lokaler oder repositorygestützter Fallback,
+ein repositorygestützter oder lokaler Fallback,
 
 ein deterministischer alternativer Runner,
 
 die Implementierung oder Härtung der fehlenden Automatisierung,
 
-ein unabhängiger sicherer Code- oder Testtask.
+ein unabhängiger sicherer Code-, Test- oder Dokumentationstask.
 
 Ein Toolblocker darf ein einzelnes Gate offenhalten. Er darf den Gesamtplan nicht als beendet
 markieren, solange ein sicherer ausführbarer Task existiert.
 
-0.9 Produktlinie und historische Vision
+0.10 Unmittelbare Ausführungsreihenfolge
 
-Die verbindliche historische Zielrichtung bleibt:
+1. Diesen Reality Contract über einen geschützten Pull Request nach main bringen und Issue #19
+   nach grünem CI und Merge als completed schließen.
+
+2. Für ops.production.live_provider_readiness einen read-only Provider-/Secret-/Kosten-/Rollback-
+   Receipt erzeugen; keine Secret-Werte offenlegen und noch keinen neuen Deploy ausführen.
+
+3. Erst nach einer ausdrücklichen Entscheidung die benötigten serverseitigen Provider-, Critic-
+   und optionalen Search-Secrets konfigurieren.
+
+4. Danach vollständige CI, Runtime-Smoke und Production Preflight für den dann aktuellen exakten
+   main-SHA wiederholen.
+
+5. Einen weiteren Production-Deploy nur nach neuer exakter Autorisierung ausführen.
+
+6. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,
+   unabhängiger Fehlerprüfung und vollständigem Receipt ausführen. Erst dieser Nachweis darf einen
+   realen produktiven Modellpfad als VERIFIED markieren.
+
+0.11 Produktlinie und historische Vision
+
+Die verbindliche Zielrichtung bleibt:
 
 TankAI Web -> TankAI Core -> TankAI Model Family -> TankBot/TankStation.
 
@@ -235,6 +322,22 @@ Modellverträge.
 
 Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene heute bereits
 implementiert oder produktiv betrieben wird.
+
+0.12 Reality-Contract-Versionshistorie
+
+5.6.0, 28. August 2026:
+
+Current Source of Truth auf main d7edb12b764310f00804c724ad6d3b4bbc96b54a / Tree
+f318d8ca72500b03f19635af0834c36d151ab232 gebunden; Ruleset und Pflichtchecks dokumentiert;
+Runtime-Smoke und Production Preflight als VERIFIED gebunden; erfolgreicher Cloudflare-Deploy #4
+mit Container-/Worker-Receipt und externem Healthcheck dokumentiert; production_ready=false und
+TANKAI_LLM=mock ausdrücklich als verbleibende Produktgrenzen ausgewiesen; nächstes Gate auf
+ops.production.live_provider_readiness gesetzt.
+
+5.5.0, 24. August 2026:
+
+Vorheriger Reality Contract vor Runtime-Smoke, Production-Preflight und Live-Cloudflare-Deploy.
+Die darin gebundene Commit-/Tree-Identität ist historisch und nicht mehr aktuelle Source of Truth.
 
 1. Ergebnis, das entstehen muss
 
