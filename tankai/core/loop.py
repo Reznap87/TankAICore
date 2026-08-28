@@ -19,7 +19,7 @@ from ..agents.critic import Critic
 from ..agents.planner import Planner
 from ..agents.specialist import Specialist
 from ..agents.synthesizer import Synthesizer
-from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, get_llm, llm_identity
+from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, LLMRateLimitExceeded, get_llm, llm_identity
 from .memory import Memory
 from .long_term_memory import LongTermMemory
 from .tools import ToolRegistry
@@ -458,6 +458,8 @@ class TankAI:
         """Kapselt Agentenfehler, damit ein einzelner Schritt den Run nicht unkontrolliert abbricht."""
         try:
             result_text, exec_receipt = specialist.run(step, context=context, goal=goal)
+        except LLMRateLimitExceeded:
+            raise
         except Exception as exc:
             result_text = "[Specialist-Ausführung fehlgeschlagen]"
             exec_receipt = Receipt(
@@ -489,6 +491,8 @@ class TankAI:
             critique, crit_receipt = self.critic.critique_result(
                 result_text, step.description, goal
             )
+        except LLMRateLimitExceeded:
+            raise
         except Exception as exc:
             critique = Critique(
                 target_id=step.id,

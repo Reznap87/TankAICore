@@ -79,6 +79,8 @@ def evaluate(
     root = root.resolve()
     llm = _read(root, "tankai/core/llm.py")
     runtime = _read(root, "tankai/web/runtime.py")
+    auth = _read(root, "tankai/web/auth.py")
+    server = _read(root, "tankai/web/server.py")
     research = _read(root, "tankai/core/web_research.py")
     cloudflare = _read(root, "src/cloudflare.ts")
     deploy = _read(root, "DEPLOY.md")
@@ -215,6 +217,30 @@ def evaluate(
             "explicit output-token, timeout, retry, per-run call ceiling and bounded-smoke controls exist"
             if budget_contract_ok
             else "explicit production token/timeout/retry/per-run-call/bounded-smoke controls are incomplete",
+        )
+    )
+
+    provider_rate_contract_ok = (
+        _contains_all(
+            auth + server + llm + cloudflare,
+            (
+                "class ProviderCallRateLimiter",
+                "provider_call_events",
+                "TANKAI_PROVIDER_CALLS_PER_WINDOW",
+                "TANKAI_PROVIDER_RATE_WINDOW_SECONDS",
+                "set_call_guard",
+                "LLMRateLimitExceeded",
+            ),
+        )
+        and "provider_limiter.consume(context.user_id, identity)" in server
+    )
+    checks.append(
+        Check(
+            "provider_rate_contract",
+            "PASS" if provider_rate_contract_ok else "FAIL",
+            "persistent per-user/provider time-window rate ceiling is wired before model calls"
+            if provider_rate_contract_ok
+            else "persistent per-user/provider provider-call rate ceiling is incomplete",
         )
     )
 

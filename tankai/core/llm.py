@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import threading
-from typing import Any
+from typing import Any, Callable
 
 
 class BaseLLM(ABC):
@@ -23,6 +23,27 @@ class BaseLLM(ABC):
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
         """Gibt eine Textantwort zurück."""
         ...
+
+
+class LLMRateLimitExceeded(RuntimeError):
+    """Zeitfenster-Limit für einen externen Provider wurde vor dem Request erreicht."""
+
+    def __init__(
+        self,
+        *,
+        provider: str,
+        limit: int,
+        window_seconds: int,
+        retry_after_seconds: int,
+    ) -> None:
+        self.provider = provider
+        self.limit = int(limit)
+        self.window_seconds = int(window_seconds)
+        self.retry_after_seconds = max(1, int(retry_after_seconds))
+        super().__init__(
+            f"Provider-Rate-Limit erreicht: {provider} "
+            f"({limit} Calls/{window_seconds}s); Retry nach {self.retry_after_seconds}s"
+        )
 
 
 class LLMCallBudget:
@@ -40,10 +61,16 @@ class LLMCallBudget:
         self.max_calls = parsed
         self._used = 0
         self._lock = threading.Lock()
+        self._call_guard: Callable[[str], None] | None = None
 
     def reset(self) -> None:
         with self._lock:
             self._used = 0
+
+    def set_call_guard(self, guard: Callable[[str], None] | None) -> None:
+        """Setzt einen run-lokalen Guard; ``None`` entfernt ihn vollständig."""
+        with self._lock:
+            self._call_guard = guard
 
     def consume(self, identity: str) -> int:
         with self._lock:
@@ -52,6 +79,8 @@ class LLMCallBudget:
                     "LLM-Call-Budget erschöpft: "
                     f"{self._used}/{self.max_calls}; nächster Aufruf an {identity} blockiert"
                 )
+            if self._call_guard is not None:
+                self._call_guard(identity)
             self._used += 1
             return self._used
 

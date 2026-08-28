@@ -46,6 +46,17 @@ ANTHROPIC_MODEL fehlt; Modell muss explizit konfiguriert werden
     )
     _write(
         root,
+        "tankai/web/auth.py",
+        "class ProviderCallRateLimiter provider_call_events",
+    )
+    _write(
+        root,
+        "tankai/web/server.py",
+        "TANKAI_PROVIDER_CALLS_PER_WINDOW TANKAI_PROVIDER_RATE_WINDOW_SECONDS "
+        "set_call_guard LLMRateLimitExceeded provider_limiter.consume(context.user_id, identity)",
+    )
+    _write(
+        root,
         "tankai/core/web_research.py",
         'provider == "brave"\nprovider == "tavily"\n',
     )
@@ -65,6 +76,8 @@ TANKAI_LLM_MAX_TOKENS: clean(this.env.TANKAI_LLM_MAX_TOKENS, "2048"),
 TANKAI_LLM_TIMEOUT_SECONDS: clean(this.env.TANKAI_LLM_TIMEOUT_SECONDS, "30"),
 TANKAI_LLM_MAX_RETRIES: clean(this.env.TANKAI_LLM_MAX_RETRIES, "1"),
 TANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),
+TANKAI_PROVIDER_CALLS_PER_WINDOW: clean(this.env.TANKAI_PROVIDER_CALLS_PER_WINDOW, "40"),
+TANKAI_PROVIDER_RATE_WINDOW_SECONDS: clean(this.env.TANKAI_PROVIDER_RATE_WINDOW_SECONDS, "60"),
 TANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")
 """
     else:
