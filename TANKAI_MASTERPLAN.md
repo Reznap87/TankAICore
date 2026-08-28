@@ -1,6 +1,6 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.6.0
+Version: 5.6.1
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
 Statusdatum: 28. August 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
@@ -40,19 +40,27 @@ den davon abhängigen Schritt.
 
 0.2 Aktive Source of Truth
 
-Aktives Core-Repository: Reznap87/TankAICore, Branch main.
+Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head wird live
+aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
+gleichzusetzen.
 
-Aktueller verifizierter main-Commit:
+Verifizierter Production-Runtime-Basis-Commit:
 
 d7edb12b764310f00804c724ad6d3b4bbc96b54a
 
-Zugehöriger Git-Tree:
+Zugehöriger Runtime-Basis-Git-Tree:
 
 f318d8ca72500b03f19635af0834c36d151ab232
 
-Commit-Titel:
+Deployment-Basis-Commit-Titel:
 
 fix(deployment): validate Cloudflare Containers access (#21)
+
+PR #23 synchronisierte den Masterplan und erzeugte anschließend den signierten docs-only
+Merge-Commit 681b678b25f624a15a322c1de944401c0249d0da mit Tree
+83e179c64762d6edfae9734c37164cfa327f8b70. Dieser Dokumentations-Merge änderte weder
+Runtimecode noch den bereits ausgeführten Cloudflare-Deploy und ist deshalb nicht der
+Production-Runtime-Commit.
 
 Verbindlicher Releasevertrag: TankAI-Core-1.10.0-module-ownership.
 
@@ -74,7 +82,7 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-main-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
+Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
 
@@ -285,21 +293,18 @@ markieren, solange ein sicherer ausführbarer Task existiert.
 
 0.10 Unmittelbare Ausführungsreihenfolge
 
-1. Diesen Reality Contract über einen geschützten Pull Request nach main bringen und Issue #19
-   nach grünem CI und Merge als completed schließen.
-
-2. Für ops.production.live_provider_readiness einen read-only Provider-/Secret-/Kosten-/Rollback-
+1. Für ops.production.live_provider_readiness einen read-only Provider-/Secret-/Kosten-/Rollback-
    Receipt erzeugen; keine Secret-Werte offenlegen und noch keinen neuen Deploy ausführen.
 
-3. Erst nach einer ausdrücklichen Entscheidung die benötigten serverseitigen Provider-, Critic-
+2. Erst nach einer ausdrücklichen Entscheidung die benötigten serverseitigen Provider-, Critic-
    und optionalen Search-Secrets konfigurieren.
 
-4. Danach vollständige CI, Runtime-Smoke und Production Preflight für den dann aktuellen exakten
+3. Danach vollständige CI, Runtime-Smoke und Production Preflight für den dann aktuellen exakten
    main-SHA wiederholen.
 
-5. Einen weiteren Production-Deploy nur nach neuer exakter Autorisierung ausführen.
+4. Einen weiteren Production-Deploy nur nach neuer exakter Autorisierung ausführen.
 
-6. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,
+5. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,
    unabhängiger Fehlerprüfung und vollständigem Receipt ausführen. Erst dieser Nachweis darf einen
    realen produktiven Modellpfad als VERIFIED markieren.
 
@@ -324,6 +329,13 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.6.1, 28. August 2026:
+
+Repository-Head und tatsächlich deployter Runtime-Basis-Commit werden ausdrücklich getrennt;
+PR #23 / Merge-Commit 681b678b25f624a15a322c1de944401c0249d0da ist als docs-only
+Synchronisations-Commit dokumentiert; die unmittelbare Ausführungsreihenfolge beginnt nach
+abgeschlossenem Masterplan-Sync direkt mit ops.production.live_provider_readiness.
 
 5.6.0, 28. August 2026:
 
