@@ -1,0 +1,207 @@
+name: One-shot provider rate-limit patch
+
+on:
+  push:
+    branches:
+      - ops/live-provider-rate-limit
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ops/live-provider-rate-limit
+      - name: Add persistent per-user/provider rate ceiling
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, label: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"marker not found: {label}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          # Core exception + call-guard hook. Guard rejection happens before run-budget consumption.
+          replace_once(
+              "tankai/core/llm.py",
+              "from typing import Any\n",
+              "from typing import Any, Callable\n",
+              "llm typing import",
+          )
+          replace_once(
+              "tankai/core/llm.py",
+              '''class LLMCallBudget:\n    """Thread-sicheres, zwischen Hauptmodell und Critic geteiltes Run-Budget."""\n''',
+              '''class LLMRateLimitExceeded(RuntimeError):\n    """Zeitfenster-Limit für einen externen Provider wurde vor dem Request erreicht."""\n\n    def __init__(\n        self,\n        *,\n        provider: str,\n        limit: int,\n        window_seconds: int,\n        retry_after_seconds: int,\n    ) -> None:\n        self.provider = provider\n        self.limit = int(limit)\n        self.window_seconds = int(window_seconds)\n        self.retry_after_seconds = max(1, int(retry_after_seconds))\n        super().__init__(\n            f"Provider-Rate-Limit erreicht: {provider} "\n            f"({limit} Calls/{window_seconds}s); Retry nach {self.retry_after_seconds}s"\n        )\n\n\nclass LLMCallBudget:\n    """Thread-sicheres, zwischen Hauptmodell und Critic geteiltes Run-Budget."""\n''',
+              "rate-limit exception",
+          )
+          replace_once(
+              "tankai/core/llm.py",
+              '''        self._used = 0\n        self._lock = threading.Lock()\n\n    def reset(self) -> None:\n        with self._lock:\n            self._used = 0\n\n    def consume(self, identity: str) -> int:\n        with self._lock:\n            if self._used >= self.max_calls:\n                raise RuntimeError(\n                    "LLM-Call-Budget erschöpft: "\n                    f"{self._used}/{self.max_calls}; nächster Aufruf an {identity} blockiert"\n                )\n            self._used += 1\n            return self._used\n''',
+              '''        self._used = 0\n        self._lock = threading.Lock()\n        self._call_guard: Callable[[str], None] | None = None\n\n    def reset(self) -> None:\n        with self._lock:\n            self._used = 0\n\n    def set_call_guard(self, guard: Callable[[str], None] | None) -> None:\n        """Setzt einen run-lokalen Guard; ``None`` entfernt ihn vollständig."""\n        with self._lock:\n            self._call_guard = guard\n\n    def consume(self, identity: str) -> int:\n        with self._lock:\n            if self._used >= self.max_calls:\n                raise RuntimeError(\n                    "LLM-Call-Budget erschöpft: "\n                    f"{self._used}/{self.max_calls}; nächster Aufruf an {identity} blockiert"\n                )\n            if self._call_guard is not None:\n                self._call_guard(identity)\n            self._used += 1\n            return self._used\n''',
+              "call guard",
+          )
+
+          # Rate-limit rejection must not be converted into a specialist/critic quality failure.
+          replace_once(
+              "tankai/core/loop.py",
+              "from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, get_llm, llm_identity\n",
+              "from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, LLMRateLimitExceeded, get_llm, llm_identity\n",
+              "loop llm import",
+          )
+          replace_once(
+              "tankai/core/loop.py",
+              '''        try:\n            result_text, exec_receipt = specialist.run(step, context=context, goal=goal)\n        except Exception as exc:\n''',
+              '''        try:\n            result_text, exec_receipt = specialist.run(step, context=context, goal=goal)\n        except LLMRateLimitExceeded:\n            raise\n        except Exception as exc:\n''',
+              "specialist rate propagation",
+          )
+          replace_once(
+              "tankai/core/loop.py",
+              '''        try:\n            critique, crit_receipt = self.critic.critique_result(\n                result_text, step.description, goal\n            )\n        except Exception as exc:\n''',
+              '''        try:\n            critique, crit_receipt = self.critic.critique_result(\n                result_text, step.description, goal\n            )\n        except LLMRateLimitExceeded:\n            raise\n        except Exception as exc:\n''',
+              "critic rate propagation",
+          )
+
+          # Persistent event ledger in AuthStore (survives process/container restart).
+          replace_once(
+              "tankai/web/auth.py",
+              "import hmac\n",
+              "import hmac\nimport math\n",
+              "auth math import",
+          )
+          replace_once(
+              "tankai/web/auth.py",
+              "from typing import Iterable\n",
+              "from typing import Callable, Iterable\n\nfrom tankai.core.llm import LLMRateLimitExceeded\n",
+              "auth typing/core import",
+          )
+          replace_once(
+              "tankai/web/auth.py",
+              "    SCHEMA_VERSION = 1\n",
+              "    SCHEMA_VERSION = 2\n",
+              "auth schema version",
+          )
+          replace_once(
+              "tankai/web/auth.py",
+              '''                CREATE TABLE IF NOT EXISTS audit_events (\n                    id TEXT PRIMARY KEY,\n                    event_type TEXT NOT NULL,\n                    user_id TEXT,\n                    workspace_id TEXT,\n                    success INTEGER NOT NULL CHECK (success IN (0,1)),\n                    details TEXT NOT NULL DEFAULT '{}',\n                    created_at TEXT NOT NULL\n                );\n                INSERT OR REPLACE INTO auth_meta(key,value) VALUES('schema_version','1');\n''',
+              '''                CREATE TABLE IF NOT EXISTS audit_events (\n                    id TEXT PRIMARY KEY,\n                    event_type TEXT NOT NULL,\n                    user_id TEXT,\n                    workspace_id TEXT,\n                    success INTEGER NOT NULL CHECK (success IN (0,1)),\n                    details TEXT NOT NULL DEFAULT '{}',\n                    created_at TEXT NOT NULL\n                );\n                CREATE TABLE IF NOT EXISTS provider_call_events (\n                    id TEXT PRIMARY KEY,\n                    user_id TEXT NOT NULL,\n                    provider TEXT NOT NULL,\n                    occurred_at TEXT NOT NULL\n                );\n                CREATE INDEX IF NOT EXISTS idx_provider_calls_bucket\n                    ON provider_call_events(user_id, provider, occurred_at);\n                INSERT OR REPLACE INTO auth_meta(key,value) VALUES('schema_version','2');\n''',
+              "provider call event schema",
+          )
+          replace_once(
+              "tankai/web/auth.py",
+              '''    def set_password(self, user_id: str, password: str) -> None:\n''',
+              '''    def consume_provider_call_event(\n        self,\n        *,\n        user_id: str,\n        provider: str,\n        limit: int,\n        window_seconds: int,\n        now: datetime | None = None,\n    ) -> int | None:\n        """Atomar einen Provider-Call verbuchen oder Retry-After-Sekunden liefern."""\n        provider_n = provider.strip().lower()\n        if not re.fullmatch(r"[a-z0-9_.-]{1,64}", provider_n):\n            raise ValueError("Ungültiger Provider für Rate-Limit")\n        if not user_id or len(user_id) > 128:\n            raise ValueError("Ungültige Nutzer-ID für Rate-Limit")\n        if limit < 1 or limit > 240:\n            raise ValueError("Provider-Rate-Limit muss zwischen 1 und 240 liegen")\n        if window_seconds < 1 or window_seconds > 3600:\n            raise ValueError("Provider-Rate-Fenster muss zwischen 1 und 3600 Sekunden liegen")\n\n        current = (now or _utcnow()).astimezone(timezone.utc)\n        cutoff = current - timedelta(seconds=window_seconds)\n        with self._lock, self._connect() as conn:\n            conn.execute("BEGIN IMMEDIATE")\n            try:\n                conn.execute(\n                    "DELETE FROM provider_call_events "\n                    "WHERE user_id=? AND provider=? AND occurred_at<?",\n                    (user_id, provider_n, _iso(cutoff)),\n                )\n                row = conn.execute(\n                    "SELECT COUNT(*) AS c, MIN(occurred_at) AS oldest "\n                    "FROM provider_call_events WHERE user_id=? AND provider=?",\n                    (user_id, provider_n),\n                ).fetchone()\n                count = int(row["c"] if row else 0)\n                if count >= limit:\n                    oldest_raw = str(row["oldest"] or "") if row else ""\n                    oldest = _parse_time(oldest_raw) if oldest_raw else current\n                    retry_after = max(\n                        1,\n                        math.ceil(\n                            (oldest + timedelta(seconds=window_seconds) - current).total_seconds()\n                        ),\n                    )\n                    conn.execute("COMMIT")\n                    return retry_after\n                conn.execute(\n                    "INSERT INTO provider_call_events(id,user_id,provider,occurred_at) "\n                    "VALUES(?,?,?,?)",\n                    (str(uuid4()), user_id, provider_n, _iso(current)),\n                )\n                conn.execute("COMMIT")\n                return None\n            except Exception:\n                conn.execute("ROLLBACK")\n                raise\n\n    def set_password(self, user_id: str, password: str) -> None:\n''',
+              "auth provider consume method",
+          )
+          auth_path = Path("tankai/web/auth.py")
+          auth_text = auth_path.read_text(encoding="utf-8")
+          auth_text += '''\n\nclass ProviderCallRateLimiter:\n    """Persistente per-user/provider Sliding-Window-Grenze auf Basis des AuthStore."""\n\n    def __init__(\n        self,\n        store: AuthStore,\n        *,\n        limit: int = 40,\n        window_seconds: int = 60,\n        clock: Callable[[], datetime] | None = None,\n    ) -> None:\n        self.store = store\n        self.limit = max(1, min(int(limit), 240))\n        self.window_seconds = max(1, min(int(window_seconds), 3600))\n        self._clock = clock or _utcnow\n\n    @staticmethod\n    def _provider(identity: str) -> str:\n        provider = str(identity or "").split(":", 1)[0].strip().lower()\n        if not re.fullmatch(r"[a-z0-9_.-]{1,64}", provider):\n            raise ValueError("LLM-Identität enthält keinen gültigen Provider")\n        return provider\n\n    def consume(self, user_id: str, identity: str) -> None:\n        provider = self._provider(identity)\n        retry_after = self.store.consume_provider_call_event(\n            user_id=user_id,\n            provider=provider,\n            limit=self.limit,\n            window_seconds=self.window_seconds,\n            now=self._clock(),\n        )\n        if retry_after is not None:\n            raise LLMRateLimitExceeded(\n                provider=provider,\n                limit=self.limit,\n                window_seconds=self.window_seconds,\n                retry_after_seconds=retry_after,\n            )\n'''
+          auth_path.write_text(auth_text, encoding="utf-8")
+
+          # Server binds authenticated user_id to the shared LLM budget only for this request.
+          replace_once(
+              "tankai/web/server.py",
+              "from tankai import __version__\n",
+              "from tankai import __version__\nfrom tankai.core.llm import LLMRateLimitExceeded\n",
+              "server rate exception import",
+          )
+          replace_once(
+              "tankai/web/server.py",
+              "from tankai.web.auth import AuthContext, AuthStore\n",
+              "from tankai.web.auth import AuthContext, AuthStore, ProviderCallRateLimiter\n",
+              "server limiter import",
+          )
+          replace_once(
+              "tankai/web/server.py",
+              '''    login_limiter: LoginRateLimiter\n''',
+              '''    login_limiter: LoginRateLimiter\n    provider_limiter: ProviderCallRateLimiter\n''',
+              "app provider limiter field",
+          )
+          replace_once(
+              "tankai/web/server.py",
+              '''            login_limiter=LoginRateLimiter(\n                limit=_safe_int("TANKAI_LOGIN_ATTEMPTS", 5, 3, 20),\n                window_seconds=_safe_int("TANKAI_LOGIN_WINDOW", 300, 60, 3600),\n                block_seconds=_safe_int("TANKAI_LOGIN_BLOCK", 900, 60, 86400),\n            ),\n''',
+              '''            login_limiter=LoginRateLimiter(\n                limit=_safe_int("TANKAI_LOGIN_ATTEMPTS", 5, 3, 20),\n                window_seconds=_safe_int("TANKAI_LOGIN_WINDOW", 300, 60, 3600),\n                block_seconds=_safe_int("TANKAI_LOGIN_BLOCK", 900, 60, 86400),\n            ),\n            provider_limiter=ProviderCallRateLimiter(\n                auth,\n                limit=_safe_int("TANKAI_PROVIDER_CALLS_PER_WINDOW", 40, 1, 240),\n                window_seconds=_safe_int(\n                    "TANKAI_PROVIDER_RATE_WINDOW_SECONDS", 60, 1, 3600\n                ),\n            ),\n''',
+              "app provider limiter constructor",
+          )
+          replace_once(
+              "tankai/web/server.py",
+              '''    def _json(self, obj: object, code: int = 200, *, set_cookie: str | None = None) -> None:\n        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")\n        self.send_response(code)\n        self.send_header("Content-Type", "application/json; charset=utf-8")\n        if set_cookie:\n            self.send_header("Set-Cookie", set_cookie)\n        self._security_headers()\n''',
+              '''    def _json(\n        self,\n        obj: object,\n        code: int = 200,\n        *,\n        set_cookie: str | None = None,\n        headers: dict[str, str] | None = None,\n    ) -> None:\n        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")\n        self.send_response(code)\n        self.send_header("Content-Type", "application/json; charset=utf-8")\n        if set_cookie:\n            self.send_header("Set-Cookie", set_cookie)\n        for name, value in (headers or {}).items():\n            self.send_header(name, value)\n        self._security_headers()\n''',
+              "json extra headers",
+          )
+          replace_once(
+              "tankai/web/server.py",
+              '''                tank = runtime.tank\n                tank.parallel = parallel\n                result = tank.run(goal_description=goal, definition_of_done=dod)\n                plan_data = None\n''',
+              '''                tank = runtime.tank\n                tank.parallel = parallel\n                tank.llm_call_budget.set_call_guard(\n                    lambda identity: self.app.provider_limiter.consume(context.user_id, identity)\n                )\n                try:\n                    result = tank.run(goal_description=goal, definition_of_done=dod)\n                finally:\n                    tank.llm_call_budget.set_call_guard(None)\n                plan_data = None\n''',
+              "run scoped provider guard",
+          )
+          replace_once(
+              "tankai/web/server.py",
+              '''            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=True, details=json.dumps({"goal_id": result.goal_id, "status": payload["status"]}))\n            self._json(payload)\n        except Exception:\n            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=False)\n            self._internal_error("run")\n''',
+              '''            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=True, details=json.dumps({"goal_id": result.goal_id, "status": payload["status"]}))\n            self._json(payload)\n        except LLMRateLimitExceeded as exc:\n            self.app.auth.audit(\n                "run",\n                user_id=context.user_id,\n                workspace_id=context.workspace_id,\n                success=False,\n                details=json.dumps({\n                    "reason": "provider_rate_limit",\n                    "provider": exc.provider,\n                    "retry_after_seconds": exc.retry_after_seconds,\n                }),\n            )\n            self._json(\n                {\n                    "error": "Provider-Rate-Limit erreicht. Später erneut versuchen.",\n                    "provider": exc.provider,\n                    "retry_after_seconds": exc.retry_after_seconds,\n                },\n                429,\n                headers={"Retry-After": str(exc.retry_after_seconds)},\n            )\n        except Exception:\n            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=False)\n            self._internal_error("run")\n''',
+              "run 429 handling",
+          )
+
+          # Cloudflare forwards bounded policy, not secret data.
+          replace_once(
+              "src/cloudflare.ts",
+              '''  TANKAI_LLM_MAX_CALLS_PER_RUN?: string;\n  TANKAI_LIVE_SMOKE_MAX_TOKENS?: string;\n''',
+              '''  TANKAI_LLM_MAX_CALLS_PER_RUN?: string;\n  TANKAI_PROVIDER_CALLS_PER_WINDOW?: string;\n  TANKAI_PROVIDER_RATE_WINDOW_SECONDS?: string;\n  TANKAI_LIVE_SMOKE_MAX_TOKENS?: string;\n''',
+              "cloudflare rate env types",
+          )
+          replace_once(
+              "src/cloudflare.ts",
+              '''    TANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),\n    TANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")\n''',
+              '''    TANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),\n    TANKAI_PROVIDER_CALLS_PER_WINDOW: clean(this.env.TANKAI_PROVIDER_CALLS_PER_WINDOW, "40"),\n    TANKAI_PROVIDER_RATE_WINDOW_SECONDS: clean(this.env.TANKAI_PROVIDER_RATE_WINDOW_SECONDS, "60"),\n    TANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")\n''',
+              "cloudflare rate env forwarding",
+          )
+
+          replace_once(
+              ".env.example",
+              '''TANKAI_LLM_MAX_CALLS_PER_RUN=40\n# Separates hartes Budget für einen später ausdrücklich autorisierten Live-Smoke.\n''',
+              '''TANKAI_LLM_MAX_CALLS_PER_RUN=40\n# Persistente per-user/provider Sliding-Window-Grenze für externe Modellaufrufe.\nTANKAI_PROVIDER_CALLS_PER_WINDOW=40\nTANKAI_PROVIDER_RATE_WINDOW_SECONDS=60\n# Separates hartes Budget für einen später ausdrücklich autorisierten Live-Smoke.\n''',
+              "env provider rate policy",
+          )
+
+          # Readiness receives a dedicated auditable provider-rate check.
+          replace_once(
+              ".github/scripts/production_live_provider_readiness.py",
+              '''    runtime = _read(root, "tankai/web/runtime.py")\n    research = _read(root, "tankai/core/web_research.py")\n''',
+              '''    runtime = _read(root, "tankai/web/runtime.py")\n    auth = _read(root, "tankai/web/auth.py")\n    server = _read(root, "tankai/web/server.py")\n    research = _read(root, "tankai/core/web_research.py")\n''',
+              "readiness web sources",
+          )
+          replace_once(
+              ".github/scripts/production_live_provider_readiness.py",
+              '''    rollback_ok = (\n''',
+              '''    provider_rate_contract_ok = (\n        _contains_all(\n            auth + server + llm + cloudflare,\n            (\n                "class ProviderCallRateLimiter",\n                "provider_call_events",\n                "TANKAI_PROVIDER_CALLS_PER_WINDOW",\n                "TANKAI_PROVIDER_RATE_WINDOW_SECONDS",\n                "set_call_guard",\n                "LLMRateLimitExceeded",\n            ),\n        )\n        and "provider_limiter.consume(context.user_id, identity)" in server\n    )\n    checks.append(\n        Check(\n            "provider_rate_contract",\n            "PASS" if provider_rate_contract_ok else "FAIL",\n            "persistent per-user/provider time-window rate ceiling is wired before model calls"\n            if provider_rate_contract_ok\n            else "persistent per-user/provider provider-call rate ceiling is incomplete",\n        )\n    )\n\n    rollback_ok = (\n''',
+              "readiness provider rate check",
+          )
+
+          # Fixture additions so fully wired readiness remains fully PASS.
+          replace_once(
+              "tests/test_production_live_provider_readiness.py",
+              '''    _write(\n        root,\n        "tankai/web/runtime.py",\n        "get_critic_llm TANKAI_REQUIRE_INDEPENDENT_CRITIC",\n    )\n''',
+              '''    _write(\n        root,\n        "tankai/web/runtime.py",\n        "get_critic_llm TANKAI_REQUIRE_INDEPENDENT_CRITIC",\n    )\n    _write(\n        root,\n        "tankai/web/auth.py",\n        "class ProviderCallRateLimiter provider_call_events",\n    )\n    _write(\n        root,\n        "tankai/web/server.py",\n        "TANKAI_PROVIDER_CALLS_PER_WINDOW TANKAI_PROVIDER_RATE_WINDOW_SECONDS "\n        "set_call_guard LLMRateLimitExceeded provider_limiter.consume(context.user_id, identity)",\n    )\n''',
+              "readiness fixture auth/server",
+          )
+          replace_once(
+              "tests/test_production_live_provider_readiness.py",
+              '''TANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),\nTANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")\n''',
+              '''TANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),\nTANKAI_PROVIDER_CALLS_PER_WINDOW: clean(this.env.TANKAI_PROVIDER_CALLS_PER_WINDOW, "40"),\nTANKAI_PROVIDER_RATE_WINDOW_SECONDS: clean(this.env.TANKAI_PROVIDER_RATE_WINDOW_SECONDS, "60"),\nTANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")\n''',
+              "readiness fixture rate env",
+          )
+
+          Path("tests/test_provider_rate_limit.py").write_text('''from __future__ import annotations\n\nfrom concurrent.futures import ThreadPoolExecutor\nfrom datetime import datetime, timedelta, timezone\n\nimport pytest\n\nfrom tankai.core.llm import LLMCallBudget, LLMRateLimitExceeded\nfrom tankai.web.auth import AuthStore, ProviderCallRateLimiter\n\n\nclass FakeClock:\n    def __init__(self) -> None:\n        self.now = datetime(2026, 1, 1, tzinfo=timezone.utc)\n\n    def __call__(self) -> datetime:\n        return self.now\n\n    def advance(self, seconds: int) -> None:\n        self.now += timedelta(seconds=seconds)\n\n\ndef test_rate_limit_is_separate_per_user_and_provider(tmp_path) -> None:\n    store = AuthStore(tmp_path / "auth.db")\n    clock = FakeClock()\n    limiter = ProviderCallRateLimiter(store, limit=2, window_seconds=60, clock=clock)\n\n    limiter.consume("user-a", "openai:main-model")\n    limiter.consume("user-a", "openai:main-model")\n    limiter.consume("user-b", "openai:main-model")\n    limiter.consume("user-a", "anthropic:critic-model")\n\n    with pytest.raises(LLMRateLimitExceeded) as exc_info:\n        limiter.consume("user-a", "openai:another-model")\n    exc = exc_info.value\n    assert exc.provider == "openai"\n    assert exc.limit == 2\n    assert exc.window_seconds == 60\n    assert exc.retry_after_seconds == 60\n\n\ndef test_sliding_window_reopens_after_oldest_event_expires(tmp_path) -> None:\n    store = AuthStore(tmp_path / "auth.db")\n    clock = FakeClock()\n    limiter = ProviderCallRateLimiter(store, limit=1, window_seconds=60, clock=clock)\n\n    limiter.consume("user-a", "openai:model")\n    clock.advance(59)\n    with pytest.raises(LLMRateLimitExceeded) as exc_info:\n        limiter.consume("user-a", "openai:model")\n    assert exc_info.value.retry_after_seconds == 1\n\n    clock.advance(2)\n    limiter.consume("user-a", "openai:model")\n\n\ndef test_rate_ledger_survives_store_reopen(tmp_path) -> None:\n    path = tmp_path / "auth.db"\n    clock = FakeClock()\n    first = ProviderCallRateLimiter(AuthStore(path), limit=1, window_seconds=60, clock=clock)\n    first.consume("user-a", "anthropic:model")\n\n    restarted = ProviderCallRateLimiter(AuthStore(path), limit=1, window_seconds=60, clock=clock)\n    with pytest.raises(LLMRateLimitExceeded):\n        restarted.consume("user-a", "anthropic:other-model")\n\n\ndef test_concurrent_calls_are_atomically_limited(tmp_path) -> None:\n    store = AuthStore(tmp_path / "auth.db")\n    clock = FakeClock()\n    limiter = ProviderCallRateLimiter(store, limit=8, window_seconds=60, clock=clock)\n\n    def attempt(index: int) -> bool:\n        try:\n            limiter.consume("user-a", f"openai:model-{index}")\n            return True\n        except LLMRateLimitExceeded:\n            return False\n\n    with ThreadPoolExecutor(max_workers=16) as pool:\n        outcomes = list(pool.map(attempt, range(24)))\n\n    assert sum(outcomes) == 8\n\n\ndef test_call_guard_rejection_does_not_consume_run_budget() -> None:\n    budget = LLMCallBudget(5)\n\n    def reject(identity: str) -> None:\n        raise LLMRateLimitExceeded(\n            provider=identity.split(":", 1)[0],\n            limit=1,\n            window_seconds=60,\n            retry_after_seconds=10,\n        )\n\n    budget.set_call_guard(reject)\n    with pytest.raises(LLMRateLimitExceeded):\n        budget.consume("openai:model")\n    assert budget.snapshot() == {"used": 0, "max": 5, "remaining": 5}\n\n    budget.set_call_guard(None)\n    assert budget.consume("openai:model") == 1\n''', encoding="utf-8")
+      - name: Commit final patch and remove helper workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-provider-rate-limit-once.yml
+          git add tankai/core/llm.py tankai/core/loop.py tankai/web/auth.py tankai/web/server.py src/cloudflare.ts .env.example .github/scripts/production_live_provider_readiness.py tests/test_production_live_provider_readiness.py tests/test_provider_rate_limit.py
+          git commit -m "ops: enforce persistent per-user provider rate limit"
+          git push origin HEAD:ops/live-provider-rate-limit
