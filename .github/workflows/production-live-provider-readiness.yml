@@ -1,0 +1,94 @@
+name: Production Live Provider Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      main_provider:
+        description: "Live main-model provider"
+        required: true
+        type: choice
+        options:
+          - openai
+          - anthropic
+      main_model:
+        description: "Explicit main-model ID"
+        required: true
+        type: string
+      critic_provider:
+        description: "Independent critic provider family"
+        required: true
+        type: choice
+        options:
+          - anthropic
+          - openai
+      critic_model:
+        description: "Explicit critic-model ID"
+        required: true
+        type: string
+      search_provider:
+        description: "Production research search provider"
+        required: true
+        type: choice
+        options:
+          - brave
+          - tavily
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-live-provider-readiness
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    name: Read-only live-provider readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Evaluate repository contract and secret-name presence
+        shell: bash
+        env:
+          OPENAI_PRESENT: ${{ secrets.OPENAI_API_KEY != '' }}
+          ANTHROPIC_PRESENT: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          BRAVE_PRESENT: ${{ secrets.BRAVE_SEARCH_API_KEY != '' }}
+          TAVILY_PRESENT: ${{ secrets.TAVILY_API_KEY != '' }}
+        run: |
+          set -euo pipefail
+          args=(
+            --root .
+            --main-provider "${{ inputs.main_provider }}"
+            --main-model "${{ inputs.main_model }}"
+            --critic-provider "${{ inputs.critic_provider }}"
+            --critic-model "${{ inputs.critic_model }}"
+            --search-provider "${{ inputs.search_provider }}"
+            --output "${RUNNER_TEMP}/live-provider-readiness.json"
+          )
+
+          [[ "${OPENAI_PRESENT}" == "true" ]] && args+=(--present-secret OPENAI_API_KEY)
+          [[ "${ANTHROPIC_PRESENT}" == "true" ]] && args+=(--present-secret ANTHROPIC_API_KEY)
+          [[ "${BRAVE_PRESENT}" == "true" ]] && args+=(--present-secret BRAVE_SEARCH_API_KEY)
+          [[ "${TAVILY_PRESENT}" == "true" ]] && args+=(--present-secret TAVILY_API_KEY)
+
+          rc=0
+          python .github/scripts/production_live_provider_readiness.py "${args[@]}" || rc=$?
+          cat "${RUNNER_TEMP}/live-provider-readiness.json"
+          {
+            echo '```json'
+            cat "${RUNNER_TEMP}/live-provider-readiness.json"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "${rc}"
+
+      - name: Assert no mutating production action exists in this job
+        if: always()
+        shell: bash
+        run: |
+          printf '%s\n' \
+            'read_only=true' \
+            'secret_values_requested=false' \
+            'paid_provider_call=false' \
+            'deployment_triggered=false'
