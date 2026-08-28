@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import os
 import re
 import secrets
@@ -16,7 +17,9 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
+
+from tankai.core.llm import LLMRateLimitExceeded
 from uuid import uuid4
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -128,7 +131,7 @@ class SessionCreated:
 class AuthStore:
     """SQLite-basierter Auth-Store mit widerrufbaren, opaken Sessions."""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, path: str | Path, *, session_hours: int = 12) -> None:
         self.path = Path(path)
@@ -214,7 +217,15 @@ class AuthStore:
                     details TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL
                 );
-                INSERT OR REPLACE INTO auth_meta(key,value) VALUES('schema_version','1');
+                CREATE TABLE IF NOT EXISTS provider_call_events (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_provider_calls_bucket
+                    ON provider_call_events(user_id, provider, occurred_at);
+                INSERT OR REPLACE INTO auth_meta(key,value) VALUES('schema_version','2');
                 COMMIT;
                 """
             )
@@ -563,6 +574,64 @@ class AuthStore:
                 (str(uuid4()), event_type[:80], user_id, workspace_id, int(success), details[:4000], _iso(_utcnow())),
             )
 
+    def consume_provider_call_event(
+        self,
+        *,
+        user_id: str,
+        provider: str,
+        limit: int,
+        window_seconds: int,
+        now: datetime | None = None,
+    ) -> int | None:
+        """Atomar einen Provider-Call verbuchen oder Retry-After-Sekunden liefern."""
+        provider_n = provider.strip().lower()
+        if not re.fullmatch(r"[a-z0-9_.-]{1,64}", provider_n):
+            raise ValueError("Ungültiger Provider für Rate-Limit")
+        if not user_id or len(user_id) > 128:
+            raise ValueError("Ungültige Nutzer-ID für Rate-Limit")
+        if limit < 1 or limit > 240:
+            raise ValueError("Provider-Rate-Limit muss zwischen 1 und 240 liegen")
+        if window_seconds < 1 or window_seconds > 3600:
+            raise ValueError("Provider-Rate-Fenster muss zwischen 1 und 3600 Sekunden liegen")
+
+        current = (now or _utcnow()).astimezone(timezone.utc)
+        cutoff = current - timedelta(seconds=window_seconds)
+        with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    "DELETE FROM provider_call_events "
+                    "WHERE user_id=? AND provider=? AND occurred_at<?",
+                    (user_id, provider_n, _iso(cutoff)),
+                )
+                row = conn.execute(
+                    "SELECT COUNT(*) AS c, MIN(occurred_at) AS oldest "
+                    "FROM provider_call_events WHERE user_id=? AND provider=?",
+                    (user_id, provider_n),
+                ).fetchone()
+                count = int(row["c"] if row else 0)
+                if count >= limit:
+                    oldest_raw = str(row["oldest"] or "") if row else ""
+                    oldest = _parse_time(oldest_raw) if oldest_raw else current
+                    retry_after = max(
+                        1,
+                        math.ceil(
+                            (oldest + timedelta(seconds=window_seconds) - current).total_seconds()
+                        ),
+                    )
+                    conn.execute("COMMIT")
+                    return retry_after
+                conn.execute(
+                    "INSERT INTO provider_call_events(id,user_id,provider,occurred_at) "
+                    "VALUES(?,?,?,?)",
+                    (str(uuid4()), user_id, provider_n, _iso(current)),
+                )
+                conn.execute("COMMIT")
+                return None
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def set_password(self, user_id: str, password: str) -> None:
         encoded = hash_password(password)
         with self._lock, self._connect() as conn:
@@ -607,3 +676,44 @@ class AuthStore:
         with self._connect() as conn:
             rows = conn.execute("SELECT id FROM workspaces ORDER BY id").fetchall()
         return [str(row["id"]) for row in rows]
+
+
+class ProviderCallRateLimiter:
+    """Persistente per-user/provider Sliding-Window-Grenze auf Basis des AuthStore."""
+
+    def __init__(
+        self,
+        store: AuthStore,
+        *,
+        limit: int = 40,
+        window_seconds: int = 60,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.store = store
+        self.limit = max(1, min(int(limit), 240))
+        self.window_seconds = max(1, min(int(window_seconds), 3600))
+        self._clock = clock or _utcnow
+
+    @staticmethod
+    def _provider(identity: str) -> str:
+        provider = str(identity or "").split(":", 1)[0].strip().lower()
+        if not re.fullmatch(r"[a-z0-9_.-]{1,64}", provider):
+            raise ValueError("LLM-Identität enthält keinen gültigen Provider")
+        return provider
+
+    def consume(self, user_id: str, identity: str) -> None:
+        provider = self._provider(identity)
+        retry_after = self.store.consume_provider_call_event(
+            user_id=user_id,
+            provider=provider,
+            limit=self.limit,
+            window_seconds=self.window_seconds,
+            now=self._clock(),
+        )
+        if retry_after is not None:
+            raise LLMRateLimitExceeded(
+                provider=provider,
+                limit=self.limit,
+                window_seconds=self.window_seconds,
+                retry_after_seconds=retry_after,
+            )

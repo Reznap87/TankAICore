@@ -27,9 +27,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tankai import __version__
+from tankai.core.llm import LLMRateLimitExceeded
 from tankai.dev_orchestrator.job_queue import DevelopmentJobQueue, QueueError
 from tankai.dev_orchestrator.models import WorkerPipelineJob
-from tankai.web.auth import AuthContext, AuthStore
+from tankai.web.auth import AuthContext, AuthStore, ProviderCallRateLimiter
 from tankai.web.runtime import WorkspaceRuntimeManager
 
 _CSP_NONCE = secrets.token_urlsafe(18)
@@ -101,6 +102,7 @@ class AppContext:
     cookie_secure: bool
     allow_registration: bool
     login_limiter: LoginRateLimiter
+    provider_limiter: ProviderCallRateLimiter
 
     @classmethod
     def from_env(cls, server_host: str) -> "AppContext":
@@ -144,6 +146,13 @@ class AppContext:
                 limit=_safe_int("TANKAI_LOGIN_ATTEMPTS", 5, 3, 20),
                 window_seconds=_safe_int("TANKAI_LOGIN_WINDOW", 300, 60, 3600),
                 block_seconds=_safe_int("TANKAI_LOGIN_BLOCK", 900, 60, 86400),
+            ),
+            provider_limiter=ProviderCallRateLimiter(
+                auth,
+                limit=_safe_int("TANKAI_PROVIDER_CALLS_PER_WINDOW", 40, 1, 240),
+                window_seconds=_safe_int(
+                    "TANKAI_PROVIDER_RATE_WINDOW_SECONDS", 60, 1, 3600
+                ),
             ),
         )
 
@@ -298,12 +307,21 @@ class Handler(BaseHTTPRequestHandler):
             "connect-src 'self'; frame-ancestors 'none'; form-action 'self'",
         )
 
-    def _json(self, obj: object, code: int = 200, *, set_cookie: str | None = None) -> None:
+    def _json(
+        self,
+        obj: object,
+        code: int = 200,
+        *,
+        set_cookie: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         if set_cookie:
             self.send_header("Set-Cookie", set_cookie)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self._security_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -748,7 +766,13 @@ class Handler(BaseHTTPRequestHandler):
             with runtime.lock:
                 tank = runtime.tank
                 tank.parallel = parallel
-                result = tank.run(goal_description=goal, definition_of_done=dod)
+                tank.llm_call_budget.set_call_guard(
+                    lambda identity: self.app.provider_limiter.consume(context.user_id, identity)
+                )
+                try:
+                    result = tank.run(goal_description=goal, definition_of_done=dod)
+                finally:
+                    tank.llm_call_budget.set_call_guard(None)
                 plan_data = None
                 if result.plan:
                     plan_data = {
@@ -791,6 +815,27 @@ class Handler(BaseHTTPRequestHandler):
                 runtime.history.append(payload)
             self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=True, details=json.dumps({"goal_id": result.goal_id, "status": payload["status"]}))
             self._json(payload)
+        except LLMRateLimitExceeded as exc:
+            self.app.auth.audit(
+                "run",
+                user_id=context.user_id,
+                workspace_id=context.workspace_id,
+                success=False,
+                details=json.dumps({
+                    "reason": "provider_rate_limit",
+                    "provider": exc.provider,
+                    "retry_after_seconds": exc.retry_after_seconds,
+                }),
+            )
+            self._json(
+                {
+                    "error": "Provider-Rate-Limit erreicht. Später erneut versuchen.",
+                    "provider": exc.provider,
+                    "retry_after_seconds": exc.retry_after_seconds,
+                },
+                429,
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            )
         except Exception:
             self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=False)
             self._internal_error("run")
