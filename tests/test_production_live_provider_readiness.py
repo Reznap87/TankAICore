@@ -33,7 +33,9 @@ ANTHROPIC_MODEL fehlt; Modell muss explizit konfiguriert werden
                 "TANKAI_LLM_MAX_TOKENS",
                 "TANKAI_LLM_TIMEOUT_SECONDS",
                 "TANKAI_LLM_MAX_RETRIES",
+                "TANKAI_LLM_MAX_CALLS_PER_RUN",
                 "TANKAI_LIVE_SMOKE_MAX_TOKENS",
+                "class LLMCallBudget",
             )
         )
     _write(root, "tankai/core/llm.py", llm)
@@ -62,6 +64,7 @@ TAVILY_API_KEY: this.liveProviderEnabled ? clean(this.env.TAVILY_API_KEY) : "",
 TANKAI_LLM_MAX_TOKENS: clean(this.env.TANKAI_LLM_MAX_TOKENS, "2048"),
 TANKAI_LLM_TIMEOUT_SECONDS: clean(this.env.TANKAI_LLM_TIMEOUT_SECONDS, "30"),
 TANKAI_LLM_MAX_RETRIES: clean(this.env.TANKAI_LLM_MAX_RETRIES, "1"),
+TANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),
 TANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")
 """
     else:

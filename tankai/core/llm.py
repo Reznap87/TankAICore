@@ -35,8 +35,8 @@ class LLMCallBudget:
             parsed = int(max_calls)
         except (TypeError, ValueError) as exc:
             raise ValueError("max_calls muss eine ganze Zahl sein") from exc
-        if parsed < 1 or parsed > 1000:
-            raise ValueError("max_calls muss zwischen 1 und 1000 liegen")
+        if parsed < 1 or parsed > 40:
+            raise ValueError("max_calls muss zwischen 1 und 40 liegen")
         self.max_calls = parsed
         self._used = 0
         self._lock = threading.Lock()
