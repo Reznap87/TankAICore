@@ -1,0 +1,68 @@
+name: One-shot call-budget verification patch
+
+on:
+  push:
+    branches:
+      - ops/live-provider-call-budget
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ops/live-provider-call-budget
+      - name: Harden and verify per-run LLM call ceiling
+        shell: python
+        run: |
+          from pathlib import Path
+
+          llm_path = Path("tankai/core/llm.py")
+          llm = llm_path.read_text(encoding="utf-8")
+          old = '        if parsed < 1 or parsed > 1000:\n            raise ValueError("max_calls muss zwischen 1 und 1000 liegen")'
+          new = '        if parsed < 1 or parsed > 40:\n            raise ValueError("max_calls muss zwischen 1 und 40 liegen")'
+          if old not in llm:
+              raise SystemExit("LLMCallBudget upper-bound marker not found")
+          llm_path.write_text(llm.replace(old, new, 1), encoding="utf-8")
+
+          readiness_path = Path(".github/scripts/production_live_provider_readiness.py")
+          readiness = readiness_path.read_text(encoding="utf-8")
+          old = '''    budget_names = (\n        "TANKAI_LLM_MAX_TOKENS",\n        "TANKAI_LLM_TIMEOUT_SECONDS",\n        "TANKAI_LLM_MAX_RETRIES",\n        "TANKAI_LIVE_SMOKE_MAX_TOKENS",\n    )\n    budget_contract_ok = _contains_all(llm + cloudflare, budget_names)\n    checks.append(\n        Check(\n            "runtime_budget_contract",\n            "PASS" if budget_contract_ok else "FAIL",\n            "explicit output-token, timeout, retry and bounded-smoke controls exist"\n            if budget_contract_ok\n            else "explicit production token/timeout/retry/bounded-smoke controls are incomplete",\n        )\n    )'''
+          new = '''    budget_names = (\n        "TANKAI_LLM_MAX_TOKENS",\n        "TANKAI_LLM_TIMEOUT_SECONDS",\n        "TANKAI_LLM_MAX_RETRIES",\n        "TANKAI_LLM_MAX_CALLS_PER_RUN",\n        "TANKAI_LIVE_SMOKE_MAX_TOKENS",\n        "class LLMCallBudget",\n    )\n    budget_contract_ok = _contains_all(llm + runtime + cloudflare, budget_names)\n    checks.append(\n        Check(\n            "runtime_budget_contract",\n            "PASS" if budget_contract_ok else "FAIL",\n            "explicit output-token, timeout, retry, per-run call ceiling and bounded-smoke controls exist"\n            if budget_contract_ok\n            else "explicit production token/timeout/retry/per-run-call/bounded-smoke controls are incomplete",\n        )\n    )'''
+          if old not in readiness:
+              raise SystemExit("readiness budget contract marker not found")
+          readiness_path.write_text(readiness.replace(old, new, 1), encoding="utf-8")
+
+          readiness_test_path = Path("tests/test_production_live_provider_readiness.py")
+          readiness_test = readiness_test_path.read_text(encoding="utf-8")
+          old = '''                "TANKAI_LLM_MAX_RETRIES",\n                "TANKAI_LIVE_SMOKE_MAX_TOKENS",'''
+          new = '''                "TANKAI_LLM_MAX_RETRIES",\n                "TANKAI_LLM_MAX_CALLS_PER_RUN",\n                "TANKAI_LIVE_SMOKE_MAX_TOKENS",\n                "class LLMCallBudget",'''
+          if old not in readiness_test:
+              raise SystemExit("readiness test LLM budget markers not found")
+          readiness_test = readiness_test.replace(old, new, 1)
+          old = '''TANKAI_LLM_MAX_RETRIES: clean(this.env.TANKAI_LLM_MAX_RETRIES, "1"),\nTANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")'''
+          new = '''TANKAI_LLM_MAX_RETRIES: clean(this.env.TANKAI_LLM_MAX_RETRIES, "1"),\nTANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),\nTANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")'''
+          if old not in readiness_test:
+              raise SystemExit("readiness test Cloudflare budget markers not found")
+          readiness_test_path.write_text(readiness_test.replace(old, new, 1), encoding="utf-8")
+
+          env_path = Path(".env.example")
+          env_text = env_path.read_text(encoding="utf-8")
+          old = '''TANKAI_LLM_MAX_RETRIES=1\n# Separates hartes Budget für einen später ausdrücklich autorisierten Live-Smoke.'''
+          new = '''TANKAI_LLM_MAX_RETRIES=1\n# Gemeinsames hartes Modellaufruf-Budget pro Run (Hauptmodell + Critic).\n# 40 deckt den aktuellen maximalen Web-Run von 39 Calls mit einem Sicherheitsslot ab.\nTANKAI_LLM_MAX_CALLS_PER_RUN=40\n# Separates hartes Budget für einen später ausdrücklich autorisierten Live-Smoke.'''
+          if old not in env_text:
+              raise SystemExit("env example call-budget insertion marker not found")
+          env_path.write_text(env_text.replace(old, new, 1), encoding="utf-8")
+
+          Path("tests/test_llm_call_budget.py").write_text('''from __future__ import annotations\n\nimport threading\nfrom concurrent.futures import ThreadPoolExecutor\n\nimport pytest\n\nfrom tankai import TankAI\nfrom tankai.core.llm import BaseLLM, BudgetedLLM, LLMCallBudget\n\n\nclass CountingLLM(BaseLLM):\n    provider_name = "counting"\n    model_name = "counting-model"\n    is_simulation = True\n\n    def __init__(self) -> None:\n        self.calls = 0\n        self._lock = threading.Lock()\n\n    def complete(self, prompt: str, *, system: str = "", **kwargs) -> str:\n        with self._lock:\n            self.calls += 1\n        return "ok"\n\n\nclass ScriptedLLM(BaseLLM):\n    provider_name = "scripted"\n    model_name = "scripted-model"\n    is_simulation = True\n\n    def complete(self, prompt: str, *, system: str = "", **kwargs) -> str:\n        system_lower = system.lower()\n        prompt_lower = prompt.lower()\n        if "planner" in system_lower or "erstelle einen plan" in prompt_lower:\n            return (\n                '{"rationale":"bounded","reused_pattern":false,"steps":['\n                '{"description":"Analyse ausführen","specialist_type":"analysis",'\n                '"expected_output":"klare Antwort"}]}'\n            )\n        if "critic" in system_lower:\n            return '{"passed":true,"score":1.0,"issues":[],"suggestions":[]}'\n        if "synthesizer" in system_lower:\n            return "final answer"\n        return "step result"\n\n\ndef _budget_receipt(result):\n    return next(receipt for receipt in result.receipts if receipt.action == "llm_call_budget")\n\n\ndef test_budget_blocks_before_delegate_call() -> None:\n    budget = LLMCallBudget(2)\n    delegate = CountingLLM()\n    llm = BudgetedLLM(delegate, budget)\n\n    assert llm.complete("one") == "ok"\n    assert llm.complete("two") == "ok"\n    with pytest.raises(RuntimeError, match="LLM-Call-Budget erschöpft"):\n        llm.complete("blocked")\n\n    assert delegate.calls == 2\n    assert budget.snapshot() == {"used": 2, "max": 2, "remaining": 0}\n\n\ndef test_budget_has_hard_core_ceiling_of_40() -> None:\n    with pytest.raises(ValueError, match="zwischen 1 und 40"):\n        LLMCallBudget(41)\n\n\ndef test_shared_budget_is_thread_safe() -> None:\n    budget = LLMCallBudget(8)\n    delegate = CountingLLM()\n    llm = BudgetedLLM(delegate, budget)\n\n    def invoke(index: int) -> bool:\n        try:\n            llm.complete(str(index))\n            return True\n        except RuntimeError:\n            return False\n\n    with ThreadPoolExecutor(max_workers=16) as pool:\n        outcomes = list(pool.map(invoke, range(24)))\n\n    assert sum(outcomes) == 8\n    assert delegate.calls == 8\n    assert budget.snapshot() == {"used": 8, "max": 8, "remaining": 0}\n\n\ndef test_tank_run_resets_shared_main_critic_budget_and_receipts_usage() -> None:\n    tank = TankAI(\n        llm=ScriptedLLM(),\n        max_llm_calls_per_run=7,\n        require_research_evidence=False,\n        enable_tools=False,\n        verbose=False,\n        run_store_path=None,\n    )\n\n    assert tank.llm is tank.critic_llm\n    first = tank.run("Ersten begrenzten Run ausführen")\n    first_budget = _budget_receipt(first)\n    assert first_budget.details == {\n        "used": 6,\n        "max": 7,\n        "remaining": 1,\n        "shared_main_and_critic": True,\n        "reset_scope": "run",\n    }\n\n    assert tank.llm.complete("außerhalb des Runs") == "step result"\n    assert tank.llm_call_budget.snapshot()["used"] == 7\n\n    second = tank.run("Zweiten begrenzten Run ausführen")\n    second_budget = _budget_receipt(second)\n    assert second_budget.details["used"] == 6\n    assert second_budget.details["max"] == 7\n    assert second_budget.details["remaining"] == 1\n''', encoding="utf-8")
+      - name: Commit final patch and remove helper workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-call-budget-tests-once.yml
+          git add tankai/core/llm.py .github/scripts/production_live_provider_readiness.py tests/test_production_live_provider_readiness.py tests/test_llm_call_budget.py .env.example
+          git commit -m "test: verify hard per-run LLM call ceiling"
+          git push origin HEAD:ops/live-provider-call-budget
