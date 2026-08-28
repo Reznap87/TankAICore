@@ -203,16 +203,18 @@ def evaluate(
         "TANKAI_LLM_MAX_TOKENS",
         "TANKAI_LLM_TIMEOUT_SECONDS",
         "TANKAI_LLM_MAX_RETRIES",
+        "TANKAI_LLM_MAX_CALLS_PER_RUN",
         "TANKAI_LIVE_SMOKE_MAX_TOKENS",
+        "class LLMCallBudget",
     )
-    budget_contract_ok = _contains_all(llm + cloudflare, budget_names)
+    budget_contract_ok = _contains_all(llm + runtime + cloudflare, budget_names)
     checks.append(
         Check(
             "runtime_budget_contract",
             "PASS" if budget_contract_ok else "FAIL",
-            "explicit output-token, timeout, retry and bounded-smoke controls exist"
+            "explicit output-token, timeout, retry, per-run call ceiling and bounded-smoke controls exist"
             if budget_contract_ok
-            else "explicit production token/timeout/retry/bounded-smoke controls are incomplete",
+            else "explicit production token/timeout/retry/per-run-call/bounded-smoke controls are incomplete",
         )
     )
 

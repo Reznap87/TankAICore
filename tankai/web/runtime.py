@@ -22,6 +22,17 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return _env(name, "1" if default else "0").lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw = _env(name, str(default))
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} muss eine ganze Zahl sein") from exc
+    if value < minimum or value > maximum:
+        raise RuntimeError(f"{name} muss zwischen {minimum} und {maximum} liegen")
+    return value
+
+
 class WorkspaceHistory:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -119,6 +130,9 @@ class WorkspaceRuntimeManager:
                 critic_llm=critic_llm,
                 require_independent_critic=_env_bool("TANKAI_REQUIRE_INDEPENDENT_CRITIC", False),
                 require_research_evidence=_env_bool("TANKAI_REQUIRE_RESEARCH_EVIDENCE", True),
+                max_llm_calls_per_run=_env_int(
+                    "TANKAI_LLM_MAX_CALLS_PER_RUN", 40, minimum=7, maximum=40
+                ),
                 verbose=False,
                 memory_db=str(root / "memory.db"),
                 use_ltm=False,

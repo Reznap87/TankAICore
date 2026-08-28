@@ -19,6 +19,7 @@ type TankAIRuntimeEnv = Env & {
   TANKAI_LLM_MAX_TOKENS?: string;
   TANKAI_LLM_TIMEOUT_SECONDS?: string;
   TANKAI_LLM_MAX_RETRIES?: string;
+  TANKAI_LLM_MAX_CALLS_PER_RUN?: string;
   TANKAI_LIVE_SMOKE_MAX_TOKENS?: string;
 };
 
@@ -70,6 +71,7 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     TANKAI_LLM_MAX_TOKENS: clean(this.env.TANKAI_LLM_MAX_TOKENS, "2048"),
     TANKAI_LLM_TIMEOUT_SECONDS: clean(this.env.TANKAI_LLM_TIMEOUT_SECONDS, "30"),
     TANKAI_LLM_MAX_RETRIES: clean(this.env.TANKAI_LLM_MAX_RETRIES, "1"),
+    TANKAI_LLM_MAX_CALLS_PER_RUN: clean(this.env.TANKAI_LLM_MAX_CALLS_PER_RUN, "40"),
     TANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")
   };
 }

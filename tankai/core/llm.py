@@ -8,6 +8,7 @@ In einer echten Deployment würde man hier Provider-Adapter
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import threading
 from typing import Any
 
 
@@ -22,6 +23,60 @@ class BaseLLM(ABC):
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
         """Gibt eine Textantwort zurück."""
         ...
+
+
+class LLMCallBudget:
+    """Thread-sicheres, zwischen Hauptmodell und Critic geteiltes Run-Budget."""
+
+    def __init__(self, max_calls: int) -> None:
+        if isinstance(max_calls, bool):
+            raise ValueError("max_calls muss eine ganze Zahl sein")
+        try:
+            parsed = int(max_calls)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("max_calls muss eine ganze Zahl sein") from exc
+        if parsed < 1 or parsed > 40:
+            raise ValueError("max_calls muss zwischen 1 und 40 liegen")
+        self.max_calls = parsed
+        self._used = 0
+        self._lock = threading.Lock()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._used = 0
+
+    def consume(self, identity: str) -> int:
+        with self._lock:
+            if self._used >= self.max_calls:
+                raise RuntimeError(
+                    "LLM-Call-Budget erschöpft: "
+                    f"{self._used}/{self.max_calls}; nächster Aufruf an {identity} blockiert"
+                )
+            self._used += 1
+            return self._used
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return {"used": self._used, "max": self.max_calls, "remaining": self.max_calls - self._used}
+
+
+class BudgetedLLM(BaseLLM):
+    """Delegiert LLM-Aufrufe erst nach atomarem Verbrauch des gemeinsamen Run-Budgets."""
+
+    def __init__(self, delegate: BaseLLM, budget: LLMCallBudget) -> None:
+        self.delegate = delegate
+        self.budget = budget
+        self.provider_name = str(getattr(delegate, "provider_name", type(delegate).__name__))
+        self.model_name = str(getattr(delegate, "model_name", getattr(delegate, "model", "unknown")))
+        self.is_simulation = bool(getattr(delegate, "is_simulation", False))
+        client = getattr(delegate, "client", None)
+        if client is not None:
+            self.client = client
+
+    def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
+        identity = f"{self.provider_name}:{self.model_name}".lower()
+        self.budget.consume(identity)
+        return self.delegate.complete(prompt, system=system, **kwargs)
 
 
 class MockLLM(BaseLLM):
@@ -587,6 +642,9 @@ def get_llm(provider: str | None = None, **kwargs: Any) -> BaseLLM:
 
 def llm_identity(llm: BaseLLM) -> str:
     """Stabile Identität für Audit und Unabhängigkeitsprüfung."""
+    delegate = getattr(llm, "delegate", None)
+    if isinstance(delegate, BaseLLM):
+        llm = delegate
     provider = str(getattr(llm, "provider_name", type(llm).__name__)).strip().lower()
     model = str(getattr(llm, "model_name", getattr(llm, "model", type(llm).__name__))).strip().lower()
     base_url = ""

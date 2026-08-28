@@ -19,7 +19,7 @@ from ..agents.critic import Critic
 from ..agents.planner import Planner
 from ..agents.specialist import Specialist
 from ..agents.synthesizer import Synthesizer
-from .llm import BaseLLM, get_llm, llm_identity
+from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, get_llm, llm_identity
 from .memory import Memory
 from .long_term_memory import LongTermMemory
 from .tools import ToolRegistry
@@ -55,6 +55,7 @@ class TankAI:
         require_independent_critic: bool = False,
         require_research_evidence: bool = True,
         max_retries: int = 2,
+        max_llm_calls_per_run: int = 40,
         verbose: bool = True,
         memory_db: Optional[str] = None,
         use_ltm: bool = False,
@@ -65,11 +66,18 @@ class TankAI:
         strict_web_research: bool = False,
         run_store_path: str | None = "tankai_runs.jsonl",
     ) -> None:
-        self.llm = llm if llm is not None else get_llm()
-        self.critic_llm = critic_llm if critic_llm is not None else self.llm
-        self.main_llm_identity = llm_identity(self.llm)
-        self.critic_llm_identity = llm_identity(self.critic_llm)
+        main_llm = llm if llm is not None else get_llm()
+        raw_critic_llm = critic_llm if critic_llm is not None else main_llm
+        self.main_llm_identity = llm_identity(main_llm)
+        self.critic_llm_identity = llm_identity(raw_critic_llm)
         self.critic_independent = self.main_llm_identity != self.critic_llm_identity
+        self.llm_call_budget = LLMCallBudget(max_llm_calls_per_run)
+        self.llm = BudgetedLLM(main_llm, self.llm_call_budget)
+        self.critic_llm = (
+            self.llm
+            if raw_critic_llm is main_llm
+            else BudgetedLLM(raw_critic_llm, self.llm_call_budget)
+        )
         self.require_independent_critic = bool(require_independent_critic)
         if self.require_independent_critic and not self.critic_independent:
             raise RuntimeError(
@@ -114,6 +122,7 @@ class TankAI:
         Führt den kompletten PLAN → ROUTE → VERIFY → LEARN Zyklus aus.
         """
         start = time.perf_counter()
+        self.llm_call_budget.reset()
 
         goal = Goal(
             description=goal_description,
@@ -415,6 +424,25 @@ class TankAI:
                 )
                 if ret_stats.get("to_cold") or ret_stats.get("to_warm"):
                     console.print(f"[dim]   Retention: {ret_stats}[/dim]")
+
+        budget_snapshot = self.llm_call_budget.snapshot()
+        budget_receipt = Receipt(
+            action="llm_call_budget",
+            actor=Role.COMMANDER,
+            input_summary=goal.description,
+            output_summary=(
+                f"used={budget_snapshot['used']}/{budget_snapshot['max']}, "
+                f"remaining={budget_snapshot['remaining']}"
+            ),
+            success=True,
+            details={
+                **budget_snapshot,
+                "shared_main_and_critic": True,
+                "reset_scope": "run",
+            },
+        )
+        self.receipts.append(budget_receipt)
+        result.receipts = list(self.receipts)
 
         if self.run_store is not None:
             try:
