@@ -1,0 +1,75 @@
+name: One-shot live-provider budget patch
+
+on:
+  push:
+    branches:
+      - ops/live-provider-runtime-wiring
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch bounded provider runtime controls
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tankai/core/llm.py")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, got {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''def _require_env(name: str) -> str:\n    import os\n    val = os.environ.get(name, "").strip()\n    if not val:\n        raise RuntimeError(\n            f"Umgebungsvariable {name} fehlt.\\n"\n            f"  export {name}='...' \\n"\n            f"Oder: TANKAI_LLM=mock für den Mock-Modus."\n        )\n    return val\n''',
+              '''def _require_env(name: str) -> str:\n    import os\n    val = os.environ.get(name, "").strip()\n    if not val:\n        raise RuntimeError(\n            f"Umgebungsvariable {name} fehlt.\\n"\n            f"  export {name}='...' \\n"\n            f"Oder: TANKAI_LLM=mock für den Mock-Modus."\n        )\n    return val\n\n\ndef _bounded_int(\n    name: str,\n    value: int | str | None,\n    *,\n    default: int,\n    minimum: int,\n    maximum: int,\n) -> int:\n    import os\n\n    raw = str(value).strip() if value is not None else os.environ.get(name, str(default)).strip()\n    if not raw:\n        raw = str(default)\n    try:\n        parsed = int(raw)\n    except ValueError as exc:\n        raise RuntimeError(f"{name} muss eine ganze Zahl sein") from exc\n    if parsed < minimum or parsed > maximum:\n        raise RuntimeError(f"{name} muss zwischen {minimum} und {maximum} liegen")\n    return parsed\n\n\ndef _bounded_float(\n    name: str,\n    value: float | str | None,\n    *,\n    default: float,\n    minimum: float,\n    maximum: float,\n) -> float:\n    import os\n\n    raw = str(value).strip() if value is not None else os.environ.get(name, str(default)).strip()\n    if not raw:\n        raw = str(default)\n    try:\n        parsed = float(raw)\n    except ValueError as exc:\n        raise RuntimeError(f"{name} muss eine Zahl sein") from exc\n    if parsed < minimum or parsed > maximum:\n        raise RuntimeError(f"{name} muss zwischen {minimum} und {maximum} liegen")\n    return parsed\n\n\ndef live_smoke_max_tokens() -> int:\n    """Hart begrenztes Tokenbudget für einen später separat autorisierten Live-Smoke."""\n    return _bounded_int(\n        "TANKAI_LIVE_SMOKE_MAX_TOKENS",\n        None,\n        default=256,\n        minimum=1,\n        maximum=1024,\n    )\n''',
+              "provider helpers",
+          )
+
+          replace_once(
+              '''        base_url: str | None = None,\n        max_tokens: int = 4096,\n    ) -> None:\n''',
+              '''        base_url: str | None = None,\n        max_tokens: int | None = None,\n        timeout_seconds: float | None = None,\n        max_retries: int | None = None,\n    ) -> None:\n''',
+              "OpenAI signature",
+          )
+          replace_once(
+              '''        self.model_name = self.model\n        self.temperature = temperature\n        self.max_tokens = max_tokens\n\n        client_kwargs: dict[str, Any] = {"api_key": key}\n''',
+              '''        self.model_name = self.model\n        self.temperature = temperature\n        self.max_tokens = _bounded_int(\n            "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192\n        )\n        self.timeout_seconds = _bounded_float(\n            "TANKAI_LLM_TIMEOUT_SECONDS", timeout_seconds, default=30.0, minimum=1.0, maximum=120.0\n        )\n        self.max_retries = _bounded_int(\n            "TANKAI_LLM_MAX_RETRIES", max_retries, default=1, minimum=0, maximum=3\n        )\n\n        client_kwargs: dict[str, Any] = {\n            "api_key": key,\n            "timeout": self.timeout_seconds,\n            "max_retries": self.max_retries,\n        }\n''',
+              "OpenAI runtime controls",
+          )
+
+          replace_once(
+              '''        api_key: str | None = None,\n        max_tokens: int = 4096,\n    ) -> None:\n''',
+              '''        api_key: str | None = None,\n        max_tokens: int | None = None,\n        timeout_seconds: float | None = None,\n        max_retries: int | None = None,\n    ) -> None:\n''',
+              "Anthropic signature",
+          )
+          replace_once(
+              '''        self.model_name = self.model\n        self.temperature = temperature\n        self.max_tokens = max_tokens\n        self.client = anthropic.Anthropic(api_key=key)\n''',
+              '''        self.model_name = self.model\n        self.temperature = temperature\n        self.max_tokens = _bounded_int(\n            "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192\n        )\n        self.timeout_seconds = _bounded_float(\n            "TANKAI_LLM_TIMEOUT_SECONDS", timeout_seconds, default=30.0, minimum=1.0, maximum=120.0\n        )\n        self.max_retries = _bounded_int(\n            "TANKAI_LLM_MAX_RETRIES", max_retries, default=1, minimum=0, maximum=3\n        )\n        self.client = anthropic.Anthropic(\n            api_key=key,\n            timeout=self.timeout_seconds,\n            max_retries=self.max_retries,\n        )\n''',
+              "Anthropic runtime controls",
+          )
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit final patch and remove helper workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/patch-live-provider-budgets-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tankai/core/llm.py .github/workflows/patch-live-provider-budgets-once.yml
+          git commit -m "ops: bound live-provider runtime budgets"
+          git push origin HEAD:ops/live-provider-runtime-wiring
