@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -8,6 +9,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / ".github" / "scripts" / "producti
 SPEC = importlib.util.spec_from_file_location("production_live_provider_readiness", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 evaluate = MODULE.evaluate
 
