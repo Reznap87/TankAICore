@@ -320,6 +320,61 @@ def _require_env(name: str) -> str:
     return val
 
 
+def _bounded_int(
+    name: str,
+    value: int | str | None,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    import os
+
+    raw = str(value).strip() if value is not None else os.environ.get(name, str(default)).strip()
+    if not raw:
+        raw = str(default)
+    try:
+        parsed = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} muss eine ganze Zahl sein") from exc
+    if parsed < minimum or parsed > maximum:
+        raise RuntimeError(f"{name} muss zwischen {minimum} und {maximum} liegen")
+    return parsed
+
+
+def _bounded_float(
+    name: str,
+    value: float | str | None,
+    *,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    import os
+
+    raw = str(value).strip() if value is not None else os.environ.get(name, str(default)).strip()
+    if not raw:
+        raw = str(default)
+    try:
+        parsed = float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} muss eine Zahl sein") from exc
+    if parsed < minimum or parsed > maximum:
+        raise RuntimeError(f"{name} muss zwischen {minimum} und {maximum} liegen")
+    return parsed
+
+
+def live_smoke_max_tokens() -> int:
+    """Hart begrenztes Tokenbudget für einen später separat autorisierten Live-Smoke."""
+    return _bounded_int(
+        "TANKAI_LIVE_SMOKE_MAX_TOKENS",
+        None,
+        default=256,
+        minimum=1,
+        maximum=1024,
+    )
+
+
 class OpenAILLM(BaseLLM):
     """
     OpenAI Chat Completions Adapter.
@@ -341,7 +396,9 @@ class OpenAILLM(BaseLLM):
         temperature: float = 0.2,
         api_key: str | None = None,
         base_url: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int | None = None,
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
     ) -> None:
         import os
         try:
@@ -357,9 +414,21 @@ class OpenAILLM(BaseLLM):
             raise RuntimeError("OPENAI_MODEL fehlt; Modell muss explizit konfiguriert werden")
         self.model_name = self.model
         self.temperature = temperature
-        self.max_tokens = max_tokens
+        self.max_tokens = _bounded_int(
+            "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192
+        )
+        self.timeout_seconds = _bounded_float(
+            "TANKAI_LLM_TIMEOUT_SECONDS", timeout_seconds, default=30.0, minimum=1.0, maximum=120.0
+        )
+        self.max_retries = _bounded_int(
+            "TANKAI_LLM_MAX_RETRIES", max_retries, default=1, minimum=0, maximum=3
+        )
 
-        client_kwargs: dict[str, Any] = {"api_key": key}
+        client_kwargs: dict[str, Any] = {
+            "api_key": key,
+            "timeout": self.timeout_seconds,
+            "max_retries": self.max_retries,
+        }
         base = base_url or os.environ.get("OPENAI_BASE_URL")
         if base:
             client_kwargs["base_url"] = base
@@ -398,7 +467,9 @@ class AnthropicLLM(BaseLLM):
         model: str | None = None,
         temperature: float = 0.2,
         api_key: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int | None = None,
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
     ) -> None:
         import os
         try:
@@ -414,8 +485,20 @@ class AnthropicLLM(BaseLLM):
             raise RuntimeError("ANTHROPIC_MODEL fehlt; Modell muss explizit konfiguriert werden")
         self.model_name = self.model
         self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.client = anthropic.Anthropic(api_key=key)
+        self.max_tokens = _bounded_int(
+            "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192
+        )
+        self.timeout_seconds = _bounded_float(
+            "TANKAI_LLM_TIMEOUT_SECONDS", timeout_seconds, default=30.0, minimum=1.0, maximum=120.0
+        )
+        self.max_retries = _bounded_int(
+            "TANKAI_LLM_MAX_RETRIES", max_retries, default=1, minimum=0, maximum=3
+        )
+        self.client = anthropic.Anthropic(
+            api_key=key,
+            timeout=self.timeout_seconds,
+            max_retries=self.max_retries,
+        )
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
         resp = self.client.messages.create(

@@ -49,18 +49,20 @@ ANTHROPIC_MODEL fehlt; Modell muss explizit konfiguriert werden
     )
     if wired:
         cloudflare = """
-TANKAI_LLM: env.TANKAI_LLM,
-OPENAI_API_KEY: env.OPENAI_API_KEY,
-ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
-TANKAI_REQUIRE_INDEPENDENT_CRITIC: "1",
-TANKAI_SEARCH_PROVIDER: env.TANKAI_SEARCH_PROVIDER,
-BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY,
-TAVILY_API_KEY: env.TAVILY_API_KEY,
-TANKAI_LLM_MAX_TOKENS
-TANKAI_LLM_TIMEOUT_SECONDS
-TANKAI_LLM_MAX_RETRIES
-TANKAI_LIVE_SMOKE_MAX_TOKENS
-mock
+TANKAI_LIVE_PROVIDER_ENABLED?: string;
+private readonly liveProviderEnabled = enabled(this.env.TANKAI_LIVE_PROVIDER_ENABLED);
+TANKAI_LLM: this.liveProviderEnabled ? clean(this.env.TANKAI_LLM) : "mock",
+OPENAI_API_KEY: this.liveProviderEnabled ? clean(this.env.OPENAI_API_KEY) : "",
+ANTHROPIC_API_KEY: this.liveProviderEnabled ? clean(this.env.ANTHROPIC_API_KEY) : "",
+TANKAI_CRITIC_LLM: this.liveProviderEnabled ? clean(this.env.TANKAI_CRITIC_LLM) : "",
+TANKAI_REQUIRE_INDEPENDENT_CRITIC: this.liveProviderEnabled ? "1" : "0",
+TANKAI_SEARCH_PROVIDER: this.liveProviderEnabled ? clean(this.env.TANKAI_SEARCH_PROVIDER) : "",
+BRAVE_SEARCH_API_KEY: this.liveProviderEnabled ? clean(this.env.BRAVE_SEARCH_API_KEY) : "",
+TAVILY_API_KEY: this.liveProviderEnabled ? clean(this.env.TAVILY_API_KEY) : "",
+TANKAI_LLM_MAX_TOKENS: clean(this.env.TANKAI_LLM_MAX_TOKENS, "2048"),
+TANKAI_LLM_TIMEOUT_SECONDS: clean(this.env.TANKAI_LLM_TIMEOUT_SECONDS, "30"),
+TANKAI_LLM_MAX_RETRIES: clean(this.env.TANKAI_LLM_MAX_RETRIES, "1"),
+TANKAI_LIVE_SMOKE_MAX_TOKENS: clean(this.env.TANKAI_LIVE_SMOKE_MAX_TOKENS, "256")
 """
     else:
         cloudflare = 'TANKAI_LLM: "mock",\nTANKAI_EMBEDDER: "hashing",\n'
@@ -88,6 +90,7 @@ def test_readiness_fails_closed_for_mock_only_container(tmp_path: Path) -> None:
     assert result["paid_provider_call"] is False
     assert result["deployment_triggered"] is False
     assert _check(result, "container_provider_selection")["status"] == "FAIL"
+    assert _check(result, "live_mode_fail_closed")["status"] == "FAIL"
     assert _check(result, "provider_secret_forwarding")["status"] == "FAIL"
     assert _check(result, "runtime_budget_contract")["status"] == "FAIL"
 

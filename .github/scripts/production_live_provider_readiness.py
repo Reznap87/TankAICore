@@ -37,13 +37,17 @@ def _contains_all(text: str, needles: Iterable[str]) -> bool:
 
 
 def _dynamic_container_value(source: str, name: str) -> bool:
-    markers = (
-        f"{name}: env.",
-        f"{name}: this.env.",
-        f'"{name}": env.',
-        f'"{name}": this.env.',
+    return any(
+        marker in source
+        for marker in (f"this.env.{name}", f"env.{name}")
     )
-    return any(marker in source for marker in markers)
+
+
+def _assignment_line_contains(source: str, name: str, *needles: str) -> bool:
+    return any(
+        name in line and all(needle in line for needle in needles)
+        for line in source.splitlines()
+    )
 
 
 def _provider_secret(provider: str) -> str:
@@ -112,6 +116,25 @@ def evaluate(
         )
     )
 
+    live_mode_fail_closed = (
+        "TANKAI_LIVE_PROVIDER_ENABLED" in cloudflare
+        and _assignment_line_contains(
+            cloudflare,
+            "TANKAI_LLM",
+            "liveProviderEnabled",
+            '"mock"',
+        )
+    )
+    checks.append(
+        Check(
+            "live_mode_fail_closed",
+            "PASS" if live_mode_fail_closed else "FAIL",
+            "live provider mode is opt-in and otherwise resolves to mock"
+            if live_mode_fail_closed
+            else "live-provider opt-in/mock fallback contract is missing",
+        )
+    )
+
     secret_forwarding_ok = all(
         _dynamic_container_value(cloudflare, name)
         for name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
@@ -131,15 +154,13 @@ def evaluate(
         ("get_critic_llm", "TANKAI_REQUIRE_INDEPENDENT_CRITIC"),
     )
     critic_production_enforced = (
-        "TANKAI_REQUIRE_INDEPENDENT_CRITIC" in cloudflare
-        and any(
-            marker in cloudflare
-            for marker in (
-                'TANKAI_REQUIRE_INDEPENDENT_CRITIC: "1"',
-                'TANKAI_REQUIRE_INDEPENDENT_CRITIC: "true"',
-                '"TANKAI_REQUIRE_INDEPENDENT_CRITIC": "1"',
-                '"TANKAI_REQUIRE_INDEPENDENT_CRITIC": "true"',
-            )
+        _dynamic_container_value(cloudflare, "TANKAI_CRITIC_LLM")
+        and _assignment_line_contains(
+            cloudflare,
+            "TANKAI_REQUIRE_INDEPENDENT_CRITIC",
+            "liveProviderEnabled",
+            '"1"',
+            '"0"',
         )
     )
     checks.append(
