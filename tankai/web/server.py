@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -30,7 +31,13 @@ from tankai import __version__
 from tankai.core.llm import LLMRateLimitExceeded
 from tankai.dev_orchestrator.job_queue import DevelopmentJobQueue, QueueError
 from tankai.dev_orchestrator.models import WorkerPipelineJob
-from tankai.web.auth import AuthContext, AuthStore, ProviderCallRateLimiter
+from tankai.web.auth import (
+    AGENT_TOKEN_SCOPES,
+    AgentAuthContext,
+    AuthContext,
+    AuthStore,
+    ProviderCallRateLimiter,
+)
 from tankai.web.runtime import WorkspaceRuntimeManager
 
 _CSP_NONCE = secrets.token_urlsafe(18)
@@ -454,6 +461,142 @@ class Handler(BaseHTTPRequestHandler):
             "error": job.error,
         }
 
+    @classmethod
+    def _external_job_payload(cls, job) -> dict[str, Any]:
+        payload = cls._development_job_payload(job)
+        payload["error"] = "Development job failed" if job.error else ""
+        payload["error_details_available"] = bool(job.error)
+        receipt: dict[str, Any] | None = None
+        if isinstance(job.result, dict) and isinstance(job.result.get("run"), dict):
+            run = job.result["run"]
+            receipt = {
+                key: run[key]
+                for key in (
+                    "run_id",
+                    "task_id",
+                    "state",
+                    "phase",
+                    "branch",
+                    "base_commit",
+                    "execution_backend",
+                    "changed_files",
+                    "implementation_commit",
+                    "rebased_from_commit",
+                    "rebased_commit",
+                    "integration_commit",
+                    "started_at",
+                    "finished_at",
+                )
+                if key in run
+            }
+        payload["result_available"] = job.result is not None
+        payload["result_receipt"] = receipt
+        return payload
+
+    @staticmethod
+    def _namespace_agent_pipeline(
+        context: AgentAuthContext,
+        idempotency_key: str,
+        pipeline: WorkerPipelineJob,
+    ) -> WorkerPipelineJob:
+        """Replace untrusted agent identities with a stable per-job namespace."""
+        key_digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:12]
+        namespace = f"EXT_{context.agent_id.replace('-', '')[:12]}_{key_digest}"
+        payload = pipeline.model_dump(mode="python")
+        payload["worker"]["agent_id"] = f"{namespace}_WORKER"
+        payload["gates"]["reviewer_agent_id"] = f"{namespace}_REVIEWER"
+        payload["gates"]["qa_agent_id"] = f"{namespace}_QA"
+        if payload["gates"].get("security_agent_id") is not None:
+            payload["gates"]["security_agent_id"] = f"{namespace}_SECURITY"
+        return WorkerPipelineJob.model_validate(payload)
+
+    @staticmethod
+    def _service_agent_payload(agent) -> dict[str, Any]:
+        return {
+            "agent_id": agent.agent_id,
+            "name": agent.name,
+            "description": agent.description,
+            "workspace_id": agent.workspace_id,
+            "owner_user_id": agent.owner_user_id,
+            "active": agent.is_active,
+            "created_at": agent.created_at.isoformat(),
+            "updated_at": agent.updated_at.isoformat(),
+        }
+
+    @staticmethod
+    def _agent_token_info_payload(token) -> dict[str, Any]:
+        return {
+            "token_id": token.token_id,
+            "token_prefix": token.token_prefix,
+            "label": token.label,
+            "scopes": list(token.scopes),
+            "repository_ids": list(token.repository_ids),
+            "created_at": token.created_at.isoformat(),
+            "expires_at": token.expires_at.isoformat(),
+            "last_used_at": token.last_used_at.isoformat() if token.last_used_at else None,
+            "revoked_at": token.revoked_at.isoformat() if token.revoked_at else None,
+        }
+
+    def _agent_context(self, *, scope: str | None = None) -> AgentAuthContext | None:
+        authorization = self.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if (
+            not separator
+            or scheme.casefold() != "bearer"
+            or not token
+            or token.strip() != token
+        ):
+            self._json(
+                {"error": "Gültiger Bearer-Token erforderlich"},
+                401,
+                headers={"WWW-Authenticate": 'Bearer realm="TankAICore External Agent API"'},
+            )
+            return None
+        context = self.app.auth.resolve_agent_token(token)
+        if context is None:
+            self._json(
+                {"error": "Agenten-Token ist ungültig, abgelaufen oder widerrufen"},
+                401,
+                headers={"WWW-Authenticate": 'Bearer realm="TankAICore External Agent API"'},
+            )
+            return None
+        if scope is not None and not context.has_scope(scope):
+            self._json({"error": f"Agenten-Scope fehlt: {scope}"}, 403)
+            return None
+        return context
+
+    def _audit_agent(
+        self,
+        context: AgentAuthContext,
+        event_type: str,
+        *,
+        success: bool,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        payload = {"agent_id": context.agent_id, "token_id": context.token_id}
+        payload.update(details or {})
+        self.app.auth.audit(
+            event_type,
+            user_id=context.owner_user_id,
+            workspace_id=context.workspace_id,
+            success=success,
+            details=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        )
+
+    def _agent_job(self, context: AgentAuthContext, job_id: str):
+        if not self.app.auth.agent_can_access_job(
+            agent_id=context.agent_id, job_id=job_id
+        ):
+            raise PermissionError("Auftrag nicht gefunden oder nicht für diesen Agenten freigegeben")
+        queue = self.app.job_queue
+        if queue is None:
+            raise QueueError("Development-Queue ist deaktiviert")
+        return queue.get_job(
+            actor_user_id=context.owner_user_id,
+            workspace_id=context.workspace_id,
+            job_id=job_id,
+        )
+
     def _require_job_queue(self) -> DevelopmentJobQueue | None:
         if self.app.job_queue is None:
             self._json({"error": "Development-Queue ist deaktiviert"}, 404)
@@ -480,6 +623,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+        if path.startswith("/api/v1/"):
+            self._do_agent_get(path)
             return
         if path == "/api/health":
             context = self._auth_context(required=False)
@@ -530,6 +676,39 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json({"workspaces": self._me_payload(context)["workspaces"]})
             return
+        if path == "/api/agents":
+            context = self._auth_context()
+            if not context:
+                return
+            if self.app.auth_mode == "disabled":
+                self._json({"error": "KI-Agenten benötigen serverseitige Authentifizierung"}, 409)
+                return
+            try:
+                agents = self.app.auth.list_service_agents(actor=context)
+                self._json(
+                    {"agents": [self._service_agent_payload(agent) for agent in agents]}
+                )
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            return
+        match = re.fullmatch(r"/api/agents/([0-9a-fA-F-]{36})/tokens", path)
+        if match:
+            context = self._auth_context()
+            if not context:
+                return
+            try:
+                UUID(match.group(1))
+                tokens = self.app.auth.list_agent_tokens(
+                    actor=context, agent_id=match.group(1)
+                )
+                self._json(
+                    {"tokens": [self._agent_token_info_payload(token) for token in tokens]}
+                )
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 404)
+            return
         if path == "/api/dev/repositories":
             context = self._auth_context()
             if not context:
@@ -574,6 +753,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if path.startswith("/api/v1/"):
+            self._do_agent_post(path)
+            return
         if path == "/api/auth/login":
             self._login()
             return
@@ -627,6 +809,130 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(exc)}, 403)
             except ValueError as exc:
                 self._json({"error": str(exc)}, 400)
+            return
+        if path == "/api/agents":
+            if self.app.auth_mode == "disabled":
+                self._json({"error": "KI-Agenten benötigen serverseitige Authentifizierung"}, 409)
+                return
+            data = self._read_json(max_bytes=20_000)
+            if data is None:
+                return
+            if set(data) - {"name", "description"}:
+                self._json({"error": "Unbekannte Felder im Agentenauftrag"}, 400)
+                return
+            name = data.get("name")
+            description = data.get("description", "")
+            if not isinstance(name, str) or not isinstance(description, str):
+                self._json({"error": "name und description müssen Text sein"}, 400)
+                return
+            try:
+                agent = self.app.auth.create_service_agent(
+                    actor=context, name=name, description=description
+                )
+                self._json({"agent": self._service_agent_payload(agent)}, 201)
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            return
+        match = re.fullmatch(r"/api/agents/([0-9a-fA-F-]{36})/tokens", path)
+        if match:
+            queue = self._require_job_queue()
+            if queue is None:
+                return
+            data = self._read_json(max_bytes=30_000)
+            if data is None:
+                return
+            allowed_fields = {"scopes", "repository_ids", "expires_in_days", "label"}
+            if set(data) - allowed_fields:
+                self._json({"error": "Unbekannte Felder im Tokenauftrag"}, 400)
+                return
+            scopes = data.get("scopes")
+            repository_ids = data.get("repository_ids")
+            expires_in_days = data.get("expires_in_days", 30)
+            label = data.get("label", "")
+            if (
+                not isinstance(scopes, list)
+                or not isinstance(repository_ids, list)
+                or not isinstance(label, str)
+            ):
+                self._json(
+                    {"error": "scopes und repository_ids müssen Listen sein; label muss Text sein"},
+                    400,
+                )
+                return
+            try:
+                UUID(match.group(1))
+                visible = {
+                    item.repository_id
+                    for item in queue.list_repositories(
+                        actor_user_id=context.user_id,
+                        workspace_id=context.workspace_id,
+                    )
+                    if item.enabled
+                }
+                requested = {str(item).strip() for item in repository_ids}
+                if not requested or not requested.issubset(visible):
+                    raise PermissionError(
+                        "Mindestens ein aktives Repository ist erforderlich und muss zum Workspace gehören"
+                    )
+                token = self.app.auth.create_agent_token(
+                    actor=context,
+                    agent_id=match.group(1),
+                    scopes=scopes,
+                    repository_ids=repository_ids,
+                    expires_in_days=expires_in_days,
+                    label=label,
+                )
+                self._json(
+                    {
+                        "token": {
+                            "token_id": token.token_id,
+                            "secret": token.token,
+                            "token_prefix": token.token_prefix,
+                            "scopes": list(token.scopes),
+                            "repository_ids": list(token.repository_ids),
+                            "created_at": token.created_at.isoformat(),
+                            "expires_at": token.expires_at.isoformat(),
+                            "shown_once": True,
+                        }
+                    },
+                    201,
+                )
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            return
+        match = re.fullmatch(
+            r"/api/agents/([0-9a-fA-F-]{36})/tokens/([0-9a-fA-F-]{36})/revoke",
+            path,
+        )
+        if match:
+            try:
+                UUID(match.group(1))
+                UUID(match.group(2))
+                self.app.auth.revoke_agent_token(
+                    actor=context, agent_id=match.group(1), token_id=match.group(2)
+                )
+                self._json({"ok": True})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 404)
+            return
+        match = re.fullmatch(r"/api/agents/([0-9a-fA-F-]{36})/deactivate", path)
+        if match:
+            try:
+                UUID(match.group(1))
+                self.app.auth.deactivate_service_agent(
+                    actor=context, agent_id=match.group(1)
+                )
+                self._json({"ok": True})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 404)
             return
         if path == "/api/dev/jobs":
             queue = self._require_job_queue()
@@ -704,6 +1010,256 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/run":
             self._run(context)
+            return
+        self._json({"error": "Nicht gefunden"}, 404)
+
+    def _do_agent_get(self, path: str) -> None:
+        if path == "/api/v1/capabilities":
+            context = self._agent_context()
+            if context is None:
+                return
+            policy_payload: dict[str, Any] | None = None
+            if self.app.job_queue is not None:
+                policy = self.app.job_queue.get_policy(context.workspace_id)
+                if policy is not None:
+                    policy_payload = {
+                        "enabled": policy.enabled,
+                        "max_queued": policy.max_queued,
+                        "max_running": policy.max_running,
+                        "max_memory_mb": policy.max_memory_mb,
+                        "max_cpus": policy.max_cpus,
+                        "max_pids": policy.max_pids,
+                        "max_runtime_seconds": policy.max_runtime_seconds,
+                        "max_attempts": policy.max_attempts,
+                    }
+            self._json(
+                {
+                    "api_version": "v1",
+                    "agent": {
+                        "agent_id": context.agent_id,
+                        "name": context.agent_name,
+                        "workspace_id": context.workspace_id,
+                    },
+                    "scopes": sorted(context.scopes),
+                    "available_scopes": sorted(AGENT_TOKEN_SCOPES),
+                    "repository_ids": sorted(context.repository_ids),
+                    "token_expires_at": context.expires_at.isoformat(),
+                    "development_queue_enabled": self.app.job_queue is not None,
+                    "queue_policy": policy_payload,
+                }
+            )
+            return
+        if path == "/api/v1/repositories":
+            context = self._agent_context(scope="repositories:read")
+            if context is None:
+                return
+            queue = self._require_job_queue()
+            if queue is None:
+                return
+            try:
+                repositories = queue.list_repositories(
+                    actor_user_id=context.owner_user_id,
+                    workspace_id=context.workspace_id,
+                )
+                self._json(
+                    {
+                        "repositories": [
+                            {
+                                "repository_id": item.repository_id,
+                                "name": item.name,
+                                "enabled": item.enabled,
+                            }
+                            for item in repositories
+                            if item.enabled and item.repository_id in context.repository_ids
+                        ]
+                    }
+                )
+            except (PermissionError, QueueError, ValueError) as exc:
+                self._audit_agent(
+                    context,
+                    "agent_repository_list",
+                    success=False,
+                    details={"reason": "authorization"},
+                )
+                self._json({"error": str(exc)}, 403)
+            return
+        if path == "/api/v1/jobs":
+            context = self._agent_context(scope="jobs:read")
+            if context is None:
+                return
+            queue = self._require_job_queue()
+            if queue is None:
+                return
+            jobs = []
+            try:
+                for job_id in self.app.auth.agent_job_ids(
+                    agent_id=context.agent_id, limit=100
+                ):
+                    try:
+                        job = queue.get_job(
+                            actor_user_id=context.owner_user_id,
+                            workspace_id=context.workspace_id,
+                            job_id=job_id,
+                        )
+                    except (PermissionError, QueueError, ValueError):
+                        continue
+                    if job.repository_id in context.repository_ids:
+                        jobs.append(self._external_job_payload(job))
+                self._json({"jobs": jobs})
+            except (PermissionError, QueueError, ValueError) as exc:
+                self._json({"error": str(exc)}, 403)
+            return
+        match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})", path)
+        if match:
+            context = self._agent_context(scope="jobs:read")
+            if context is None:
+                return
+            try:
+                UUID(match.group(1))
+                job = self._agent_job(context, match.group(1))
+                if job.repository_id not in context.repository_ids:
+                    raise PermissionError(
+                        "Repository ist für diesen KI-Agenten nicht freigegeben"
+                    )
+                self._json({"job": self._external_job_payload(job)})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 404)
+            except (QueueError, ValueError) as exc:
+                self._json({"error": str(exc)}, 409)
+            return
+        self._json({"error": "Nicht gefunden"}, 404)
+
+    def _do_agent_post(self, path: str) -> None:
+        if path == "/api/v1/jobs":
+            context = self._agent_context(scope="jobs:submit")
+            if context is None:
+                return
+            queue = self._require_job_queue()
+            if queue is None:
+                return
+            data = self._read_json(max_bytes=1_050_000)
+            if data is None:
+                return
+            if set(data) - {"repository_id", "idempotency_key", "pipeline", "priority"}:
+                self._json({"error": "Unbekannte Felder im Entwicklungsauftrag"}, 400)
+                return
+            repository_id = data.get("repository_id")
+            idempotency_key = data.get("idempotency_key")
+            pipeline_raw = data.get("pipeline")
+            priority = data.get("priority", 0)
+            if (
+                not isinstance(repository_id, str)
+                or not isinstance(idempotency_key, str)
+                or not isinstance(pipeline_raw, dict)
+            ):
+                self._json(
+                    {"error": "repository_id, idempotency_key und pipeline sind erforderlich"},
+                    400,
+                )
+                return
+            if not isinstance(priority, int) or isinstance(priority, bool):
+                self._json({"error": "priority muss eine Ganzzahl sein"}, 400)
+                return
+            clean_key = idempotency_key.strip()
+            if (
+                not clean_key
+                or len(clean_key) > 150
+                or any(ord(char) < 32 for char in clean_key)
+            ):
+                self._json({"error": "Ungültiger Idempotency-Key"}, 400)
+                return
+            if repository_id not in context.repository_ids:
+                self._audit_agent(
+                    context,
+                    "agent_job_enqueue",
+                    success=False,
+                    details={"reason": "repository_scope"},
+                )
+                self._json(
+                    {"error": "Repository ist für diesen KI-Agenten nicht freigegeben"}, 403
+                )
+                return
+            try:
+                parsed_pipeline = WorkerPipelineJob.model_validate(pipeline_raw)
+                namespaced_pipeline = self._namespace_agent_pipeline(
+                    context, clean_key, parsed_pipeline
+                )
+                job = queue.enqueue(
+                    actor_user_id=context.owner_user_id,
+                    workspace_id=context.workspace_id,
+                    repository_id=repository_id,
+                    pipeline=namespaced_pipeline,
+                    idempotency_key=f"agent:{context.agent_id}:{clean_key}",
+                    priority=priority,
+                )
+                self.app.auth.grant_agent_job(
+                    context=context,
+                    job_id=job.job_id,
+                    repository_id=repository_id,
+                )
+                self._audit_agent(
+                    context,
+                    "agent_job_enqueue",
+                    success=True,
+                    details={"job_id": job.job_id, "repository_id": repository_id},
+                )
+                self._json({"job": self._external_job_payload(job)}, 202)
+            except PermissionError as exc:
+                self._audit_agent(
+                    context,
+                    "agent_job_enqueue",
+                    success=False,
+                    details={"reason": "permission"},
+                )
+                self._json({"error": str(exc)}, 403)
+            except PydanticValidationError:
+                self._audit_agent(
+                    context,
+                    "agent_job_enqueue",
+                    success=False,
+                    details={"reason": "validation"},
+                )
+                self._json({"error": "Ungültiger Worker-Auftrag"}, 400)
+            except (QueueError, ValueError) as exc:
+                self._audit_agent(
+                    context,
+                    "agent_job_enqueue",
+                    success=False,
+                    details={"reason": "admission"},
+                )
+                self._json({"error": str(exc)}, 400)
+            return
+        match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})/cancel", path)
+        if match:
+            context = self._agent_context(scope="jobs:cancel")
+            if context is None:
+                return
+            queue = self._require_job_queue()
+            if queue is None:
+                return
+            try:
+                UUID(match.group(1))
+                current = self._agent_job(context, match.group(1))
+                if current.repository_id not in context.repository_ids:
+                    raise PermissionError(
+                        "Repository ist für diesen KI-Agenten nicht freigegeben"
+                    )
+                job = queue.cancel_job(
+                    actor_user_id=context.owner_user_id,
+                    workspace_id=context.workspace_id,
+                    job_id=match.group(1),
+                )
+                self._audit_agent(
+                    context,
+                    "agent_job_cancel",
+                    success=True,
+                    details={"job_id": job.job_id},
+                )
+                self._json({"job": self._external_job_payload(job)})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 404)
+            except (QueueError, ValueError) as exc:
+                self._json({"error": str(exc)}, 409)
             return
         self._json({"error": "Nicht gefunden"}, 404)
 

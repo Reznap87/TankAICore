@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### External Agent Gateway v1
+
+- Workspacegebundene Service-Agentenkonten mit sofortiger Deaktivierung ergänzt.
+- Zeitlich begrenzte, widerrufbare und ausschließlich gehasht gespeicherte
+  Maschinen-Tokens mit getrennten Scopes und Repository-Allowlist ergänzt.
+- Versionierte Bearer-API für Fähigkeiten, freigegebene Repositories sowie das
+  Einreichen, Lesen und Abbrechen eigener Development-Jobs ergänzt.
+- Agentenspezifische Job-Grants verhindern Einsicht in menschliche oder von
+  anderen Service-Agenten eingereichte Aufträge.
+- Maschinen-Idempotenzschlüssel werden serverseitig pro Agent namensräumlich
+  getrennt; bestehende Queue-, Container-, Ressourcen- und Review-Gates bleiben
+  unverändert verbindlich.
+- HTTP-Regressionstest deckt Scope-, Repository-, Job-, Token- und
+  Widerrufsgrenzen Ende-zu-Ende ab.
+
 ## 1.10.0-module-ownership
 
 **Releasevertrag: `TankAI-Core-1.10.0-module-ownership` · ProjectState Schema 6**

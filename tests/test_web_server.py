@@ -29,17 +29,29 @@ class Client:
         self.jar = CookieJar()
         self.opener = build_opener(HTTPCookieProcessor(self.jar))
 
-    def get(self, path: str):
+    def get(self, path: str, *, bearer: str | None = None):
+        request = Request(self.base + path)
+        if bearer:
+            request.add_header("Authorization", f"Bearer {bearer}")
         try:
-            with self.opener.open(self.base + path, timeout=30) as response:
+            with self.opener.open(request, timeout=30) as response:
                 return response.status, dict(response.headers), json.load(response)
         except HTTPError as exc:
             return exc.code, dict(exc.headers), json.load(exc)
 
-    def post(self, path: str, payload: dict, *, csrf: str | None = None):
+    def post(
+        self,
+        path: str,
+        payload: dict,
+        *,
+        csrf: str | None = None,
+        bearer: str | None = None,
+    ):
         headers = {"Content-Type": "application/json"}
         if csrf:
             headers["X-CSRF-Token"] = csrf
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"
         request = Request(
             self.base + path,
             data=json.dumps(payload).encode("utf-8"),
@@ -438,3 +450,239 @@ def test_development_queue_fails_closed_without_operator_bases(tmp_path, monkeyp
     monkeypatch.delenv("TANKAI_STATE_BASE", raising=False)
     with pytest.raises(RuntimeError, match="TANKAI_REPOSITORY_BASE"):
         web_server.AppContext.from_env("127.0.0.1")
+
+
+def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
+    tmp_path, monkeypatch
+) -> None:
+    store = _configure(monkeypatch, tmp_path)
+    owner, tenant, workspace = store.create_user_with_tenant(
+        email="agent-owner@example.com",
+        password="Agent-owner-password-123",
+        display_name="Agent Owner",
+        tenant_name="Agent Tenant",
+    )
+    repo_base = tmp_path / "repositories"
+    work_base = tmp_path / "worktrees"
+    state_base = tmp_path / "states"
+    allowed_repo = repo_base / "allowed"
+    blocked_repo = repo_base / "blocked"
+    _init_web_queue_repo(allowed_repo)
+    _init_web_queue_repo(blocked_repo)
+    monkeypatch.setenv("TANKAI_DEV_QUEUE_ENABLED", "1")
+    monkeypatch.setenv("TANKAI_REPOSITORY_BASE", str(repo_base))
+    monkeypatch.setenv("TANKAI_WORKTREE_BASE", str(work_base))
+    monkeypatch.setenv("TANKAI_STATE_BASE", str(state_base))
+
+    image = "tankai-worker@sha256:" + "d" * 64
+    app = web_server.AppContext.from_env("127.0.0.1")
+    assert app.job_queue is not None
+    app.job_queue.set_policy(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        policy=WorkspaceQueuePolicy(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            max_queued=10,
+            max_running=1,
+            max_memory_mb=512,
+            max_cpus=2,
+            max_pids=128,
+            max_runtime_seconds=120,
+            allowed_images=[image],
+        ),
+    )
+    allowed = app.job_queue.register_repository(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        name="Allowed",
+        repository_path=allowed_repo,
+        workspace_root=work_base / "allowed",
+        state_path=state_base / "allowed.json",
+    )
+    blocked = app.job_queue.register_repository(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        name="Blocked",
+        repository_path=blocked_repo,
+        workspace_root=work_base / "blocked",
+        state_path=state_base / "blocked.json",
+    )
+
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, _, unauthenticated = client.get("/api/v1/capabilities")
+        assert status == 401
+        assert "Bearer" in unauthenticated["error"]
+
+        status, _, login = client.post(
+            "/api/auth/login",
+            {
+                "email": "agent-owner@example.com",
+                "password": "Agent-owner-password-123",
+            },
+        )
+        assert status == 200
+        csrf = login["csrf_token"]
+
+        status, _, created_agent = client.post(
+            "/api/agents",
+            {"name": "External Coder", "description": "CI programming client"},
+            csrf=csrf,
+        )
+        assert status == 201
+        agent_id = created_agent["agent"]["agent_id"]
+
+        status, _, created_token = client.post(
+            f"/api/agents/{agent_id}/tokens",
+            {
+                "label": "integration-test",
+                "scopes": [
+                    "repositories:read",
+                    "jobs:submit",
+                    "jobs:read",
+                    "jobs:cancel",
+                ],
+                "repository_ids": [allowed.repository_id],
+                "expires_in_days": 7,
+            },
+            csrf=csrf,
+        )
+        assert status == 201
+        token_id = created_token["token"]["token_id"]
+        secret = created_token["token"]["secret"]
+        assert secret.startswith("tkai_v1_")
+        assert created_token["token"]["shown_once"] is True
+
+        status, _, token_list = client.get(f"/api/agents/{agent_id}/tokens")
+        assert status == 200
+        assert token_list["tokens"][0]["token_id"] == token_id
+        assert "secret" not in token_list["tokens"][0]
+
+        status, _, capabilities = client.get(
+            "/api/v1/capabilities", bearer=secret
+        )
+        assert status == 200
+        assert capabilities["api_version"] == "v1"
+        assert capabilities["agent"]["agent_id"] == agent_id
+        assert capabilities["repository_ids"] == [allowed.repository_id]
+
+        status, _, repositories = client.get(
+            "/api/v1/repositories", bearer=secret
+        )
+        assert status == 200
+        assert repositories == {
+            "repositories": [
+                {
+                    "repository_id": allowed.repository_id,
+                    "name": "Allowed",
+                    "enabled": True,
+                }
+            ]
+        }
+
+        status, _, scope_denied = client.post(
+            "/api/v1/jobs",
+            {
+                "repository_id": blocked.repository_id,
+                "idempotency_key": "blocked-job",
+                "pipeline": _web_queue_pipeline(image),
+            },
+            bearer=secret,
+        )
+        assert status == 403
+        assert "nicht freigegeben" in scope_denied["error"]
+
+        job_payload = {
+            "repository_id": allowed.repository_id,
+            "idempotency_key": "agent-job-1",
+            "pipeline": _web_queue_pipeline(image),
+        }
+        status, _, created_job = client.post(
+            "/api/v1/jobs", job_payload, bearer=secret
+        )
+        assert status == 202
+        job_id = created_job["job"]["job_id"]
+        stored_job = app.job_queue.get_job(
+            actor_user_id=owner, workspace_id=workspace, job_id=job_id
+        )
+        assert stored_job.pipeline.worker.agent_id.startswith(
+            f"EXT_{agent_id.replace('-', '')[:12]}_"
+        )
+        assert stored_job.pipeline.worker.agent_id != "AGENT_BACKEND_01"
+        stored_job.result = {
+            "run": {
+                "run_id": "safe-run",
+                "state": "succeeded",
+                "changed_files": ["tankai/safe.py"],
+                "workspace_path": "/srv/private/worktrees/secret",
+            },
+            "workspace": {"path": "/srv/private/worktrees/secret"},
+        }
+        stored_job.error = "failed under /srv/private/worktrees/secret"
+        safe_payload = web_server.Handler._external_job_payload(stored_job)
+        assert safe_payload["result_receipt"]["run_id"] == "safe-run"
+        assert safe_payload["error"] == "Development job failed"
+        assert "/srv/private" not in json.dumps(safe_payload)
+        status, _, duplicate_job = client.post(
+            "/api/v1/jobs", job_payload, bearer=secret
+        )
+        assert status == 202
+        assert duplicate_job["job"]["job_id"] == job_id
+
+        status, _, jobs = client.get("/api/v1/jobs", bearer=secret)
+        assert status == 200
+        assert [item["job_id"] for item in jobs["jobs"]] == [job_id]
+        assert "pipeline" not in jobs["jobs"][0]
+        status, _, job = client.get(f"/api/v1/jobs/{job_id}", bearer=secret)
+        assert status == 200
+        assert job["job"]["job_id"] == job_id
+
+        status, _, second_agent = client.post(
+            "/api/agents", {"name": "Read Only"}, csrf=csrf
+        )
+        assert status == 201
+        second_agent_id = second_agent["agent"]["agent_id"]
+        status, _, second_token = client.post(
+            f"/api/agents/{second_agent_id}/tokens",
+            {
+                "scopes": ["jobs:read"],
+                "repository_ids": [allowed.repository_id],
+            },
+            csrf=csrf,
+        )
+        assert status == 201
+        second_secret = second_token["token"]["secret"]
+        status, _, hidden = client.get(
+            f"/api/v1/jobs/{job_id}", bearer=second_secret
+        )
+        assert status == 404
+        assert "nicht gefunden" in hidden["error"]
+        status, _, submit_denied = client.post(
+            "/api/v1/jobs", job_payload, bearer=second_secret
+        )
+        assert status == 403
+        assert "jobs:submit" in submit_denied["error"]
+
+        status, _, cancelled = client.post(
+            f"/api/v1/jobs/{job_id}/cancel", {}, bearer=secret
+        )
+        assert status == 200
+        assert cancelled["job"]["state"] == "cancelled"
+
+        status, _, revoked = client.post(
+            f"/api/agents/{agent_id}/tokens/{token_id}/revoke", {}, csrf=csrf
+        )
+        assert status == 200 and revoked["ok"] is True
+        status, _, invalid = client.get("/api/v1/capabilities", bearer=secret)
+        assert status == 401
+        assert "widerrufen" in invalid["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

@@ -366,7 +366,7 @@ Host-Ausführung bleibt für lokale Kompatibilität verfügbar, besitzt aber kei
 
 ## Online-Mandantentrennung ab 1.1.0
 
-Die Webplattform verwendet eine separate Auth-Datenbank als Autoritätsquelle. Web-Runs, Memory, LTM, Vektoren und Historien sind pro Workspace getrennt. Seit Version 1.3 bindet die persistente Development-Queue jeden Worker-Payload zusätzlich an `user_id`, `tenant_id`, `workspace_id` und ein operatorseitig registriertes Repository. Admission-Richtlinien begrenzen Rollen, Queue-Größe, Parallelität, CPU, RAM, PIDs, Laufzeit, Retry-Anzahl und exakte Image-Digests. Für Multi-Host-Ausführung fehlen weiterhin eine serverbasierte Queue, externe Image-Signaturprüfung, kurzlebige Credentials und zentrales Monitoring.
+Die Webplattform verwendet eine separate Auth-Datenbank als Autoritätsquelle. Web-Runs, Memory, LTM, Vektoren und Historien sind pro Workspace getrennt. Seit Version 1.3 bindet die persistente Development-Queue jeden Worker-Payload zusätzlich an `user_id`, `tenant_id`, `workspace_id` und ein operatorseitig registriertes Repository. Admission-Richtlinien begrenzen Rollen, Queue-Größe, Parallelität, CPU, RAM, PIDs, Laufzeit, Retry-Anzahl und exakte Image-Digests. Das External Agent Gateway v1 ergänzt adminverwaltete Service-Agenten, gehashte zeitlich begrenzte Bearer-Tokens sowie Scope-, Repository- und agentenspezifische Job-Grenzen vor derselben Queue. Der vollständige Vertrag steht in `docs/EXTERNAL_AGENT_API.md`. Für Multi-Host-Ausführung fehlen weiterhin eine serverbasierte Queue, externe Image-Signaturprüfung, kurzlebige Credentials und zentrales Monitoring.
 
 ## Persistente Queue und Admission-Control
 
