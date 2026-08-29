@@ -37,6 +37,15 @@ _CSP_NONCE = secrets.token_urlsafe(18)
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
 _LOCAL_WORKSPACE_ID = "00000000-0000-4000-8000-000000000002"
+_BRAND_ASSET_ROOT = Path(__file__).with_name("static")
+_BRAND_ASSETS = {
+    "/favicon.ico": ("image/x-icon", (_BRAND_ASSET_ROOT / "favicon.ico").read_bytes()),
+    "/favicon.png": ("image/png", (_BRAND_ASSET_ROOT / "tankaicore-icon.png").read_bytes()),
+    "/apple-touch-icon.png": (
+        "image/png",
+        (_BRAND_ASSET_ROOT / "apple-touch-icon.png").read_bytes(),
+    ),
+}
 
 
 def _env(name: str, default: str = "") -> str:
@@ -166,6 +175,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>TankAI</title>
+  <meta name="theme-color" content="#071820"/>
+  <link rel="icon" href="/favicon.ico" sizes="any"/>
+  <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
   <style>
     :root { --bg:#0b0f14; --card:#1a2332; --border:#243044; --accent:#3b82f6;
       --accent2:#8b5cf6; --text:#e8eef7; --muted:#8b9bb4; }
@@ -174,6 +187,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     header { padding:1rem 1.5rem; border-bottom:1px solid var(--border); display:flex;
       justify-content:space-between; align-items:center; background:linear-gradient(90deg,#0f172a,#1e1b4b); }
     header h1 { margin:0; font-size:1.15rem; }
+    .brand { display:flex; align-items:center; gap:.75rem; }
+    .brand-mark { width:42px; height:42px; object-fit:contain; filter:drop-shadow(0 0 8px rgba(34,211,238,.4)); }
     .ver { color:var(--muted); font-size:.8rem; white-space:pre-wrap; }
     .layout { display:grid; grid-template-columns:1fr 300px; gap:1rem; max-width:1100px; margin:0 auto; padding:1rem; }
     .single { max-width:480px; margin:3rem auto; padding:1rem; }
@@ -203,7 +218,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <header><div><h1>TankAI</h1><div class="ver">Mandantenfähiges Web Intelligence OS</div></div><div class="ver" id="health">…</div></header>
+  <header><div class="brand"><img class="brand-mark" src="/favicon.png" width="42" height="42" alt="" aria-hidden="true"/><div><h1>TankAI</h1><div class="ver">Mandantenfähiges Web Intelligence OS</div></div></div><div class="ver" id="health">…</div></header>
   <main id="loginView" class="single">
     <div class="card"><h2>Anmeldung</h2>
       <label for="email">E-Mail</label><input id="email" type="email" autocomplete="username" maxlength="254"/>
@@ -294,11 +309,11 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[web] {self.address_string()} {fmt % args}")
 
-    def _security_headers(self) -> None:
+    def _security_headers(self, *, cache_control: str = "no-store") -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header(
             "Content-Security-Policy",
@@ -447,6 +462,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
+        brand_asset = _BRAND_ASSETS.get(path)
+        if brand_asset is not None:
+            content_type, body = brand_asset
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self._security_headers(cache_control="public, max-age=86400")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path in ("/", "/index.html"):
             body = HTML.encode("utf-8")
             self.send_response(200)

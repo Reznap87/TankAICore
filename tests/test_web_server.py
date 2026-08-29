@@ -5,7 +5,7 @@ import subprocess
 import threading
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 
 import pytest
 
@@ -246,7 +246,33 @@ def test_html_uses_safe_dom_rendering() -> None:
     assert "innerHTML" not in web_server.HTML
     assert "catch{}" not in web_server.HTML
     assert "textContent" in web_server.HTML
+    assert 'href="/favicon.ico"' in web_server.HTML
+    assert 'src="/favicon.png"' in web_server.HTML
     assert "HttpOnly" in web_server.Handler._session_cookie.__code__.co_consts
+
+
+def test_brand_assets_are_served(tmp_path, monkeypatch) -> None:
+    _configure(monkeypatch, tmp_path)
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        for path, content_type, signature in (
+            ("/favicon.ico", "image/x-icon", b"\x00\x00\x01\x00"),
+            ("/favicon.png", "image/png", b"\x89PNG\r\n\x1a\n"),
+            ("/apple-touch-icon.png", "image/png", b"\x89PNG\r\n\x1a\n"),
+        ):
+            with urlopen(base + path, timeout=5) as response:
+                assert response.status == 200
+                assert response.headers.get_content_type() == content_type
+                assert response.headers["Cache-Control"] == "public, max-age=86400"
+                assert response.read().startswith(signature)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def _web_queue_pipeline(image: str) -> dict:
