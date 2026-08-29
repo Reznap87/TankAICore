@@ -637,7 +637,6 @@ class Handler(BaseHTTPRequestHandler):
                 "registration_enabled": self.app.allow_registration,
                 "production_ready": False,
                 "development_queue_enabled": self.app.job_queue is not None,
-                "external_agent_api_version": "v1",
             }
             if context is not None:
                 try:
