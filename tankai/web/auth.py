@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import math
 import os
 import re
@@ -20,11 +21,15 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from tankai.core.llm import LLMRateLimitExceeded
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _NAME_RE = re.compile(r"[^a-z0-9_-]+")
 _ALLOWED_ROLES = {"owner", "admin", "member"}
+AGENT_TOKEN_SCOPES = frozenset(
+    {"repositories:read", "jobs:submit", "jobs:read", "jobs:cancel"}
+)
+_AGENT_TOKEN_PREFIX = "tkai_v1_"
 
 
 def _utcnow() -> datetime:
@@ -128,10 +133,65 @@ class SessionCreated:
     context: AuthContext
 
 
+@dataclass(frozen=True)
+class ServiceAgent:
+    agent_id: str
+    tenant_id: str
+    workspace_id: str
+    name: str
+    description: str
+    owner_user_id: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class AgentAuthContext:
+    agent_id: str
+    token_id: str
+    agent_name: str
+    owner_user_id: str
+    tenant_id: str
+    workspace_id: str
+    workspace_name: str
+    owner_role: str
+    scopes: frozenset[str]
+    repository_ids: frozenset[str]
+    expires_at: datetime
+
+    def has_scope(self, scope: str) -> bool:
+        return scope in self.scopes
+
+
+@dataclass(frozen=True)
+class AgentTokenCreated:
+    token_id: str
+    token: str
+    token_prefix: str
+    scopes: tuple[str, ...]
+    repository_ids: tuple[str, ...]
+    created_at: datetime
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class AgentTokenInfo:
+    token_id: str
+    token_prefix: str
+    scopes: tuple[str, ...]
+    repository_ids: tuple[str, ...]
+    label: str
+    created_at: datetime
+    expires_at: datetime
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+
+
 class AuthStore:
     """SQLite-basierter Auth-Store mit widerrufbaren, opaken Sessions."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, path: str | Path, *, session_hours: int = 12) -> None:
         self.path = Path(path)
@@ -225,7 +285,46 @@ class AuthStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_provider_calls_bucket
                     ON provider_call_events(user_id, provider, occurred_at);
-                INSERT OR REPLACE INTO auth_meta(key,value) VALUES('schema_version','2');
+                CREATE TABLE IF NOT EXISTS service_agents (
+                    id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    owner_user_id TEXT NOT NULL REFERENCES users(id),
+                    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(workspace_id, name)
+                );
+                CREATE INDEX IF NOT EXISTS idx_service_agents_workspace
+                    ON service_agents(tenant_id, workspace_id, is_active);
+                CREATE TABLE IF NOT EXISTS agent_tokens (
+                    id TEXT PRIMARY KEY,
+                    agent_id TEXT NOT NULL REFERENCES service_agents(id) ON DELETE CASCADE,
+                    token_prefix TEXT NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    scopes_json TEXT NOT NULL,
+                    repository_ids_json TEXT NOT NULL,
+                    label TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL REFERENCES users(id),
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    last_used_at TEXT,
+                    revoked_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_tokens_agent
+                    ON agent_tokens(agent_id, revoked_at, expires_at);
+                CREATE TABLE IF NOT EXISTS agent_job_grants (
+                    agent_id TEXT NOT NULL REFERENCES service_agents(id) ON DELETE CASCADE,
+                    job_id TEXT NOT NULL,
+                    repository_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY(agent_id, job_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_job_grants_recent
+                    ON agent_job_grants(agent_id, created_at DESC);
+                INSERT OR REPLACE INTO auth_meta(key,value) VALUES('schema_version','3');
                 COMMIT;
                 """
             )
@@ -676,6 +775,403 @@ class AuthStore:
         with self._connect() as conn:
             rows = conn.execute("SELECT id FROM workspaces ORDER BY id").fetchall()
         return [str(row["id"]) for row in rows]
+
+    @staticmethod
+    def _require_agent_admin(actor: AuthContext) -> None:
+        if actor.role not in {"owner", "admin"}:
+            raise PermissionError("Nur Owner oder Admins dürfen KI-Agenten verwalten")
+
+    @staticmethod
+    def _service_agent_from_row(row: sqlite3.Row) -> ServiceAgent:
+        return ServiceAgent(
+            agent_id=str(row["id"]),
+            tenant_id=str(row["tenant_id"]),
+            workspace_id=str(row["workspace_id"]),
+            name=str(row["name"]),
+            description=str(row["description"]),
+            owner_user_id=str(row["owner_user_id"]),
+            is_active=bool(row["is_active"]),
+            created_at=_parse_time(str(row["created_at"])),
+            updated_at=_parse_time(str(row["updated_at"])),
+        )
+
+    @staticmethod
+    def _normalize_agent_scopes(scopes: Iterable[str]) -> tuple[str, ...]:
+        if isinstance(scopes, (str, bytes)):
+            raise ValueError("Agenten-Scopes müssen als Liste übergeben werden")
+        normalized: set[str] = set()
+        for scope in scopes:
+            if not isinstance(scope, str):
+                raise ValueError("Agenten-Scopes müssen Textwerte sein")
+            normalized.add(scope.strip().lower())
+        if not normalized:
+            raise ValueError("Mindestens ein Agenten-Scope ist erforderlich")
+        invalid = sorted(normalized - AGENT_TOKEN_SCOPES)
+        if invalid:
+            raise ValueError("Unbekannte Agenten-Scopes: " + ", ".join(invalid))
+        if "jobs:submit" in normalized and "jobs:read" not in normalized:
+            raise ValueError("jobs:submit benötigt zusätzlich jobs:read")
+        if "jobs:cancel" in normalized and "jobs:read" not in normalized:
+            raise ValueError("jobs:cancel benötigt zusätzlich jobs:read")
+        return tuple(sorted(normalized))
+
+    @staticmethod
+    def _normalize_repository_ids(repository_ids: Iterable[str]) -> tuple[str, ...]:
+        if isinstance(repository_ids, (str, bytes)):
+            raise ValueError("Repository-IDs müssen als Liste übergeben werden")
+        normalized: set[str] = set()
+        for repository_id in repository_ids:
+            if not isinstance(repository_id, str):
+                raise ValueError("Repository-IDs müssen Textwerte sein")
+            value = repository_id.strip()
+            try:
+                UUID(value)
+            except ValueError as exc:
+                raise ValueError("Ungültige Repository-ID") from exc
+            normalized.add(value)
+        if not normalized:
+            raise ValueError("Mindestens ein Repository muss freigegeben werden")
+        if len(normalized) > 50:
+            raise ValueError("Ein Agenten-Token darf höchstens 50 Repositories freigeben")
+        return tuple(sorted(normalized))
+
+    def create_service_agent(
+        self,
+        *,
+        actor: AuthContext,
+        name: str,
+        description: str = "",
+    ) -> ServiceAgent:
+        self._require_agent_admin(actor)
+        clean_name = name.strip()
+        clean_description = description.strip()
+        if not clean_name or len(clean_name) > 120:
+            raise ValueError("Agentenname fehlt oder ist zu lang")
+        if len(clean_description) > 1_000:
+            raise ValueError("Agentenbeschreibung ist zu lang")
+        now = _utcnow()
+        agent_id = str(uuid4())
+        with self._lock, self._connect() as conn:
+            active_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM service_agents "
+                "WHERE workspace_id=? AND is_active=1",
+                (actor.workspace_id,),
+            ).fetchone()
+            if int(active_count["n"] if active_count else 0) >= 100:
+                raise ValueError("Workspace-Limit von 100 aktiven KI-Agenten erreicht")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO service_agents(
+                        id,tenant_id,workspace_id,name,description,owner_user_id,
+                        is_active,created_at,updated_at
+                    ) VALUES(?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        agent_id,
+                        actor.tenant_id,
+                        actor.workspace_id,
+                        clean_name,
+                        clean_description,
+                        actor.user_id,
+                        1,
+                        _iso(now),
+                        _iso(now),
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("Agentenname existiert in diesem Workspace bereits") from exc
+        self.audit(
+            "service_agent_created",
+            user_id=actor.user_id,
+            workspace_id=actor.workspace_id,
+            success=True,
+            details=json.dumps({"agent_id": agent_id}, separators=(",", ":")),
+        )
+        return ServiceAgent(
+            agent_id=agent_id,
+            tenant_id=actor.tenant_id,
+            workspace_id=actor.workspace_id,
+            name=clean_name,
+            description=clean_description,
+            owner_user_id=actor.user_id,
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+
+    def list_service_agents(self, *, actor: AuthContext) -> list[ServiceAgent]:
+        self._require_agent_admin(actor)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM service_agents WHERE tenant_id=? AND workspace_id=? "
+                "ORDER BY name COLLATE NOCASE,id",
+                (actor.tenant_id, actor.workspace_id),
+            ).fetchall()
+        return [self._service_agent_from_row(row) for row in rows]
+
+    def _service_agent_for_actor(
+        self, *, actor: AuthContext, agent_id: str, active_only: bool = False
+    ) -> ServiceAgent:
+        self._require_agent_admin(actor)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM service_agents WHERE id=? AND tenant_id=? AND workspace_id=?",
+                (agent_id, actor.tenant_id, actor.workspace_id),
+            ).fetchone()
+        if row is None:
+            raise ValueError("KI-Agent nicht gefunden")
+        agent = self._service_agent_from_row(row)
+        if active_only and not agent.is_active:
+            raise ValueError("KI-Agent ist deaktiviert")
+        return agent
+
+    def create_agent_token(
+        self,
+        *,
+        actor: AuthContext,
+        agent_id: str,
+        scopes: Iterable[str],
+        repository_ids: Iterable[str],
+        expires_in_days: int = 30,
+        label: str = "",
+    ) -> AgentTokenCreated:
+        agent = self._service_agent_for_actor(
+            actor=actor, agent_id=agent_id, active_only=True
+        )
+        normalized_scopes = self._normalize_agent_scopes(scopes)
+        normalized_repositories = self._normalize_repository_ids(repository_ids)
+        if not isinstance(expires_in_days, int) or isinstance(expires_in_days, bool):
+            raise ValueError("Token-Laufzeit muss eine Ganzzahl sein")
+        if expires_in_days < 1 or expires_in_days > 365:
+            raise ValueError("Token-Laufzeit muss zwischen 1 und 365 Tagen liegen")
+        clean_label = label.strip()
+        if len(clean_label) > 120:
+            raise ValueError("Token-Bezeichnung ist zu lang")
+
+        token_id = str(uuid4())
+        raw_token = _AGENT_TOKEN_PREFIX + secrets.token_urlsafe(48)
+        token_prefix = raw_token[:20]
+        created = _utcnow()
+        expires = created + timedelta(days=expires_in_days)
+        with self._lock, self._connect() as conn:
+            active_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM agent_tokens "
+                "WHERE agent_id=? AND revoked_at IS NULL AND expires_at>?",
+                (agent.agent_id, _iso(created)),
+            ).fetchone()
+            if int(active_count["n"] if active_count else 0) >= 20:
+                raise ValueError("Agenten-Limit von 20 aktiven Tokens erreicht")
+            conn.execute(
+                """
+                INSERT INTO agent_tokens(
+                    id,agent_id,token_prefix,token_hash,scopes_json,repository_ids_json,
+                    label,created_by,created_at,expires_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    token_id,
+                    agent.agent_id,
+                    token_prefix,
+                    _token_hash(raw_token),
+                    json.dumps(normalized_scopes, separators=(",", ":")),
+                    json.dumps(normalized_repositories, separators=(",", ":")),
+                    clean_label,
+                    actor.user_id,
+                    _iso(created),
+                    _iso(expires),
+                ),
+            )
+        self.audit(
+            "agent_token_created",
+            user_id=actor.user_id,
+            workspace_id=actor.workspace_id,
+            success=True,
+            details=json.dumps(
+                {"agent_id": agent.agent_id, "token_id": token_id},
+                separators=(",", ":"),
+            ),
+        )
+        return AgentTokenCreated(
+            token_id=token_id,
+            token=raw_token,
+            token_prefix=token_prefix,
+            scopes=normalized_scopes,
+            repository_ids=normalized_repositories,
+            created_at=created,
+            expires_at=expires,
+        )
+
+    def list_agent_tokens(
+        self, *, actor: AuthContext, agent_id: str
+    ) -> list[AgentTokenInfo]:
+        agent = self._service_agent_for_actor(actor=actor, agent_id=agent_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_tokens WHERE agent_id=? ORDER BY created_at DESC,id",
+                (agent.agent_id,),
+            ).fetchall()
+        return [
+            AgentTokenInfo(
+                token_id=str(row["id"]),
+                token_prefix=str(row["token_prefix"]),
+                scopes=tuple(json.loads(row["scopes_json"])),
+                repository_ids=tuple(json.loads(row["repository_ids_json"])),
+                label=str(row["label"]),
+                created_at=_parse_time(str(row["created_at"])),
+                expires_at=_parse_time(str(row["expires_at"])),
+                last_used_at=(
+                    _parse_time(str(row["last_used_at"]))
+                    if row["last_used_at"]
+                    else None
+                ),
+                revoked_at=(
+                    _parse_time(str(row["revoked_at"])) if row["revoked_at"] else None
+                ),
+            )
+            for row in rows
+        ]
+
+    def revoke_agent_token(
+        self, *, actor: AuthContext, agent_id: str, token_id: str
+    ) -> None:
+        agent = self._service_agent_for_actor(actor=actor, agent_id=agent_id)
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE agent_tokens SET revoked_at=? "
+                "WHERE id=? AND agent_id=? AND revoked_at IS NULL",
+                (_iso(_utcnow()), token_id, agent.agent_id),
+            )
+        if cursor.rowcount != 1:
+            raise ValueError("Aktiver Agenten-Token nicht gefunden")
+        self.audit(
+            "agent_token_revoked",
+            user_id=actor.user_id,
+            workspace_id=actor.workspace_id,
+            success=True,
+            details=json.dumps(
+                {"agent_id": agent.agent_id, "token_id": token_id},
+                separators=(",", ":"),
+            ),
+        )
+
+    def deactivate_service_agent(self, *, actor: AuthContext, agent_id: str) -> None:
+        agent = self._service_agent_for_actor(actor=actor, agent_id=agent_id)
+        now = _iso(_utcnow())
+        with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    "UPDATE service_agents SET is_active=0,updated_at=? WHERE id=?",
+                    (now, agent.agent_id),
+                )
+                conn.execute(
+                    "UPDATE agent_tokens SET revoked_at=? "
+                    "WHERE agent_id=? AND revoked_at IS NULL",
+                    (now, agent.agent_id),
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        self.audit(
+            "service_agent_deactivated",
+            user_id=actor.user_id,
+            workspace_id=actor.workspace_id,
+            success=True,
+            details=json.dumps({"agent_id": agent.agent_id}, separators=(",", ":")),
+        )
+
+    def resolve_agent_token(self, token: str) -> AgentAuthContext | None:
+        if (
+            not token
+            or len(token) > 512
+            or not token.startswith(_AGENT_TOKEN_PREFIX)
+        ):
+            return None
+        now = _utcnow()
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT t.id AS token_id,t.scopes_json,t.repository_ids_json,t.expires_at,
+                       a.id AS agent_id,a.name AS agent_name,a.owner_user_id,a.is_active,
+                       a.tenant_id,a.workspace_id,w.name AS workspace_name,
+                       u.is_active AS owner_active,m.role AS owner_role
+                FROM agent_tokens t
+                JOIN service_agents a ON a.id=t.agent_id
+                JOIN workspaces w ON w.id=a.workspace_id AND w.tenant_id=a.tenant_id
+                JOIN users u ON u.id=a.owner_user_id
+                JOIN memberships m
+                  ON m.user_id=a.owner_user_id AND m.workspace_id=a.workspace_id
+                WHERE t.token_hash=? AND t.revoked_at IS NULL
+                """,
+                (_token_hash(token),),
+            ).fetchone()
+            if (
+                row is None
+                or not row["is_active"]
+                or not row["owner_active"]
+                or _parse_time(str(row["expires_at"])) <= now
+            ):
+                return None
+            try:
+                scopes = self._normalize_agent_scopes(json.loads(row["scopes_json"]))
+                repository_ids = self._normalize_repository_ids(
+                    json.loads(row["repository_ids_json"])
+                )
+            except (ValueError, TypeError, json.JSONDecodeError):
+                return None
+            conn.execute(
+                "UPDATE agent_tokens SET last_used_at=? WHERE id=?",
+                (_iso(now), row["token_id"]),
+            )
+        return AgentAuthContext(
+            agent_id=str(row["agent_id"]),
+            token_id=str(row["token_id"]),
+            agent_name=str(row["agent_name"]),
+            owner_user_id=str(row["owner_user_id"]),
+            tenant_id=str(row["tenant_id"]),
+            workspace_id=str(row["workspace_id"]),
+            workspace_name=str(row["workspace_name"]),
+            owner_role=str(row["owner_role"]),
+            scopes=frozenset(scopes),
+            repository_ids=frozenset(repository_ids),
+            expires_at=_parse_time(str(row["expires_at"])),
+        )
+
+    def grant_agent_job(
+        self, *, context: AgentAuthContext, job_id: str, repository_id: str
+    ) -> None:
+        if repository_id not in context.repository_ids:
+            raise PermissionError("Repository ist für diesen KI-Agenten nicht freigegeben")
+        try:
+            UUID(job_id)
+        except ValueError as exc:
+            raise ValueError("Ungültige Job-ID") from exc
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO agent_job_grants(agent_id,job_id,repository_id,created_at) "
+                "VALUES(?,?,?,?)",
+                (context.agent_id, job_id, repository_id, _iso(_utcnow())),
+            )
+
+    def agent_job_ids(self, *, agent_id: str, limit: int = 100) -> list[str]:
+        bounded_limit = max(1, min(int(limit), 1_000))
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT job_id FROM agent_job_grants WHERE agent_id=? "
+                "ORDER BY created_at DESC,job_id LIMIT ?",
+                (agent_id, bounded_limit),
+            ).fetchall()
+        return [str(row["job_id"]) for row in rows]
+
+    def agent_can_access_job(self, *, agent_id: str, job_id: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM agent_job_grants WHERE agent_id=? AND job_id=?",
+                (agent_id, job_id),
+            ).fetchone()
+        return row is not None
 
 
 class ProviderCallRateLimiter:

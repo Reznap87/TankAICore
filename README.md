@@ -34,11 +34,12 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 159 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 193 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Admission-Control | Bindung an Nutzer, Mandant, Workspace, registriertes Repository, Rollen, Image-Digest und Ressourcenbudget |
 | Development-API | Authentifiziertes Einreichen, Auflisten und Abbrechen noch nicht geleaster Jobs |
+| External Agent Gateway v1 | Zeitlich begrenzte, widerrufbare Maschinen-Tokens mit Workspace-, Scope-, Repository- und Job-Isolation |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
 | Web-UI | CSP, Security-Header, sichere DOM-Erzeugung |
@@ -195,6 +196,26 @@ Die separate SQLite-Fence-Datenbank schützt einen kontrollierten **Single-Host-
 ### Betriebsgrenze der Queue
 
 Die SQLite-Queue ist für einen kontrollierten **Single-Host-Betrieb auf lokalem Dateisystem** ausgelegt. Sie darf nicht über NFS oder zwischen mehreren Hosts geteilt werden. Für verteilte Runner ist eine transaktionale Serverdatenbank beziehungsweise ein dedizierter Queue-Broker erforderlich.
+
+### External Agent Gateway v1
+
+Owner und Admins können pro Workspace kontrollierte Service-Agenten anlegen und
+ihnen zeitlich begrenzte Bearer-Tokens ausstellen. Ein Token enthält eine feste
+Repository-Allowlist und die getrennten Scopes `repositories:read`,
+`jobs:submit`, `jobs:read` und `jobs:cancel`. Der Roh-Token wird nur beim
+Erzeugen ausgegeben und ausschließlich gehasht gespeichert.
+
+Externe KI-Systeme verwenden die versionierten Endpunkte unter `/api/v1/`.
+Sie können ihre Fähigkeiten und Repositories abfragen sowie vollständig
+validierte `WorkerPipelineJob`-Aufträge einreichen, verfolgen und vor dem Lease
+abbrechen. Die bestehende Queue erzwingt weiterhin Rollen, Image-Digests,
+Ressourcenbudgets, Idempotenz, Container-Isolation, Leases und Prüf-Gates.
+Jeder Service-Agent sieht ausschließlich die von ihm selbst eingereichten Jobs.
+
+Die Verwaltungs- und M2M-Verträge einschließlich Beispielpayload stehen in
+[`docs/EXTERNAL_AGENT_API.md`](docs/EXTERNAL_AGENT_API.md). Version 1 ist bewusst
+noch kein autonomer Goal-to-Code-Compiler; freie Zieltexte werden nicht heimlich
+in ausführbare Shell-Kommandos übersetzt.
 
 ## Was 1.2.0 zusätzlich umsetzt
 

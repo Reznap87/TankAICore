@@ -4,6 +4,35 @@
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
 
+## Unreleased: External Agent Gateway v1 — lokaler Nachweis 29. August 2026
+
+Der Feature-Branch wurde mit folgenden nicht mutierenden Prüfungen gegen den
+aktuellen Repository-Stand geprüft:
+
+```text
+python -m compileall -q tankai tests
+python -m pytest -q
+PYTHONUTF8=1 python -m tankai --selftest
+git diff --check
+```
+
+Ergebnis:
+
+- Python-Compile: bestanden,
+- Pytest: 193 bestanden, 0 fehlgeschlagen,
+- TankAI-Self-Test: 24 bestanden, 0 fehlgeschlagen,
+- Diff-Whitespace-Prüfung: bestanden.
+
+Der neue Ende-zu-Ende-Test prüft Session- und CSRF-geschützte
+Agentenverwaltung, einmalige Token-Ausgabe, Bearer-Authentifizierung,
+Scope- und Repository-Sperren, agentenspezifische Job-Sichtbarkeit,
+Idempotenz, serverseitige Agenten-ID-Namensräume, Ergebnisfilterung ohne
+Hostpfade, Job-Abbruch und sofortigen Token-Widerruf.
+
+Dieser lokale Nachweis ist kein GitHub-CI-, Merge-, Deployment- oder
+Production-Receipt. Die vorhandenen Cloudflare- und Produktionsgates wurden
+dadurch nicht erneut ausgeführt oder autorisiert.
+
 ## Verifizierter Bezugsstand
 
 Die Synchronisierung begann auf dem öffentlichen `main`-Commit
