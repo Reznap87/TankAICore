@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import ValidationError as PydanticValidationError
 
-from tankai.web.auth import AuthStore
+from tankai.web.auth import AgentManagementActor, AuthStore
 
 from .job_queue import (
     DevelopmentJobQueue,
@@ -18,6 +19,14 @@ from .job_queue import (
     WorkspaceQueuePolicy,
 )
 from .models import WorkerPipelineJob
+
+
+@dataclass(frozen=True)
+class _OperatorActor:
+    user_id: str
+    tenant_id: str
+    workspace_id: str
+    role: str
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +89,64 @@ def build_parser() -> argparse.ArgumentParser:
     cancel.add_argument("--actor-email", required=True)
     cancel.add_argument("--workspace-id", required=True)
     cancel.add_argument("--job-id", required=True)
+
+    create_agent = sub.add_parser(
+        "create-service-agent",
+        help="Legt einen workspacegebundenen Service-Agenten an",
+    )
+    create_agent.add_argument("--actor-email", required=True)
+    create_agent.add_argument("--workspace-id", required=True)
+    create_agent.add_argument("--name", required=True)
+    create_agent.add_argument("--description", default="")
+
+    list_agents = sub.add_parser(
+        "list-service-agents",
+        help="Listet Service-Agenten ohne Token-Geheimnisse",
+    )
+    list_agents.add_argument("--actor-email", required=True)
+    list_agents.add_argument("--workspace-id", required=True)
+
+    create_token = sub.add_parser(
+        "create-agent-token",
+        help="Erzeugt einen einmalig sichtbaren, repositorygebundenen Agenten-Token",
+    )
+    create_token.add_argument("--actor-email", required=True)
+    create_token.add_argument("--workspace-id", required=True)
+    create_token.add_argument("--agent-id", required=True)
+    create_token.add_argument(
+        "--scope",
+        action="append",
+        required=True,
+        choices=["repositories:read", "jobs:submit", "jobs:read", "jobs:cancel"],
+    )
+    create_token.add_argument("--repository-id", action="append", required=True)
+    create_token.add_argument("--expires-in-days", type=int, default=30)
+    create_token.add_argument("--label", default="")
+
+    list_tokens = sub.add_parser(
+        "list-agent-tokens",
+        help="Listet Token-Metadaten; Roh-Tokens werden nie erneut ausgegeben",
+    )
+    list_tokens.add_argument("--actor-email", required=True)
+    list_tokens.add_argument("--workspace-id", required=True)
+    list_tokens.add_argument("--agent-id", required=True)
+
+    revoke_token = sub.add_parser(
+        "revoke-agent-token",
+        help="Widerruft genau einen aktiven Agenten-Token",
+    )
+    revoke_token.add_argument("--actor-email", required=True)
+    revoke_token.add_argument("--workspace-id", required=True)
+    revoke_token.add_argument("--agent-id", required=True)
+    revoke_token.add_argument("--token-id", required=True)
+
+    deactivate_agent = sub.add_parser(
+        "deactivate-service-agent",
+        help="Deaktiviert einen Service-Agenten und widerruft alle seine Tokens",
+    )
+    deactivate_agent.add_argument("--actor-email", required=True)
+    deactivate_agent.add_argument("--workspace-id", required=True)
+    deactivate_agent.add_argument("--agent-id", required=True)
 
     fence_status = sub.add_parser("fence-status", help="Zeigt den externen Repository-Fence")
     fence_status.add_argument("--actor-email", required=True)
@@ -161,6 +228,23 @@ def _actor(queue: DevelopmentJobQueue, email: str) -> str:
     return user_id
 
 
+def _agent_actor(
+    queue: DevelopmentJobQueue, email: str, workspace_id: str
+) -> AgentManagementActor:
+    if queue.auth is None:
+        raise ValueError("Auth-Datenbank fehlt")
+    user_id = _actor(queue, email)
+    access = queue.auth.workspace_access(user_id, workspace_id)
+    if access is None:
+        raise PermissionError("Kein Zugriff auf diesen Workspace")
+    return _OperatorActor(
+        user_id=user_id,
+        tenant_id=access.tenant_id,
+        workspace_id=access.id,
+        role=access.role,
+    )
+
+
 def _load_pipeline(path: str) -> WorkerPipelineJob:
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -173,6 +257,34 @@ def _dump(value) -> None:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def _service_agent_payload(agent) -> dict[str, object]:
+    return {
+        "agent_id": agent.agent_id,
+        "tenant_id": agent.tenant_id,
+        "workspace_id": agent.workspace_id,
+        "name": agent.name,
+        "description": agent.description,
+        "owner_user_id": agent.owner_user_id,
+        "is_active": agent.is_active,
+        "created_at": agent.created_at.isoformat(),
+        "updated_at": agent.updated_at.isoformat(),
+    }
+
+
+def _agent_token_payload(token) -> dict[str, object]:
+    return {
+        "token_id": token.token_id,
+        "token_prefix": token.token_prefix,
+        "scopes": list(token.scopes),
+        "repository_ids": list(token.repository_ids),
+        "label": token.label,
+        "created_at": token.created_at.isoformat(),
+        "expires_at": token.expires_at.isoformat(),
+        "last_used_at": token.last_used_at.isoformat() if token.last_used_at else None,
+        "revoked_at": token.revoked_at.isoformat() if token.revoked_at else None,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -244,6 +356,86 @@ def main(argv: list[str] | None = None) -> int:
                 job_id=args.job_id,
             )
             _dump(result)
+        elif args.command == "create-service-agent":
+            if queue.auth is None:
+                raise ValueError("Auth-Datenbank fehlt")
+            result = queue.auth.create_service_agent(
+                actor=_agent_actor(queue, args.actor_email, args.workspace_id),
+                name=args.name,
+                description=args.description,
+            )
+            _dump({"agent": _service_agent_payload(result)})
+        elif args.command == "list-service-agents":
+            if queue.auth is None:
+                raise ValueError("Auth-Datenbank fehlt")
+            result = queue.auth.list_service_agents(
+                actor=_agent_actor(queue, args.actor_email, args.workspace_id)
+            )
+            _dump({"agents": [_service_agent_payload(item) for item in result]})
+        elif args.command == "create-agent-token":
+            if queue.auth is None:
+                raise ValueError("Auth-Datenbank fehlt")
+            actor = _agent_actor(queue, args.actor_email, args.workspace_id)
+            visible = {
+                item.repository_id
+                for item in queue.list_repositories(
+                    actor_user_id=actor.user_id,
+                    workspace_id=actor.workspace_id,
+                )
+                if item.enabled
+            }
+            requested = {item.strip() for item in args.repository_id}
+            if not requested or not requested.issubset(visible):
+                raise PermissionError(
+                    "Mindestens ein aktives Repository ist erforderlich und muss zum Workspace gehören"
+                )
+            result = queue.auth.create_agent_token(
+                actor=actor,
+                agent_id=args.agent_id,
+                scopes=args.scope,
+                repository_ids=args.repository_id,
+                expires_in_days=args.expires_in_days,
+                label=args.label,
+            )
+            _dump(
+                {
+                    "token": {
+                        "token_id": result.token_id,
+                        "secret": result.token,
+                        "token_prefix": result.token_prefix,
+                        "scopes": list(result.scopes),
+                        "repository_ids": list(result.repository_ids),
+                        "created_at": result.created_at.isoformat(),
+                        "expires_at": result.expires_at.isoformat(),
+                        "shown_once": True,
+                    }
+                }
+            )
+        elif args.command == "list-agent-tokens":
+            if queue.auth is None:
+                raise ValueError("Auth-Datenbank fehlt")
+            result = queue.auth.list_agent_tokens(
+                actor=_agent_actor(queue, args.actor_email, args.workspace_id),
+                agent_id=args.agent_id,
+            )
+            _dump({"tokens": [_agent_token_payload(item) for item in result]})
+        elif args.command == "revoke-agent-token":
+            if queue.auth is None:
+                raise ValueError("Auth-Datenbank fehlt")
+            queue.auth.revoke_agent_token(
+                actor=_agent_actor(queue, args.actor_email, args.workspace_id),
+                agent_id=args.agent_id,
+                token_id=args.token_id,
+            )
+            _dump({"ok": True})
+        elif args.command == "deactivate-service-agent":
+            if queue.auth is None:
+                raise ValueError("Auth-Datenbank fehlt")
+            queue.auth.deactivate_service_agent(
+                actor=_agent_actor(queue, args.actor_email, args.workspace_id),
+                agent_id=args.agent_id,
+            )
+            _dump({"ok": True})
         elif args.command == "fence-status":
             result = queue.fence_status(
                 actor_user_id=_actor(queue, args.actor_email),

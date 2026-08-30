@@ -5,6 +5,9 @@
 ### External Agent Gateway v1
 
 - Workspacegebundene Service-Agentenkonten mit sofortiger Deaktivierung ergänzt.
+- Sicheren Operator-CLI-Lifecycle zum Anlegen, Auflisten, Token-Erzeugen,
+  Widerrufen und Deaktivieren von Service-Agenten ergänzt; Token-Repositories
+  werden gegen aktive Queue-Registrierungen geprüft.
 - Zeitlich begrenzte, widerrufbare und ausschließlich gehasht gespeicherte
   Maschinen-Tokens mit getrennten Scopes und Repository-Allowlist ergänzt.
 - Versionierte Bearer-API für Fähigkeiten, freigegebene Repositories sowie das

@@ -77,6 +77,61 @@ Das Feld `secret` in der Antwort muss sofort in einem Secret-Manager abgelegt
 werden. Spätere Listenantworten enthalten nur `token_prefix`, Metadaten und
 Nutzungszeitpunkte.
 
+## Operator-CLI für den Single-Host-Betrieb
+
+Auf dem dedizierten Queue-Host können Owner und Admins denselben Lifecycle ohne
+Browser-Session und CSRF-Übertragung über die lokale Operator-CLI verwalten. Die
+CLI benötigt Zugriff auf Auth- und Queue-Datenbank. Sie prüft Repository-IDs
+gegen die aktiven Registrierungen des ausgewählten Workspaces.
+
+Service-Agent anlegen:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  create-service-agent \
+  --actor-email admin@example.com \
+  --workspace-id WORKSPACE_UUID \
+  --name "External Coder" \
+  --description "Freigegebener Programmierclient"
+```
+
+Token erzeugen und die einmalige Ausgabe direkt in eine geschützte Datei
+schreiben:
+
+```bash
+umask 077
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  create-agent-token \
+  --actor-email admin@example.com \
+  --workspace-id WORKSPACE_UUID \
+  --agent-id AGENT_UUID \
+  --scope repositories:read \
+  --scope jobs:submit \
+  --scope jobs:read \
+  --scope jobs:cancel \
+  --repository-id REPOSITORY_UUID \
+  --expires-in-days 30 \
+  --label "production client" \
+  > /srv/tankai/secrets/external-coder-token.json
+```
+
+Weitere Lifecycle-Befehle sind `list-service-agents`, `list-agent-tokens`,
+`revoke-agent-token` und `deactivate-service-agent`. Listen geben niemals den
+Roh-Token aus. Die Deaktivierung widerruft alle noch aktiven Tokens des Agenten
+atomar.
+
 ## Machine-to-Machine-Endpunkte
 
 Alle v1-Endpunkte benötigen:

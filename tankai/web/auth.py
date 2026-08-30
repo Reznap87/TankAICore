@@ -18,7 +18,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Protocol
 
 from tankai.core.llm import LLMRateLimitExceeded
 from uuid import UUID, uuid4
@@ -125,6 +125,15 @@ class AuthContext:
     role: str
     csrf_token: str
     expires_at: datetime
+
+
+class AgentManagementActor(Protocol):
+    """Minimal server-side identity required for service-agent administration."""
+
+    user_id: str
+    tenant_id: str
+    workspace_id: str
+    role: str
 
 
 @dataclass(frozen=True)
@@ -777,7 +786,7 @@ class AuthStore:
         return [str(row["id"]) for row in rows]
 
     @staticmethod
-    def _require_agent_admin(actor: AuthContext) -> None:
+    def _require_agent_admin(actor: AgentManagementActor) -> None:
         if actor.role not in {"owner", "admin"}:
             raise PermissionError("Nur Owner oder Admins dürfen KI-Agenten verwalten")
 
@@ -838,7 +847,7 @@ class AuthStore:
     def create_service_agent(
         self,
         *,
-        actor: AuthContext,
+        actor: AgentManagementActor,
         name: str,
         description: str = "",
     ) -> ServiceAgent:
@@ -900,7 +909,9 @@ class AuthStore:
             updated_at=now,
         )
 
-    def list_service_agents(self, *, actor: AuthContext) -> list[ServiceAgent]:
+    def list_service_agents(
+        self, *, actor: AgentManagementActor
+    ) -> list[ServiceAgent]:
         self._require_agent_admin(actor)
         with self._connect() as conn:
             rows = conn.execute(
@@ -911,7 +922,11 @@ class AuthStore:
         return [self._service_agent_from_row(row) for row in rows]
 
     def _service_agent_for_actor(
-        self, *, actor: AuthContext, agent_id: str, active_only: bool = False
+        self,
+        *,
+        actor: AgentManagementActor,
+        agent_id: str,
+        active_only: bool = False,
     ) -> ServiceAgent:
         self._require_agent_admin(actor)
         with self._connect() as conn:
@@ -929,7 +944,7 @@ class AuthStore:
     def create_agent_token(
         self,
         *,
-        actor: AuthContext,
+        actor: AgentManagementActor,
         agent_id: str,
         scopes: Iterable[str],
         repository_ids: Iterable[str],
@@ -1003,7 +1018,7 @@ class AuthStore:
         )
 
     def list_agent_tokens(
-        self, *, actor: AuthContext, agent_id: str
+        self, *, actor: AgentManagementActor, agent_id: str
     ) -> list[AgentTokenInfo]:
         agent = self._service_agent_for_actor(actor=actor, agent_id=agent_id)
         with self._connect() as conn:
@@ -1033,7 +1048,7 @@ class AuthStore:
         ]
 
     def revoke_agent_token(
-        self, *, actor: AuthContext, agent_id: str, token_id: str
+        self, *, actor: AgentManagementActor, agent_id: str, token_id: str
     ) -> None:
         agent = self._service_agent_for_actor(actor=actor, agent_id=agent_id)
         with self._lock, self._connect() as conn:
@@ -1055,7 +1070,9 @@ class AuthStore:
             ),
         )
 
-    def deactivate_service_agent(self, *, actor: AuthContext, agent_id: str) -> None:
+    def deactivate_service_agent(
+        self, *, actor: AgentManagementActor, agent_id: str
+    ) -> None:
         agent = self._service_agent_for_actor(actor=actor, agent_id=agent_id)
         now = _iso(_utcnow())
         with self._lock, self._connect() as conn:
