@@ -577,6 +577,144 @@ def test_queue_cli_configures_enqueues_lists_and_cancels(tmp_path, capsys) -> No
     assert cancelled["state"] == "cancelled"
 
 
+def test_queue_cli_manages_service_agent_token_lifecycle(queue_env, capsys) -> None:
+    env = queue_env
+    common = [
+        "--queue-db", str(env["tmp"] / "queue.db"),
+        "--fence-db", str(env["queue"].fence_store.path),
+        "--auth-db", str(env["tmp"] / "auth.db"),
+        "--repository-base", str(env["tmp"] / "repositories"),
+        "--workspace-base", str(env["tmp"] / "worktrees"),
+        "--state-base", str(env["tmp"] / "states"),
+    ]
+    actor = [
+        "--actor-email", "owner@example.com",
+        "--workspace-id", env["workspace"],
+    ]
+
+    assert queue_cli_main(
+        common
+        + ["create-service-agent"]
+        + actor
+        + ["--name", "CLI Coder", "--description", "Operator-managed client"]
+    ) == 0
+    created = json.loads(capsys.readouterr().out)["agent"]
+    assert created["name"] == "CLI Coder"
+    assert created["workspace_id"] == env["workspace"]
+    agent_id = created["agent_id"]
+
+    assert queue_cli_main(common + ["list-service-agents"] + actor) == 0
+    listed_agents = json.loads(capsys.readouterr().out)["agents"]
+    assert [item["agent_id"] for item in listed_agents] == [agent_id]
+
+    assert queue_cli_main(
+        common
+        + ["create-agent-token"]
+        + actor
+        + [
+            "--agent-id", agent_id,
+            "--scope", "repositories:read",
+            "--scope", "jobs:submit",
+            "--scope", "jobs:read",
+            "--scope", "jobs:cancel",
+            "--repository-id", env["binding"].repository_id,
+            "--expires-in-days", "7",
+            "--label", "CLI lifecycle",
+        ]
+    ) == 0
+    created_token = json.loads(capsys.readouterr().out)["token"]
+    secret = created_token["secret"]
+    token_id = created_token["token_id"]
+    assert secret.startswith("tkai_v1_")
+    assert created_token["shown_once"] is True
+    assert env["auth"].resolve_agent_token(secret) is not None
+
+    assert queue_cli_main(
+        common + ["list-agent-tokens"] + actor + ["--agent-id", agent_id]
+    ) == 0
+    listed_tokens = json.loads(capsys.readouterr().out)["tokens"]
+    assert listed_tokens[0]["token_id"] == token_id
+    assert "secret" not in listed_tokens[0]
+
+    assert queue_cli_main(
+        common
+        + ["revoke-agent-token"]
+        + actor
+        + ["--agent-id", agent_id, "--token-id", token_id]
+    ) == 0
+    assert json.loads(capsys.readouterr().out) == {"ok": True}
+    assert env["auth"].resolve_agent_token(secret) is None
+
+    assert queue_cli_main(
+        common
+        + ["create-agent-token"]
+        + actor
+        + [
+            "--agent-id", agent_id,
+            "--scope", "jobs:read",
+            "--repository-id", env["binding"].repository_id,
+        ]
+    ) == 0
+    replacement_secret = json.loads(capsys.readouterr().out)["token"]["secret"]
+    assert queue_cli_main(
+        common
+        + ["deactivate-service-agent"]
+        + actor
+        + ["--agent-id", agent_id]
+    ) == 0
+    assert json.loads(capsys.readouterr().out) == {"ok": True}
+    assert env["auth"].resolve_agent_token(replacement_secret) is None
+
+    assert queue_cli_main(common + ["list-service-agents"] + actor) == 0
+    assert json.loads(capsys.readouterr().out)["agents"][0]["is_active"] is False
+
+
+def test_queue_cli_rejects_member_and_unregistered_agent_scope(queue_env, capsys) -> None:
+    env = queue_env
+    common = [
+        "--queue-db", str(env["tmp"] / "queue.db"),
+        "--fence-db", str(env["queue"].fence_store.path),
+        "--auth-db", str(env["tmp"] / "auth.db"),
+        "--repository-base", str(env["tmp"] / "repositories"),
+        "--workspace-base", str(env["tmp"] / "worktrees"),
+        "--state-base", str(env["tmp"] / "states"),
+    ]
+    assert queue_cli_main(
+        common
+        + [
+            "create-service-agent",
+            "--actor-email", "member@example.com",
+            "--workspace-id", env["workspace"],
+            "--name", "Forbidden",
+        ]
+    ) == 2
+    assert "Nur Owner oder Admins" in capsys.readouterr().out
+
+    owner = [
+        "--actor-email", "owner@example.com",
+        "--workspace-id", env["workspace"],
+    ]
+    assert queue_cli_main(
+        common + ["create-service-agent"] + owner + ["--name", "Scoped"]
+    ) == 0
+    agent_id = json.loads(capsys.readouterr().out)["agent"]["agent_id"]
+    assert queue_cli_main(
+        common
+        + ["create-agent-token"]
+        + owner
+        + [
+            "--agent-id", agent_id,
+            "--scope", "jobs:read",
+            "--repository-id", "00000000-0000-0000-0000-000000000001",
+        ]
+    ) == 2
+    assert "muss zum Workspace gehören" in capsys.readouterr().out
+    assert queue_cli_main(
+        common + ["list-agent-tokens"] + owner + ["--agent-id", agent_id]
+    ) == 0
+    assert json.loads(capsys.readouterr().out) == {"tokens": []}
+
+
 def test_queue_worker_cli_can_run_without_auth_db_when_idle(tmp_path, capsys) -> None:
     assert queue_cli_main([
         "--queue-db", str(tmp_path / "queue.db"),

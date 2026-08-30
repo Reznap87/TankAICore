@@ -188,7 +188,7 @@ Die separate SQLite-Fence-Datenbank schützt einen kontrollierten **Single-Host-
 - Geänderte Richtlinien werden unmittelbar vor dem Lease erneut geprüft. Nachträglich gesperrte Images oder reduzierte Ressourcenbudgets verhindern die Ausführung bereits wartender Jobs.
 - Worker beziehen Jobs über atomare Lease-Tokens, verlängern diese per Heartbeat und können nach Ablauf nur innerhalb des festgelegten Retry-Budgets erneut eingeplant werden.
 - Der Runner benötigt zum Verarbeiten der Queue keinen Zugriff auf die Auth-Datenbank. Authentifizierte Verwaltungs- und Einreichvorgänge bleiben vom Worker-Prozess getrennt.
-- Neue Operator-CLI: `python -m tankai.dev_orchestrator.queue_cli` mit `set-policy`, `register-repository`, `enqueue`, `list-jobs`, `cancel`, `run-once` und `run-worker`.
+- Operator-CLI: `python -m tankai.dev_orchestrator.queue_cli` verwaltet Queue-Richtlinien, Repositories, Jobs, Runner sowie den vollständigen Service-Agent-/Token-Lifecycle.
 - Neue authentifizierte Webendpunkte: `GET /api/dev/repositories`, `GET /api/dev/jobs`, `POST /api/dev/jobs` und `POST /api/dev/jobs/<uuid>/cancel`.
 - Member sehen nur ihre eigenen Development-Jobs; Owner und Admins sehen die Jobs des gesamten Workspaces. Pipeline-Befehle und Hostpfade werden über die Web-API nicht zurückgegeben.
 - Der Webdienst benötigt weiterhin weder Repository-Mounts noch Docker-/Podman-Socket. Nur der separate Runner erhält Zugriff auf Queue-Datei, registrierte Repositories, Worktrees, State-Pfade und die rootless Container-Runtime.
@@ -216,6 +216,11 @@ Die Verwaltungs- und M2M-Verträge einschließlich Beispielpayload stehen in
 [`docs/EXTERNAL_AGENT_API.md`](docs/EXTERNAL_AGENT_API.md). Version 1 ist bewusst
 noch kein autonomer Goal-to-Code-Compiler; freie Zieltexte werden nicht heimlich
 in ausführbare Shell-Kommandos übersetzt.
+
+Für den Single-Host-Betrieb kann ein Owner/Admin Service-Agenten und Tokens auch
+direkt über die lokale Queue-Operator-CLI verwalten. Token-Repository-IDs werden
+dabei gegen die aktive Workspace-Registrierung geprüft; Roh-Tokens erscheinen
+nur einmal beim Erzeugen.
 
 ## Was 1.2.0 zusätzlich umsetzt
 

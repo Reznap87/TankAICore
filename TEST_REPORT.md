@@ -4,6 +4,21 @@
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
 
+## Unreleased: Service-Agent Operator CLI — lokaler Nachweis 30. August 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 195 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- `tsc --noEmit`: PASS
+- gezielte CLI-Lifecycle- und Berechtigungsprüfungen: 2 PASS
+- geprüft: Anlegen/Auflisten, einmalige Token-Ausgabe, Token-Metadaten ohne
+  Secret, Widerruf, Deaktivierung mit Token-Widerruf, Member-Blockade und
+  Ablehnung nicht registrierter Repository-IDs
+- keine Secrets gesetzt oder gelesen, kein Provideraufruf, kein Deployment
+- lokaler Wrangler-Dry-Run in dieser Umgebung wegen blockiertem Netzwerkzugriff
+  nicht ausgeführt; der verpflichtende GitHub-CI-Job `cloudflare` bleibt das
+  Integrationsgate
+
 ## Unreleased: External Agent Gateway v1 — lokaler Nachweis 29. August 2026
 
 Der Feature-Branch wurde mit folgenden nicht mutierenden Prüfungen gegen den
