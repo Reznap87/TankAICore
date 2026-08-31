@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.6.1
+Version: 5.7.0
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 28. August 2026
+Statusdatum: 31. August 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 28. August 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 31. August 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,6 +44,23 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
+Verifizierter Repository-Implementierungsstand zu Beginn dieses Reality-Syncs:
+
+e43baadf3675af21d82aacde814f9fedf3739cf8
+
+Zugehöriger Repository-Git-Tree:
+
+1af824bb7b7aaa73bc893037179dd720023c8001
+
+Commit-Titel:
+
+feat: add service-agent operator CLI (#32)
+
+Dieser Stand ist der Ausgangsstand des Reality-Syncs. Ein nachfolgender Merge dieses
+Dokumentations- und Regressionstest-Inkrements darf den Branch-Head verändern, ohne dadurch den
+hier gebundenen Implementierungsstand oder den unten getrennt ausgewiesenen Production-Runtime-
+Stand rückwirkend zu ersetzen.
+
 Verifizierter Production-Runtime-Basis-Commit:
 
 d7edb12b764310f00804c724ad6d3b4bbc96b54a
@@ -81,6 +98,32 @@ Source-of-Truth-Stand interpretiert werden.
 0.3 Aktuell verifizierter Betriebs- und Deploymentstatus
 
 Verifiziert sind:
+
+Repository-Implementierungsstand e43baadf3675af21d82aacde814f9fedf3739cf8 mit Git-Tree
+1af824bb7b7aaa73bc893037179dd720023c8001,
+
+keine offenen Pull Requests und genau ein offenes Issue, Issue #25
+ops: production live-provider readiness gate, zum Prüfzeitpunkt dieses Reality-Syncs,
+
+die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
+
+die fail-closed Worker-zu-Container-Weiterleitung für explizit freigegebene Provider-, Critic-
+und Search-Konfiguration aus PR #27; der Default bleibt TANKAI_LLM=mock,
+
+der harte gemeinsame LLM-Aufrufdeckel pro Run aus PR #28,
+
+das persistente benutzer- und providergebundene Zeitfenster-Limit aus PR #29,
+
+das External Agent Gateway v1 aus PR #31 mit workspace-, scope-, repository- und
+agentengebundener Job-Isolation,
+
+die lokale Owner-/Admin-Operator-CLI für Service-Agenten und deren vollständigen Token-Lifecycle
+aus PR #32,
+
+TankAI Core CI Run #53, Run 33297972325, auf dem PR-#32-Head
+084f27043a96037284495877f2bbbc609fc8b592: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Compile, Pytests, Self-Test, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -154,6 +197,12 @@ Die aktuell deployte Cloudflare-Containerkonfiguration setzt TANKAI_LLM=mock und
 TANKAI_EMBEDDER=hashing. Damit ist die öffentlich erreichbare Web-/Container-Runtime real und
 verifiziert, aber dieser Receipt behauptet keinen produktiven Live-LLM-Providerbetrieb.
 
+Die später gemergten Live-Provider-Sicherheitsverträge, das External Agent Gateway und die
+Service-Agent-Operator-CLI sind auf Repository-Ebene implementiert und durch CI geprüft. Daraus
+folgt weder, dass sie auf dem Production-Runtime-Basis-Commit d7edb12 laufen, noch dass auf einem
+lokalen Host bereits Queue, Runner, Repository-Bindungen, Service-Agenten oder Token eingerichtet
+sind.
+
 Ebenfalls nicht aus dem Deploy-Receipt ableitbar sind:
 
 eine aktivierte persistente Development-Queue,
@@ -216,6 +265,23 @@ verpflichtenden Runtime-Smoke geprüft. Der Read-only-Preflight prüfte vor dem 
 den GitHub-/Cloudflare-Zugriff. Der eigentliche Cloudflare-Deploy erhielt eine separate exakte
 Autorisierung und wurde anschließend durch den öffentlichen Health-Endpunkt extern bestätigt.
 
+Für den aktuellen Repository-Implementierungsstand sind zusätzlich abgeschlossen:
+
+ops.production.live_provider_readiness.repository_receipt -> VERIFIED,
+
+ops.production.live_provider_readiness.fail_closed_forwarding -> VERIFIED,
+
+ops.production.live_provider_readiness.per_run_call_ceiling -> VERIFIED,
+
+ops.production.live_provider_readiness.per_user_provider_rate_ceiling -> VERIFIED,
+
+development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT,
+
+development.external_agent_operator_cli -> IMPLEMENTED UND CI-VERIFIZIERT.
+
+Diese repositoryseitigen Nachweise schließen das übergeordnete Production-Gate nicht. Sie dürfen
+nicht als Live-Provider-, Deployment- oder laufender Runner-Receipt umgedeutet werden.
+
 0.7 Aktives Gate
 
 Das nächste aktive Gate ist:
@@ -244,6 +310,25 @@ welcher minimale kontrollierte Live-Smoke-Test nach der Konfiguration ausgeführ
 
 welcher Rollback den Stand wieder auf den verifizierten Mock-/Hashing-Betrieb oder den vorherigen
 Worker-/Containerstand zurückführt.
+
+Die repositoryseitigen Vorarbeiten dafür sind durch PRs #26 bis #29 abgeschlossen und werden
+nicht wiederholt. Issue #25 bleibt offen, weil folgende Schritte von externer Konfiguration oder
+einer neuen konkreten Autorisierung abhängen:
+
+die ausdrückliche Auswahl der produktiven Hauptmodell-, unabhängigen Critic- und optionalen
+Search-Provider samt Modell-IDs,
+
+die reine Anwesenheitsprüfung der dafür benötigten Production-Secret-Namen,
+
+ein aktueller manueller Readiness-Receipt für den dann gewählten Vertrag,
+
+ein separat autorisierter, kostenbegrenzter Live-Smoke und gegebenenfalls ein neuer Deploy.
+
+Der Rest dieses Gates ist deshalb EXTERN BLOCKIERT. Unabhängige sichere Entwicklungsarbeit bleibt
+zulässig. Als nächster betrieblicher Single-Host-Pfad ist
+ops.development.single_host_runner_bootstrap BEREIT, sobald ein dedizierter nicht-root Linux- oder
+WSL-Host mit rootless Docker/Podman zur Verfügung steht. Dieser Pfad veröffentlicht keinen
+Runtime-Socket und aktiviert ohne Operator-Konfiguration weder Queue noch externe Agenten.
 
 Das Gate selbst autorisiert weder das Setzen neuer Secret-Werte noch einen weiteren
 Production-Deploy noch kostenpflichtige Modellaufrufe.
@@ -293,18 +378,27 @@ markieren, solange ein sicherer ausführbarer Task existiert.
 
 0.10 Unmittelbare Ausführungsreihenfolge
 
-1. Für ops.production.live_provider_readiness einen read-only Provider-/Secret-/Kosten-/Rollback-
-   Receipt erzeugen; keine Secret-Werte offenlegen und noch keinen neuen Deploy ausführen.
+1. Die in PRs #26 bis #29 abgeschlossenen repositoryseitigen Live-Provider-Verträge nicht
+   wiederholen. Issue #25 bleibt für die externen Konfigurations- und Autorisierungsschritte offen.
 
-2. Erst nach einer ausdrücklichen Entscheidung die benötigten serverseitigen Provider-, Critic-
-   und optionalen Search-Secrets konfigurieren.
+2. Erst nach einer ausdrücklichen Provider-/Modellentscheidung die benötigten serverseitigen
+   Provider-, Critic- und optionalen Search-Secret-Namen auf Anwesenheit prüfen und danach einen
+   manuellen Readiness-Receipt erzeugen; keine Secret-Werte ausgeben.
 
-3. Danach vollständige CI, Runtime-Smoke und Production Preflight für den dann aktuellen exakten
-   main-SHA wiederholen.
+3. Parallel zum extern blockierten Provider-Gate den Single-Host-Development-Runner ausschließlich
+   auf einem dedizierten nicht-root Linux-/WSL-Prozess mit rootless Runtime vorbereiten. Queue,
+   Auth-Datenbank, Repositories, Worktrees und Fence-State bleiben auf lokalem persistentem
+   Dateisystem; der Webprozess erhält keinen Container-Runtime-Socket.
 
-4. Einen weiteren Production-Deploy nur nach neuer exakter Autorisierung ausführen.
+4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
+   bereits implementierte Service-Agent-Operator-CLI verwenden. Erst danach kann ein externer
+   Programmieragent einen eng begrenzten v1-Job übergeben.
 
-5. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,
+5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
+   Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
+   exakter Autorisierung ausführen.
+
+6. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,
    unabhängiger Fehlerprüfung und vollständigem Receipt ausführen. Erst dieser Nachweis darf einen
    realen produktiven Modellpfad als VERIFIED markieren.
 
@@ -329,6 +423,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.0, 31. August 2026:
+
+Repository-Implementierungsstand auf e43baadf3675af21d82aacde814f9fedf3739cf8 / Tree
+1af824bb7b7aaa73bc893037179dd720023c8001 synchronisiert; PRs #26 bis #29 als abgeschlossene
+repositoryseitige Live-Provider-Sicherheitsverträge gebunden; External Agent Gateway v1 und
+Service-Agent-Operator-CLI aus PRs #31/#32 samt erfolgreicher CI #53 dokumentiert; verbleibenden
+Teil von Issue #25 als externen Konfigurations-/Autorisierungsblocker präzisiert; unabhängigen
+Single-Host-Runner-Bootstrap als bereiten, weiterhin fail-closed Betriebsweg benannt.
 
 5.6.1, 28. August 2026:
 
