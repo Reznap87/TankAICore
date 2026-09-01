@@ -450,6 +450,27 @@ python -m tankai.dev_orchestrator.runtime_cli --container-runtime docker
 ```
 
 Für Online-Queue-Worker müssen `rootless=true` und `os_type=linux` gemeldet werden. Das aktuelle SQLite-Fencing ist ausdrücklich kein Multi-Host-Konsenssystem; dafür ist ein externer transaktionaler Koordinator mit atomarem Compare-and-Swap erforderlich.
+
+Vollständiger read-only Single-Host-Receipt:
+
+```bash
+python -m tankai.dev_orchestrator.host_readiness \
+  --container-runtime docker \
+  --data-root /srv/tankai
+```
+
+Vor dem Aufruf legt der Operator auf lokalem persistentem Linux-Dateisystem die Verzeichnisse
+`queue`, `fences`, `repositories`, `worktrees` und `states` unter dem Daten-Root an und gibt sie
+gezielt einem dedizierten nicht-root Runner-Konto. Der Doctor verändert diese Pfade nicht. Er
+prüft Linux beziehungsweise WSL2, Mindestressourcen, vollständige und nicht world-writable
+Runner-Pfade, mindestens 20 GiB freien Speicher, rootless Docker/Podman und Cgroup v2. WSL1,
+Windows-PowerShell als Runner, `/mnt/c`, NFS, SMB und andere erkannte Remote-Dateisysteme werden
+abgelehnt. Der JSON-Receipt nennt jeden Check als `PASS`, `FAIL` oder `UNKNOWN`; nur
+`ready=true` erlaubt den nächsten manuellen Bootstrap-Schritt.
+
+Der Doctor richtet weder die Queue noch Auth-Datenbank, Service-Agenten, Tokens oder einen
+Systemdienst ein. Der öffentliche Webprozess darf weiterhin keinen Docker-/Podman-Socket erhalten.
+
 ## Labelgebundener Container-Reaper ab 1.6.0
 
 Container aus Queue-Worker-Läufen erhalten zusätzlich zu `tankai.managed`, `tankai.run_id` und `tankai.phase` folgende vom Dispatcher erzeugte Labels:

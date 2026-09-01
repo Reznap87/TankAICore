@@ -1,8 +1,24 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 31. August 2026
+**Statusdatum:** 1. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Single-Host-Runner-Doctor — lokaler Nachweis 1. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 202 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Host-Readiness- und Reality-Contract-Prüfungen: 7 PASS
+- tatsächlicher read-only CLI-Fail-Closed-Lauf in der Build-Umgebung: Exitcode 2 wie erwartet;
+  Root-Prozess, fehlendes `/srv/tankai`-Layout und fehlende Docker-Runtime wurden erkannt
+- geprüft: Linux/WSL2-Abgrenzung, nicht-root Pflicht, CPU/RAM/Festspeicher-Mindestwerte,
+  vollständige lokale Pfade, nicht world-writable Berechtigungen, 9p/DrvFS/NFS/SMB-Sperren,
+  Linux-/Rootless-/Cgroup-v2-Runtimeprofil und maschinenlesbarer JSON-Receipt
+- keine Pfade erzeugt, keine Queue gestartet, keine Secrets gelesen, kein Provideraufruf und
+  kein Deployment
+- vollständiger Wrangler-Dry-Run und Container-Build bleiben verpflichtende GitHub-CI-Gates für
+  den Pull Request
 
 ## Unreleased: Masterplan Reality Sync 5.7.0 — lokaler Nachweis 31. August 2026
 
