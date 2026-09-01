@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.0
+Version: 5.7.1
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 31. August 2026
+Statusdatum: 1. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 31. August 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 1. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,22 +44,21 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter Repository-Implementierungsstand zu Beginn dieses Reality-Syncs:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.1-Inkrements:
 
-e43baadf3675af21d82aacde814f9fedf3739cf8
+48ce98729d33254a21e484c8a69f0a1661d64458
 
 Zugehöriger Repository-Git-Tree:
 
-1af824bb7b7aaa73bc893037179dd720023c8001
+756abe0dfb68c4b48db57e7a0c757ad6bff17013
 
 Commit-Titel:
 
-feat: add service-agent operator CLI (#32)
+docs: sync masterplan to current repository reality (#33)
 
-Dieser Stand ist der Ausgangsstand des Reality-Syncs. Ein nachfolgender Merge dieses
-Dokumentations- und Regressionstest-Inkrements darf den Branch-Head verändern, ohne dadurch den
-hier gebundenen Implementierungsstand oder den unten getrennt ausgewiesenen Production-Runtime-
-Stand rückwirkend zu ersetzen.
+Dieser Stand ist der Ausgangsstand des Single-Host-Runner-Doctor-Inkrements. Ein nachfolgender
+Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen Ausgangsstand oder den
+unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu ersetzen.
 
 Verifizierter Production-Runtime-Basis-Commit:
 
@@ -99,8 +98,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-Repository-Implementierungsstand e43baadf3675af21d82aacde814f9fedf3739cf8 mit Git-Tree
-1af824bb7b7aaa73bc893037179dd720023c8001,
+geschützter main-Ausgangsstand 48ce98729d33254a21e484c8a69f0a1661d64458 mit Git-Tree
+756abe0dfb68c4b48db57e7a0c757ad6bff17013,
 
 keine offenen Pull Requests und genau ein offenes Issue, Issue #25
 ops: production live-provider readiness gate, zum Prüfzeitpunkt dieses Reality-Syncs,
@@ -124,6 +123,10 @@ TankAI Core CI Run #53, Run 33297972325, auf dem PR-#32-Head
 084f27043a96037284495877f2bbbc609fc8b592: completed/success; die Jobs test und cloudflare
 bestanden einschließlich Compile, Pytests, Self-Test, TypeScript-/Wrangler-Prüfung,
 Produktions-Container-Build und Container-Smoke,
+
+TankAI Core CI Run #55, Run 33366324557, auf dem PR-#33-Head
+ebdf6e88c2fccec4b0f3a8ce10331ae45105d746: completed/success; die Jobs test und cloudflare
+bestanden ohne offene Reviews, Threads oder Mergekonflikt,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -279,6 +282,11 @@ development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT,
 
 development.external_agent_operator_cli -> IMPLEMENTED UND CI-VERIFIZIERT.
 
+ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
+Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
+Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
+Eigenschaften von Docker/Podman und erzeugt dabei nur einen JSON-Receipt.
+
 Diese repositoryseitigen Nachweise schließen das übergeordnete Production-Gate nicht. Sie dürfen
 nicht als Live-Provider-, Deployment- oder laufender Runner-Receipt umgedeutet werden.
 
@@ -325,10 +333,11 @@ ein aktueller manueller Readiness-Receipt für den dann gewählten Vertrag,
 ein separat autorisierter, kostenbegrenzter Live-Smoke und gegebenenfalls ein neuer Deploy.
 
 Der Rest dieses Gates ist deshalb EXTERN BLOCKIERT. Unabhängige sichere Entwicklungsarbeit bleibt
-zulässig. Als nächster betrieblicher Single-Host-Pfad ist
-ops.development.single_host_runner_bootstrap BEREIT, sobald ein dedizierter nicht-root Linux- oder
-WSL-Host mit rootless Docker/Podman zur Verfügung steht. Dieser Pfad veröffentlicht keinen
-Runtime-Socket und aktiviert ohne Operator-Konfiguration weder Queue noch externe Agenten.
+zulässig. Für ops.development.single_host_runner_bootstrap ist der read-only Repository-Doctor
+IMPLEMENTIERT. Der konkrete Host bleibt OFFEN, bis dieser Doctor auf einem dedizierten nicht-root
+Linux- oder WSL2-Host mit rootless Docker/Podman vollständig PASS meldet. Dieser Pfad
+veröffentlicht keinen Runtime-Socket und aktiviert ohne Operator-Konfiguration weder Queue noch
+externe Agenten.
 
 Das Gate selbst autorisiert weder das Setzen neuer Secret-Werte noch einen weiteren
 Production-Deploy noch kostenpflichtige Modellaufrufe.
@@ -388,7 +397,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
 3. Parallel zum extern blockierten Provider-Gate den Single-Host-Development-Runner ausschließlich
    auf einem dedizierten nicht-root Linux-/WSL-Prozess mit rootless Runtime vorbereiten. Queue,
    Auth-Datenbank, Repositories, Worktrees und Fence-State bleiben auf lokalem persistentem
-   Dateisystem; der Webprozess erhält keinen Container-Runtime-Socket.
+   Dateisystem; der Webprozess erhält keinen Container-Runtime-Socket. Danach den rein lesenden
+   Host-Receipt mit `python -m tankai.dev_orchestrator.host_readiness --data-root /srv/tankai`
+   erzeugen und nur bei `ready=true` fortfahren.
 
 4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
    bereits implementierte Service-Agent-Operator-CLI verwenden. Erst danach kann ein externer
@@ -423,6 +434,14 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.1, 1. September 2026:
+
+Geschützten main-Ausgangsstand auf 48ce98729d33254a21e484c8a69f0a1661d64458 / Tree
+756abe0dfb68c4b48db57e7a0c757ad6bff17013 gebunden; read-only Single-Host-Runner-Doctor als
+repositoryseitig implementierten Teil von ops.development.single_host_runner_bootstrap
+dokumentiert; tatsächliche Host-Bereitschaft weiterhin an einen vollständigen PASS-Receipt
+gebunden und keine Queue-, Runtime-Socket-, Secret- oder Deployment-Aktivierung abgeleitet.
 
 5.7.0, 31. August 2026:
 

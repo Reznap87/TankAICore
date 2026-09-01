@@ -34,9 +34,10 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 196 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 202 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
+| Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
 | Admission-Control | Bindung an Nutzer, Mandant, Workspace, registriertes Repository, Rollen, Image-Digest und Ressourcenbudget |
 | Development-API | Authentifiziertes Einreichen, Auflisten und Abbrechen noch nicht geleaster Jobs |
 | External Agent Gateway v1 | Zeitlich begrenzte, widerrufbare Maschinen-Tokens mit Workspace-, Scope-, Repository- und Job-Isolation |
@@ -172,6 +173,21 @@ Der Reaper ist kein pauschales `rm -rf`. Er entfernt keine Symlink-Workspaces, k
 - Pro Repository ist in der Queue zusätzlich ein partieller Unique-Index für `leased`/`running` aktiv. Queue-Schema 3 migriert ältere Zustände und ergänzt `fence_epoch`.
 - Online-Queue-Worker verwenden `DockerCommandExecutor(..., require_rootless=True)`. Docker-/Podman-`info` wird mechanisch auf Linux und expliziten Rootless-Betrieb geprüft.
 - Neue Runtime-Diagnose: `python -m tankai.dev_orchestrator.runtime_cli --container-runtime docker`. Rootful-Runtimes werden standardmäßig mit Exitcode 2 abgelehnt.
+
+Vor der Einrichtung auf einem eigenen Rechner prüft der read-only Single-Host-Doctor zusätzlich
+Linux oder WSL2, ein dediziertes nicht-root Konto, mindestens zwei logische CPUs, 8192 MiB RAM,
+20480 MiB freien Speicher, das lokale Verzeichnislayout sowie Cgroup v2. Er erstellt keine
+Verzeichnisse, startet keine Queue und liest keine Secrets:
+
+```bash
+python -m tankai.dev_orchestrator.host_readiness \
+  --container-runtime docker \
+  --data-root /srv/tankai
+```
+
+Nur ein Receipt mit `ready=true` gibt den nächsten manuellen Einrichtungsschritt frei. Unter
+WSL2 müssen die Daten im Linux-Dateisystem liegen; `/mnt/c`, Netzlaufwerke, NFS und SMB werden
+fail-closed abgelehnt.
 
 ### Betriebsgrenze des Fencings
 

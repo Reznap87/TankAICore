@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Single-Host-Runner-Readiness
+
+- Rein lesenden JSON-Doctor für den Betrieb des Development-Runners auf Linux oder WSL2 ergänzt.
+- Dediziertes nicht-root Konto, CPU/RAM/Festspeicher-Mindestwerte, lokales persistentes
+  Speicherlayout und nicht world-writable Runner-Pfade werden fail-closed geprüft.
+- Docker-/Podman-Profil muss Linux, rootless und Cgroup v2 melden; Windows-/Netzwerk-Mounts wie
+  `/mnt/c`, 9p/DrvFS, NFS und SMB werden für Queue-, Fence-, Repository-, Worktree- und
+  State-Persistenz abgewiesen.
+- Der Doctor erstellt keine Pfade, startet keine Queue, liest keine Secrets und verändert keine
+  Runtime- oder Produktionskonfiguration.
+
 ### External Agent Gateway v1
 
 - Workspacegebundene Service-Agentenkonten mit sofortiger Deaktivierung ergänzt.

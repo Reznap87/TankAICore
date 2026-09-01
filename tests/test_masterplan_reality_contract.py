@@ -10,11 +10,11 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.0" in current
-    assert "Statusdatum: 31. August 2026" in current
-    assert "e43baadf3675af21d82aacde814f9fedf3739cf8" in current
-    assert "1af824bb7b7aaa73bc893037179dd720023c8001" in current
-    assert "TankAI Core CI Run #53" in current
+    assert "Version: 5.7.1" in current
+    assert "Statusdatum: 1. September 2026" in current
+    assert "48ce98729d33254a21e484c8a69f0a1661d64458" in current
+    assert "756abe0dfb68c4b48db57e7a0c757ad6bff17013" in current
+    assert "TankAI Core CI Run #55" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -28,5 +28,6 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
         in current
     )
     assert "Der Rest dieses Gates ist deshalb EXTERN BLOCKIERT" in current
-    assert "ops.development.single_host_runner_bootstrap BEREIT" in current
+    assert "single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED" in current
+    assert "Der konkrete Host bleibt OFFEN" in current
     assert "Für ops.production.live_provider_readiness einen read-only" not in current
