@@ -1,8 +1,29 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 1. September 2026
+**Statusdatum:** 2. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Job-Schema v1 — lokaler Nachweis 2. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 202 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Gateway- und Reality-Contract-Prüfungen: 9 PASS
+- `wrangler 4.124.0 types`: PASS
+- `typescript 7.0.2 tsc --noEmit`: PASS
+- Worker-Bundle-Dry-Run mit `--containers-rollout=none`: PASS; vollständiger lokaler
+  Container-Dry-Run erkennt erwartungsgemäß die in dieser Umgebung fehlende Docker-Runtime
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: Bearer-Pflicht, Capability-Discovery, stabiler Schema-Identifier und Draft,
+  unbekannte Felder, Pflichtfelder, Idempotenz-/Prioritätsgrenzen sowie vollständige
+  `WorkerPipelineJob`- und Isolationsstruktur
+- veröffentlichtes Schema und Submit-Endpunkt verwenden dasselbe Pydantic-Modell; serverseitige
+  Scope-, Repository-, Queue-, Image- und Ressourcenprüfungen bleiben unverändert verbindlich
+- keine Secrets gesetzt oder gelesen, keine Queue oder Runtime aktiviert, kein Provideraufruf und
+  kein Deployment
+- vollständiger Container-Build und Container-Smoke bleiben verpflichtende GitHub-CI-Gates für
+  den Pull Request
 
 ## Unreleased: Single-Host-Runner-Doctor — lokaler Nachweis 1. September 2026
 

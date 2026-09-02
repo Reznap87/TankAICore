@@ -143,11 +143,31 @@ Authorization: Bearer tkai_v1_REDACTED
 | Methode | Pfad | Scope |
 |---|---|---|
 | `GET` | `/api/v1/capabilities` | gültiger Token |
+| `GET` | `/api/v1/job-schema` | gültiger Token |
 | `GET` | `/api/v1/repositories` | `repositories:read` |
 | `GET` | `/api/v1/jobs` | `jobs:read` |
 | `GET` | `/api/v1/jobs/{job_id}` | `jobs:read` |
 | `POST` | `/api/v1/jobs` | `jobs:submit` |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `jobs:cancel` |
+
+`GET /api/v1/capabilities` nennt unter `job_submission` den Submit-Pfad, die
+HTTP-Methode sowie Pfad und Version des zugehörigen Schemas. Ein Client kann
+danach den vollständigen JSON-Schema-Draft-2020-12-Vertrag abrufen:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  https://TANKAI_HOST/api/v1/job-schema
+```
+
+Das Schema `urn:tankai:external-agent-job-submission:v1` beschreibt denselben
+Pydantic-Vertrag, den `POST /api/v1/jobs` validiert: die erlaubten Envelope-
+Felder, Pflichtfelder, Idempotenz- und Prioritätsgrenzen sowie die vollständige
+`WorkerPipelineJob`-Struktur einschließlich Container-Isolation. Unbekannte
+Felder sind nicht zulässig. Das Schema gewährt keine Berechtigung und ersetzt
+weder Token-Scopes noch Repository-Allowlist, Workspace-Policy, freigegebene
+Image-Digests oder Ressourcenbudgets; diese Laufzeit-Gates werden bei jeder
+Einreichung erneut geprüft.
 
 Beispielauftrag:
 
