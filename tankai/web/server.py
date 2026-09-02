@@ -30,7 +30,11 @@ if str(ROOT) not in sys.path:
 from tankai import __version__
 from tankai.core.llm import LLMRateLimitExceeded
 from tankai.dev_orchestrator.job_queue import DevelopmentJobQueue, QueueError
-from tankai.dev_orchestrator.models import WorkerPipelineJob
+from tankai.dev_orchestrator.models import (
+    ExternalAgentJobSubmission,
+    WorkerPipelineJob,
+    external_agent_job_submission_schema,
+)
 from tankai.web.auth import (
     AGENT_TOKEN_SCOPES,
     AgentAuthContext,
@@ -1046,6 +1050,29 @@ class Handler(BaseHTTPRequestHandler):
                     "token_expires_at": context.expires_at.isoformat(),
                     "development_queue_enabled": self.app.job_queue is not None,
                     "queue_policy": policy_payload,
+                    "job_submission": {
+                        "method": "POST",
+                        "path": "/api/v1/jobs",
+                        "schema_path": "/api/v1/job-schema",
+                        "schema_version": 1,
+                    },
+                }
+            )
+            return
+        if path == "/api/v1/job-schema":
+            if self._agent_context() is None:
+                return
+            self._json(
+                {
+                    "api_version": "v1",
+                    "schema_version": 1,
+                    "submission": {
+                        "method": "POST",
+                        "path": "/api/v1/jobs",
+                        "content_type": "application/json",
+                        "required_scope": "jobs:submit",
+                    },
+                    "schema": external_agent_job_submission_schema(),
                 }
             )
             return
@@ -1143,31 +1170,16 @@ class Handler(BaseHTTPRequestHandler):
             if set(data) - {"repository_id", "idempotency_key", "pipeline", "priority"}:
                 self._json({"error": "Unbekannte Felder im Entwicklungsauftrag"}, 400)
                 return
-            repository_id = data.get("repository_id")
-            idempotency_key = data.get("idempotency_key")
-            pipeline_raw = data.get("pipeline")
-            priority = data.get("priority", 0)
-            if (
-                not isinstance(repository_id, str)
-                or not isinstance(idempotency_key, str)
-                or not isinstance(pipeline_raw, dict)
-            ):
+            try:
+                submission = ExternalAgentJobSubmission.model_validate(data)
+            except PydanticValidationError:
                 self._json(
-                    {"error": "repository_id, idempotency_key und pipeline sind erforderlich"},
+                    {"error": "Ungültiger Entwicklungsauftrag"},
                     400,
                 )
                 return
-            if not isinstance(priority, int) or isinstance(priority, bool):
-                self._json({"error": "priority muss eine Ganzzahl sein"}, 400)
-                return
-            clean_key = idempotency_key.strip()
-            if (
-                not clean_key
-                or len(clean_key) > 150
-                or any(ord(char) < 32 for char in clean_key)
-            ):
-                self._json({"error": "Ungültiger Idempotency-Key"}, 400)
-                return
+            repository_id = submission.repository_id
+            clean_key = submission.idempotency_key
             if repository_id not in context.repository_ids:
                 self._audit_agent(
                     context,
@@ -1180,9 +1192,8 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             try:
-                parsed_pipeline = WorkerPipelineJob.model_validate(pipeline_raw)
                 namespaced_pipeline = self._namespace_agent_pipeline(
-                    context, clean_key, parsed_pipeline
+                    context, clean_key, submission.pipeline
                 )
                 job = queue.enqueue(
                     actor_user_id=context.owner_user_id,
@@ -1190,7 +1201,7 @@ class Handler(BaseHTTPRequestHandler):
                     repository_id=repository_id,
                     pipeline=namespaced_pipeline,
                     idempotency_key=f"agent:{context.agent_id}:{clean_key}",
-                    priority=priority,
+                    priority=submission.priority,
                 )
                 self.app.auth.grant_agent_job(
                     context=context,

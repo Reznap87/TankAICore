@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### External-Agent-Job-Schema v1
+
+- Authentifizierten, rein lesenden Endpunkt `/api/v1/job-schema` für den vollständigen
+  JSON-Schema-Draft-2020-12-Vertrag eines externen Development-Auftrags ergänzt.
+- `/api/v1/capabilities` veröffentlicht Methode, Submit-Pfad, Schema-Pfad und Schemaversion für
+  maschinelle Discovery.
+- API-Validierung und veröffentlichtes Schema verwenden dasselbe strikt typisierte Modell;
+  bestehende Scope-, Repository-, Queue-, Image- und Ressourcen-Gates bleiben verbindlich.
+
 ### Single-Host-Runner-Readiness
 
 - Rein lesenden JSON-Doctor für den Betrieb des Development-Runners auf Linux oder WSL2 ergänzt.

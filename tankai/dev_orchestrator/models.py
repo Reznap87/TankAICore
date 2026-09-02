@@ -413,6 +413,36 @@ class WorkerPipelineJob(OrchestratorModel):
     isolation: WorkerIsolationSpec | None = None
 
 
+class ExternalAgentJobSubmission(OrchestratorModel):
+    """Versioned request body accepted by the external-agent jobs endpoint."""
+
+    repository_id: str = Field(min_length=1, max_length=120)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=150,
+        pattern=r"^[^\x00-\x1f]+$",
+    )
+    priority: int = Field(default=0, ge=-100, le=100, strict=True)
+    pipeline: WorkerPipelineJob
+
+    @field_validator("idempotency_key", mode="before")
+    @classmethod
+    def _reject_control_characters(cls, value: Any) -> Any:
+        if isinstance(value, str) and any(ord(char) < 32 for char in value):
+            raise ValueError("Idempotency-Key enthält Steuerzeichen")
+        return value
+
+
+def external_agent_job_submission_schema() -> dict[str, Any]:
+    """Return the stable JSON Schema advertised by External Agent Gateway v1."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:tankai:external-agent-job-submission:v1",
+        **ExternalAgentJobSubmission.model_json_schema(mode="validation"),
+    }
+
+
 class WorkerPoolJob(OrchestratorModel):
     """A bounded set of independent coding-agent pipelines."""
 

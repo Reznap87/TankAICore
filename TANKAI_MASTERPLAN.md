@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.1
+Version: 5.7.2
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 1. September 2026
+Statusdatum: 2. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 1. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 2. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.1-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.2-Inkrements:
 
-48ce98729d33254a21e484c8a69f0a1661d64458
+d5cd3b9403f281f65a2053da846f6ed1663eef84
 
 Zugehöriger Repository-Git-Tree:
 
-756abe0dfb68c4b48db57e7a0c757ad6bff17013
+bb3ca90aee8457205f57a734be5a5f72684eb7de
 
 Commit-Titel:
 
-docs: sync masterplan to current repository reality (#33)
+ops: add single-host runner readiness doctor (#34)
 
-Dieser Stand ist der Ausgangsstand des Single-Host-Runner-Doctor-Inkrements. Ein nachfolgender
+Dieser Stand ist der Ausgangsstand des External-Agent-Job-Schema-Inkrements. Ein nachfolgender
 Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen Ausgangsstand oder den
 unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu ersetzen.
 
@@ -98,8 +98,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 48ce98729d33254a21e484c8a69f0a1661d64458 mit Git-Tree
-756abe0dfb68c4b48db57e7a0c757ad6bff17013,
+geschützter main-Ausgangsstand d5cd3b9403f281f65a2053da846f6ed1663eef84 mit Git-Tree
+bb3ca90aee8457205f57a734be5a5f72684eb7de,
 
 keine offenen Pull Requests und genau ein offenes Issue, Issue #25
 ops: production live-provider readiness gate, zum Prüfzeitpunkt dieses Reality-Syncs,
@@ -126,6 +126,13 @@ Produktions-Container-Build und Container-Smoke,
 
 TankAI Core CI Run #55, Run 33366324557, auf dem PR-#33-Head
 ebdf6e88c2fccec4b0f3a8ce10331ae45105d746: completed/success; die Jobs test und cloudflare
+bestanden ohne offene Reviews, Threads oder Mergekonflikt,
+
+der read-only Single-Host-Runner-Doctor aus PR #34; die tatsächliche Host-Bereitschaft bleibt bis
+zu einem vollständigen `ready=true`-Receipt offen,
+
+TankAI Core CI Run #57, Run 33478205544, auf dem PR-#34-Head
+57393f24c1fa6cef0c2207886c77b13948eb1149: completed/success; die Jobs test und cloudflare
 bestanden ohne offene Reviews, Threads oder Mergekonflikt,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -282,6 +289,10 @@ development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT,
 
 development.external_agent_operator_cli -> IMPLEMENTED UND CI-VERIFIZIERT.
 
+development.external_agent_job_schema.v1 -> IMPLEMENTED; der authentifizierte read-only
+Discovery-Endpunkt veröffentlicht den JSON-Schema-Draft-2020-12-Vertrag, der auch die
+Submit-Validierung steuert, ohne Token-, Repository-, Queue- oder Ressourcen-Gates zu ersetzen.
+
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
 Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
@@ -402,8 +413,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    erzeugen und nur bei `ready=true` fortfahren.
 
 4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
-   bereits implementierte Service-Agent-Operator-CLI verwenden. Erst danach kann ein externer
-   Programmieragent einen eng begrenzten v1-Job übergeben.
+   bereits implementierte Service-Agent-Operator-CLI verwenden. Der externe Programmieragent
+   liest danach den in den Capabilities beworbenen v1-Job-Schemavertrag und kann erst dann einen
+   lokal vorvalidierten, eng begrenzten v1-Job übergeben.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -434,6 +446,14 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.2, 2. September 2026:
+
+Geschützten main-Ausgangsstand auf d5cd3b9403f281f65a2053da846f6ed1663eef84 / Tree
+bb3ca90aee8457205f57a734be5a5f72684eb7de gebunden; PR #34 und CI Run #57 als erfolgreichen
+repositoryseitigen Single-Host-Doctor-Nachweis aufgenommen; versionierten, authentifizierten
+JSON-Schema-Discovery-Vertrag für externe v1-Development-Aufträge ergänzt, ohne daraus eine
+Host-, Queue-, Secret-, Provider- oder Deployment-Aktivierung abzuleiten.
 
 5.7.1, 1. September 2026:
 

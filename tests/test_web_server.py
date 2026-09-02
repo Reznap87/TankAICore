@@ -519,6 +519,9 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         status, _, unauthenticated = client.get("/api/v1/capabilities")
         assert status == 401
         assert "Bearer" in unauthenticated["error"]
+        status, _, unauthenticated_schema = client.get("/api/v1/job-schema")
+        assert status == 401
+        assert "Bearer" in unauthenticated_schema["error"]
 
         status, _, login = client.post(
             "/api/auth/login",
@@ -571,6 +574,59 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert capabilities["api_version"] == "v1"
         assert capabilities["agent"]["agent_id"] == agent_id
         assert capabilities["repository_ids"] == [allowed.repository_id]
+        assert capabilities["job_submission"] == {
+            "method": "POST",
+            "path": "/api/v1/jobs",
+            "schema_path": "/api/v1/job-schema",
+            "schema_version": 1,
+        }
+
+        status, _, job_schema = client.get(
+            "/api/v1/job-schema", bearer=secret
+        )
+        assert status == 200
+        assert job_schema["api_version"] == "v1"
+        assert job_schema["schema_version"] == 1
+        assert job_schema["submission"] == {
+            "method": "POST",
+            "path": "/api/v1/jobs",
+            "content_type": "application/json",
+            "required_scope": "jobs:submit",
+        }
+        schema = job_schema["schema"]
+        assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+        assert schema["$id"] == "urn:tankai:external-agent-job-submission:v1"
+        assert schema["additionalProperties"] is False
+        assert set(schema["required"]) == {
+            "repository_id",
+            "idempotency_key",
+            "pipeline",
+        }
+        assert schema["properties"]["idempotency_key"]["maxLength"] == 150
+        assert schema["properties"]["priority"]["minimum"] == -100
+        assert schema["properties"]["priority"]["maximum"] == 100
+        assert schema["$defs"]["WorkerIsolationSpec"]["properties"][
+            "network_mode"
+        ]["pattern"] == "^none$"
+
+        for invalid_envelope in (
+            {
+                "repository_id": allowed.repository_id,
+                "idempotency_key": "schema-priority",
+                "priority": 101,
+                "pipeline": _web_queue_pipeline(image),
+            },
+            {
+                "repository_id": allowed.repository_id,
+                "idempotency_key": "schema\ncontrol",
+                "pipeline": _web_queue_pipeline(image),
+            },
+        ):
+            status, _, rejected = client.post(
+                "/api/v1/jobs", invalid_envelope, bearer=secret
+            )
+            assert status == 400
+            assert rejected["error"] == "Ungültiger Entwicklungsauftrag"
 
         status, _, repositories = client.get(
             "/api/v1/repositories", bearer=secret
