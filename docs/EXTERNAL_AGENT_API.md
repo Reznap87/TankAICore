@@ -151,8 +151,9 @@ Authorization: Bearer tkai_v1_REDACTED
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `jobs:cancel` |
 
 `GET /api/v1/capabilities` nennt unter `job_submission` den Submit-Pfad, die
-HTTP-Methode sowie Pfad und Version des zugehörigen Schemas. Ein Client kann
-danach den vollständigen JSON-Schema-Draft-2020-12-Vertrag abrufen:
+HTTP-Methode, Pfad und Version des zugehörigen Schemas sowie Version, Pfadformat
+und Obergrenze strukturierter Validierungsfehler. Ein Client kann danach den
+vollständigen JSON-Schema-Draft-2020-12-Vertrag abrufen:
 
 ```bash
 curl --fail --silent --show-error \
@@ -168,6 +169,39 @@ Felder sind nicht zulässig. Das Schema gewährt keine Berechtigung und ersetzt
 weder Token-Scopes noch Repository-Allowlist, Workspace-Policy, freigegebene
 Image-Digests oder Ressourcenbudgets; diese Laufzeit-Gates werden bei jeder
 Einreichung erneut geprüft.
+
+### Strukturierte Validierungsfehler
+
+Kann der Submit-Endpunkt den JSON-Body nicht als
+`ExternalAgentJobSubmission` validieren, bleibt das bisherige Textfeld `error`
+erhalten. Zusätzlich liefert die Antwort einen versionierten, maschinenlesbaren
+Block:
+
+```json
+{
+  "error": "Ungültiger Entwicklungsauftrag",
+  "validation": {
+    "version": 1,
+    "path_format": "json-pointer",
+    "error_count": 1,
+    "truncated": false,
+    "errors": [
+      {
+        "path": "/pipeline/isolation/network_mode",
+        "code": "string_pattern_mismatch"
+      }
+    ]
+  }
+}
+```
+
+Es werden höchstens 20 Fehler ausgegeben; `error_count` nennt die Gesamtzahl
+und `truncated=true` kennzeichnet eine gekürzte Liste. Die Antwort enthält nur
+begrenzte JSON-Pointer und stabile Pydantic-Fehlercodes. Eingabewerte,
+Pydantic-Meldungen, Fehlerkontexte, URLs und ungewöhnliche frei gewählte
+Feldnamen werden nicht gespiegelt. Admission-Fehler aus Scopes,
+Repository-Freigaben oder Queue-Richtlinien bleiben davon getrennt und werden
+nicht als Schemafehler ausgegeben.
 
 Beispielauftrag:
 

@@ -579,6 +579,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "path": "/api/v1/jobs",
             "schema_path": "/api/v1/job-schema",
             "schema_version": 1,
+            "validation_errors": {
+                "version": 1,
+                "path_format": "json-pointer",
+                "max_errors": 20,
+            },
         }
 
         status, _, job_schema = client.get(
@@ -592,6 +597,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "path": "/api/v1/jobs",
             "content_type": "application/json",
             "required_scope": "jobs:submit",
+            "validation_errors": {
+                "version": 1,
+                "path_format": "json-pointer",
+                "max_errors": 20,
+            },
         }
         schema = job_schema["schema"]
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
@@ -609,24 +619,64 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "network_mode"
         ]["pattern"] == "^none$"
 
-        for invalid_envelope in (
-            {
-                "repository_id": allowed.repository_id,
-                "idempotency_key": "schema-priority",
-                "priority": 101,
-                "pipeline": _web_queue_pipeline(image),
-            },
-            {
-                "repository_id": allowed.repository_id,
-                "idempotency_key": "schema\ncontrol",
-                "pipeline": _web_queue_pipeline(image),
-            },
+        for invalid_envelope, expected_path, expected_code in (
+            (
+                {
+                    "repository_id": allowed.repository_id,
+                    "idempotency_key": "schema-priority",
+                    "priority": 101,
+                    "pipeline": _web_queue_pipeline(image),
+                },
+                "/priority",
+                "less_than_equal",
+            ),
+            (
+                {
+                    "repository_id": allowed.repository_id,
+                    "idempotency_key": "schema\ncontrol",
+                    "pipeline": _web_queue_pipeline(image),
+                },
+                "/idempotency_key",
+                "value_error",
+            ),
         ):
             status, _, rejected = client.post(
                 "/api/v1/jobs", invalid_envelope, bearer=secret
             )
             assert status == 400
             assert rejected["error"] == "Ungültiger Entwicklungsauftrag"
+            assert rejected["validation"] == {
+                "version": 1,
+                "path_format": "json-pointer",
+                "error_count": 1,
+                "truncated": False,
+                "errors": [{"path": expected_path, "code": expected_code}],
+            }
+
+        oversized_error = {
+            "repository_id": allowed.repository_id,
+            "idempotency_key": "bounded-errors",
+            "pipeline": _web_queue_pipeline(image),
+            "secret\nfield": "DO_NOT_REFLECT_THIS_VALUE",
+        }
+        oversized_error.update(
+            {f"unexpected_{index}": "DO_NOT_REFLECT_THIS_VALUE" for index in range(25)}
+        )
+        status, _, rejected = client.post(
+            "/api/v1/jobs", oversized_error, bearer=secret
+        )
+        assert status == 400
+        assert rejected["error"] == "Unbekannte Felder im Entwicklungsauftrag"
+        assert rejected["validation"]["error_count"] == 26
+        assert rejected["validation"]["truncated"] is True
+        assert len(rejected["validation"]["errors"]) == 20
+        assert rejected["validation"]["errors"][0] == {
+            "path": "/field",
+            "code": "extra_forbidden",
+        }
+        serialized_rejection = json.dumps(rejected)
+        assert "DO_NOT_REFLECT_THIS_VALUE" not in serialized_rejection
+        assert "secret\\nfield" not in serialized_rejection
 
         status, _, repositories = client.get(
             "/api/v1/repositories", bearer=secret
