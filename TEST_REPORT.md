@@ -1,8 +1,30 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 2. September 2026
+**Statusdatum:** 3. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Validierungsfehler v1 — lokaler Nachweis 3. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 202 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Gateway- und Reality-Contract-Prüfungen: 9 PASS
+- `python -m pip check`: PASS
+- `wrangler 4.124.0 types`: Typdatei vollständig erzeugt
+- `typescript 7.0.2 tsc --noEmit`: PASS
+- Worker-Bundle-Dry-Run mit `--containers-rollout=none`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: kompatibles Textfehlerfeld, Fehlerformat v1, JSON-Pointer, stabile Codes,
+  Gesamtanzahl, 20-Fehler-Grenze und explizites Kürzungskennzeichen
+- Negativtest mit 26 unbekannten Feldern bestätigt, dass Eingabewerte und ungewöhnliche
+  frei gewählte Feldnamen weder in Fehlerdetails noch in Pydantic-Meldungen gespiegelt werden
+- Capabilities und Job-Schema veröffentlichen Fehlerformat, Version und Obergrenze; Admission-
+  Fehler aus Scope-, Repository- und Queue-Regeln bleiben getrennt
+- keine Secrets gesetzt oder gelesen, keine Queue oder Runtime aktiviert, kein Provideraufruf und
+  kein Deployment
+- vollständiger Container-Build und Container-Smoke bleiben verpflichtende GitHub-CI-Gates für
+  den Pull Request
 
 ## Unreleased: External-Agent-Job-Schema v1 — lokaler Nachweis 2. September 2026
 

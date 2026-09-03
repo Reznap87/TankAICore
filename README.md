@@ -42,6 +42,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Development-API | Authentifiziertes Einreichen, Auflisten und Abbrechen noch nicht geleaster Jobs |
 | External Agent Gateway v1 | Zeitlich begrenzte, widerrufbare Maschinen-Tokens mit Workspace-, Scope-, Repository- und Job-Isolation |
 | External-Agent-Job-Schema | Authentifizierter JSON-Schema-Draft-2020-12-Vertrag für maschinelle Discovery und Vorvalidierung von v1-Aufträgen |
+| External-Agent-Validierungsfehler | Begrenzte, versionierte JSON-Pointer und Fehlercodes ohne Spiegelung von Eingabewerten oder internen Meldungen |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
 | Web-UI | CSP, Security-Header, sichere DOM-Erzeugung |
@@ -230,7 +231,10 @@ Ressourcenbudgets, Idempotenz, Container-Isolation, Leases und Prüf-Gates.
 Jeder Service-Agent sieht ausschließlich die von ihm selbst eingereichten Jobs.
 Der Capability-Receipt verweist auf `/api/v1/job-schema`; dort können Clients
 den versionierten JSON-Schema-Vertrag abrufen, den der Submit-Endpunkt selbst
-zur Validierung verwendet.
+zur Validierung verwendet. Ungültige Aufträge liefern zusätzlich sichere,
+maschinenlesbare Fehlerpfade und Codes, damit der Client den Payload gezielt
+korrigieren kann, ohne dass TankAI Eingabewerte oder interne Fehlermeldungen
+zurückgibt.
 
 Die Verwaltungs- und M2M-Verträge einschließlich Beispielpayload stehen in
 [`docs/EXTERNAL_AGENT_API.md`](docs/EXTERNAL_AGENT_API.md). Version 1 ist bewusst

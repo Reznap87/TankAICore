@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Validierungsfehler v1
+
+- Abgewiesene v1-Job-Payloads liefern zusätzlich zum kompatiblen Textfehler begrenzte,
+  versionierte Fehlercodes mit JSON-Pointer-Pfaden.
+- Maximal 20 Details werden zurückgegeben; Gesamtzahl und Kürzungsstatus bleiben
+  maschinenlesbar.
+- Eingabewerte, interne Pydantic-Meldungen und Fehlerkontexte werden nicht gespiegelt;
+  ungewöhnliche frei gewählte Feldnamen werden neutralisiert.
+- Capabilities und Job-Schema veröffentlichen Version, Pfadformat und Fehlerobergrenze für
+  automatische Clients.
+
 ### External-Agent-Job-Schema v1
 
 - Authentifizierten, rein lesenden Endpunkt `/api/v1/job-schema` für den vollständigen

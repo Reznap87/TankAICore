@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.2
+Version: 5.7.3
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 2. September 2026
+Statusdatum: 3. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 2. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 3. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,21 +44,22 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.2-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.3-Inkrements:
 
-d5cd3b9403f281f65a2053da846f6ed1663eef84
+b9a4ccb623619aeb016482161015da3b72533d1b
 
 Zugehöriger Repository-Git-Tree:
 
-bb3ca90aee8457205f57a734be5a5f72684eb7de
+539803430983b0ca1957c36296c78fc2b32f7a38
 
 Commit-Titel:
 
-ops: add single-host runner readiness doctor (#34)
+feat: publish external agent job schema (#35)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Job-Schema-Inkrements. Ein nachfolgender
-Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen Ausgangsstand oder den
-unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu ersetzen.
+Dieser Stand ist der Ausgangsstand des External-Agent-Validierungsfehler-Inkrements. Ein
+nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
+Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
+ersetzen.
 
 Verifizierter Production-Runtime-Basis-Commit:
 
@@ -98,8 +99,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand d5cd3b9403f281f65a2053da846f6ed1663eef84 mit Git-Tree
-bb3ca90aee8457205f57a734be5a5f72684eb7de,
+geschützter main-Ausgangsstand b9a4ccb623619aeb016482161015da3b72533d1b mit Git-Tree
+539803430983b0ca1957c36296c78fc2b32f7a38,
 
 keine offenen Pull Requests und genau ein offenes Issue, Issue #25
 ops: production live-provider readiness gate, zum Prüfzeitpunkt dieses Reality-Syncs,
@@ -134,6 +135,14 @@ zu einem vollständigen `ready=true`-Receipt offen,
 TankAI Core CI Run #57, Run 33478205544, auf dem PR-#34-Head
 57393f24c1fa6cef0c2207886c77b13948eb1149: completed/success; die Jobs test und cloudflare
 bestanden ohne offene Reviews, Threads oder Mergekonflikt,
+
+der authentifizierte External-Agent-Job-Schema-Vertrag aus PR #35, der maschinelle Discovery und
+Vorvalidierung ermöglicht, ohne die serverseitige Admission zu ersetzen,
+
+TankAI Core CI Run #59, Run 33602286155, auf dem PR-#35-Head
+2d0585d909a1f8fc244eb44e697cc1f3565b4ba0: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Produktions-Container-Build und Container-Smoke, ohne offene Reviews,
+Threads oder Mergekonflikt,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -289,9 +298,13 @@ development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT,
 
 development.external_agent_operator_cli -> IMPLEMENTED UND CI-VERIFIZIERT.
 
-development.external_agent_job_schema.v1 -> IMPLEMENTED; der authentifizierte read-only
-Discovery-Endpunkt veröffentlicht den JSON-Schema-Draft-2020-12-Vertrag, der auch die
+development.external_agent_job_schema.v1 -> IMPLEMENTED UND CI-VERIFIZIERT; der authentifizierte
+read-only Discovery-Endpunkt veröffentlicht den JSON-Schema-Draft-2020-12-Vertrag, der auch die
 Submit-Validierung steuert, ohne Token-, Repository-, Queue- oder Ressourcen-Gates zu ersetzen.
+
+development.external_agent_validation_errors.v1 -> IMPLEMENTED; ungültige v1-Job-Payloads
+liefern begrenzte, versionierte JSON-Pointer und Fehlercodes, aber keine Eingabewerte, internen
+Pydantic-Meldungen oder Fehlerkontexte.
 
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
@@ -414,8 +427,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
 
 4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
    bereits implementierte Service-Agent-Operator-CLI verwenden. Der externe Programmieragent
-   liest danach den in den Capabilities beworbenen v1-Job-Schemavertrag und kann erst dann einen
-   lokal vorvalidierten, eng begrenzten v1-Job übergeben.
+   liest danach den in den Capabilities beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene
+   Payloads anhand der begrenzten strukturierten Fehlercodes und kann erst dann einen lokal
+   vorvalidierten, eng begrenzten v1-Job übergeben.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -446,6 +460,14 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.3, 3. September 2026:
+
+Geschützten main-Ausgangsstand auf b9a4ccb623619aeb016482161015da3b72533d1b / Tree
+539803430983b0ca1957c36296c78fc2b32f7a38 gebunden; PR #35 und CI Run #59 als erfolgreichen
+External-Agent-Job-Schema-Nachweis aufgenommen; begrenzte, versionierte und nicht reflektierende
+Validierungsfehler für externe v1-Job-Payloads ergänzt, ohne Host-, Queue-, Secret-, Provider-
+oder Deployment-Aktivierung abzuleiten.
 
 5.7.2, 2. September 2026:
 

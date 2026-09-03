@@ -48,6 +48,10 @@ _CSP_NONCE = secrets.token_urlsafe(18)
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
 _LOCAL_WORKSPACE_ID = "00000000-0000-4000-8000-000000000002"
+_EXTERNAL_VALIDATION_ERROR_LIMIT = 20
+_EXTERNAL_VALIDATION_PATH_DEPTH = 16
+_EXTERNAL_VALIDATION_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
+_EXTERNAL_VALIDATION_CODE_RE = re.compile(r"^[a-z0-9_.-]{1,80}$")
 _BRAND_ASSET_ROOT = Path(__file__).with_name("static")
 _BRAND_ASSETS = {
     "/favicon.ico": ("image/x-icon", (_BRAND_ASSET_ROOT / "favicon.ico").read_bytes()),
@@ -73,6 +77,68 @@ def _safe_int(name: str, default: int, minimum: int, maximum: int) -> int:
     except ValueError as exc:
         raise RuntimeError(f"{name} muss eine Ganzzahl sein") from exc
     return max(minimum, min(maximum, value))
+
+
+def _external_validation_path(location: tuple[Any, ...]) -> str:
+    """Render a bounded JSON Pointer without reflecting arbitrary field names."""
+
+    parts: list[str] = []
+    for segment in location[:_EXTERNAL_VALIDATION_PATH_DEPTH]:
+        if isinstance(segment, int) and not isinstance(segment, bool) and segment >= 0:
+            parts.append(str(segment))
+        elif isinstance(segment, str) and _EXTERNAL_VALIDATION_SEGMENT_RE.fullmatch(segment):
+            parts.append(segment.replace("~", "~0").replace("/", "~1"))
+        else:
+            parts.append("field")
+    if len(location) > _EXTERNAL_VALIDATION_PATH_DEPTH:
+        parts.append("more")
+    return "/" + "/".join(parts) if parts else "/"
+
+
+def _external_validation_error_payload(
+    error: PydanticValidationError,
+) -> dict[str, Any]:
+    """Return stable validation metadata without messages, inputs, or contexts."""
+
+    raw_errors = error.errors(
+        include_url=False,
+        include_context=False,
+        include_input=False,
+    )
+    top_level_extra = any(
+        item.get("type") == "extra_forbidden" and len(item.get("loc", ())) == 1
+        for item in raw_errors
+    )
+    errors: list[dict[str, str]] = []
+    for item in raw_errors[:_EXTERNAL_VALIDATION_ERROR_LIMIT]:
+        location = tuple(item.get("loc", ()))
+        raw_code = item.get("type", "invalid")
+        code = (
+            raw_code
+            if isinstance(raw_code, str)
+            and _EXTERNAL_VALIDATION_CODE_RE.fullmatch(raw_code)
+            else "invalid"
+        )
+        errors.append(
+            {
+                "path": _external_validation_path(location),
+                "code": code,
+            }
+        )
+    return {
+        "error": (
+            "Unbekannte Felder im Entwicklungsauftrag"
+            if top_level_extra
+            else "Ungültiger Entwicklungsauftrag"
+        ),
+        "validation": {
+            "version": 1,
+            "path_format": "json-pointer",
+            "error_count": len(raw_errors),
+            "truncated": len(raw_errors) > _EXTERNAL_VALIDATION_ERROR_LIMIT,
+            "errors": errors,
+        },
+    }
 
 
 class LoginRateLimiter:
@@ -1055,6 +1121,11 @@ class Handler(BaseHTTPRequestHandler):
                         "path": "/api/v1/jobs",
                         "schema_path": "/api/v1/job-schema",
                         "schema_version": 1,
+                        "validation_errors": {
+                            "version": 1,
+                            "path_format": "json-pointer",
+                            "max_errors": _EXTERNAL_VALIDATION_ERROR_LIMIT,
+                        },
                     },
                 }
             )
@@ -1071,6 +1142,11 @@ class Handler(BaseHTTPRequestHandler):
                         "path": "/api/v1/jobs",
                         "content_type": "application/json",
                         "required_scope": "jobs:submit",
+                        "validation_errors": {
+                            "version": 1,
+                            "path_format": "json-pointer",
+                            "max_errors": _EXTERNAL_VALIDATION_ERROR_LIMIT,
+                        },
                     },
                     "schema": external_agent_job_submission_schema(),
                 }
@@ -1167,14 +1243,11 @@ class Handler(BaseHTTPRequestHandler):
             data = self._read_json(max_bytes=1_050_000)
             if data is None:
                 return
-            if set(data) - {"repository_id", "idempotency_key", "pipeline", "priority"}:
-                self._json({"error": "Unbekannte Felder im Entwicklungsauftrag"}, 400)
-                return
             try:
                 submission = ExternalAgentJobSubmission.model_validate(data)
-            except PydanticValidationError:
+            except PydanticValidationError as exc:
                 self._json(
-                    {"error": "Ungültiger Entwicklungsauftrag"},
+                    _external_validation_error_payload(exc),
                     400,
                 )
                 return
@@ -1223,14 +1296,14 @@ class Handler(BaseHTTPRequestHandler):
                     details={"reason": "permission"},
                 )
                 self._json({"error": str(exc)}, 403)
-            except PydanticValidationError:
+            except PydanticValidationError as exc:
                 self._audit_agent(
                     context,
                     "agent_job_enqueue",
                     success=False,
                     details={"reason": "validation"},
                 )
-                self._json({"error": "Ungültiger Worker-Auftrag"}, 400)
+                self._json(_external_validation_error_payload(exc), 400)
             except (QueueError, ValueError) as exc:
                 self._audit_agent(
                     context,
