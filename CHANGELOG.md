@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### External-Agent-Job-Preflight v1
+
+- Nicht einreihenden `POST /api/v1/jobs/preflight` für externe KI-Clients ergänzt.
+- Preflight und echter Submit verwenden dieselbe interne Admission-Funktion für Scope-,
+  Repository-, Policy-, Image-, Ressourcen-, Laufzeit-, Inline-Secret- und Payload-Gates.
+- Der Receipt kennzeichnet den Snapshot ausdrücklich: kein Job, keine Queue- oder
+  Idempotenzreservierung; dynamische Limits und sämtliche Regeln werden beim Submit erneut
+  geprüft.
+- Capability- und Schema-Discovery veröffentlichen den Preflight-Pfad maschinenlesbar.
+
 ### External-Agent-Validierungsfehler v1
 
 - Abgewiesene v1-Job-Payloads liefern zusätzlich zum kompatiblen Textfehler begrenzte,

@@ -234,7 +234,11 @@ den versionierten JSON-Schema-Vertrag abrufen, den der Submit-Endpunkt selbst
 zur Validierung verwendet. Ungültige Aufträge liefern zusätzlich sichere,
 maschinenlesbare Fehlerpfade und Codes, damit der Client den Payload gezielt
 korrigieren kann, ohne dass TankAI Eingabewerte oder interne Fehlermeldungen
-zurückgibt.
+zurückgibt. Über `POST /api/v1/jobs/preflight` prüfen sie denselben Auftrag
+außerdem gegen die aktuellen stabilen Scope-, Repository-, Policy-, Image-,
+Ressourcen-, Laufzeit-, Inline-Secret- und Payload-Gates, ohne einen Job
+einzureihen. Queue-Kapazität, Nutzerlimit und Idempotenz werden dabei nicht
+reserviert und beim echten Submit erneut beziehungsweise atomar geprüft.
 
 Die Verwaltungs- und M2M-Verträge einschließlich Beispielpayload stehen in
 [`docs/EXTERNAL_AGENT_API.md`](docs/EXTERNAL_AGENT_API.md). Version 1 ist bewusst

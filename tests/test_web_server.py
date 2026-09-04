@@ -577,6 +577,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert capabilities["job_submission"] == {
             "method": "POST",
             "path": "/api/v1/jobs",
+            "preflight_path": "/api/v1/jobs/preflight",
             "schema_path": "/api/v1/job-schema",
             "schema_version": 1,
             "validation_errors": {
@@ -595,6 +596,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert job_schema["submission"] == {
             "method": "POST",
             "path": "/api/v1/jobs",
+            "preflight_path": "/api/v1/jobs/preflight",
             "content_type": "application/json",
             "required_scope": "jobs:submit",
             "validation_errors": {
@@ -653,6 +655,21 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "errors": [{"path": expected_path, "code": expected_code}],
             }
 
+        status, _, rejected_preflight = client.post(
+            "/api/v1/jobs/preflight",
+            {
+                "repository_id": allowed.repository_id,
+                "idempotency_key": "preflight-invalid",
+                "priority": 101,
+                "pipeline": _web_queue_pipeline(image),
+            },
+            bearer=secret,
+        )
+        assert status == 400
+        assert rejected_preflight["validation"]["errors"] == [
+            {"path": "/priority", "code": "less_than_equal"}
+        ]
+
         oversized_error = {
             "repository_id": allowed.repository_id,
             "idempotency_key": "bounded-errors",
@@ -693,7 +710,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         }
 
         status, _, scope_denied = client.post(
-            "/api/v1/jobs",
+            "/api/v1/jobs/preflight",
             {
                 "repository_id": blocked.repository_id,
                 "idempotency_key": "blocked-job",
@@ -709,6 +726,37 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "idempotency_key": "agent-job-1",
             "pipeline": _web_queue_pipeline(image),
         }
+        status, _, preflight = client.post(
+            "/api/v1/jobs/preflight", job_payload, bearer=secret
+        )
+        assert status == 200
+        payload_bytes = preflight["preflight"].pop("payload_bytes")
+        assert payload_bytes > 0
+        assert preflight["preflight"] == {
+            "valid": True,
+            "snapshot_only": True,
+            "job_enqueued": False,
+            "final_submit_revalidates": True,
+            "queue_capacity_reserved": False,
+            "idempotency_reserved": False,
+            "repository_id": allowed.repository_id,
+            "image": image,
+            "memory_mb": 256,
+            "cpus": 1.0,
+            "pids_limit": 64,
+            "runtime_seconds": 40,
+            "max_attempts": 3,
+            "dynamic_checks_deferred": [
+                "idempotency",
+                "queue_capacity",
+                "user_rate_limit",
+            ],
+        }
+        assert app.job_queue.list_jobs(
+            actor_user_id=owner, workspace_id=workspace
+        ) == []
+        assert app.auth.agent_job_ids(agent_id=agent_id, limit=100) == []
+
         status, _, created_job = client.post(
             "/api/v1/jobs", job_payload, bearer=secret
         )

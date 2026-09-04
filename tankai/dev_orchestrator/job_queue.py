@@ -32,7 +32,7 @@ from tankai.web.auth import AuthStore, WorkspaceAccess
 from .container_runtime import ContainerRuntimeError, DockerCommandExecutor
 from .fencing import FenceBusy, FenceError, FenceLost, LeaseFenceStore
 from .git_workspace import GitWorkspaceManager
-from .models import TaskState, WorkerPipelineJob, WorkerRunState
+from .models import TaskState, WorkerIsolationSpec, WorkerPipelineJob, WorkerRunState
 from .orchestrator import DevelopmentOrchestrator
 from .state_store import ProjectStateStore
 from .worker import WorkerPipelineRunner
@@ -208,12 +208,48 @@ class JobLease(QueueModel):
     repository: RepositoryBinding
 
 
+class JobAdmissionPreflight(QueueModel):
+    valid: bool = True
+    snapshot_only: bool = True
+    job_enqueued: bool = False
+    final_submit_revalidates: bool = True
+    queue_capacity_reserved: bool = False
+    idempotency_reserved: bool = False
+    repository_id: str
+    image: str
+    memory_mb: int
+    cpus: float
+    pids_limit: int
+    runtime_seconds: int
+    max_attempts: int
+    payload_bytes: int
+    dynamic_checks_deferred: list[str] = Field(
+        default_factory=lambda: [
+            "idempotency",
+            "queue_capacity",
+            "user_rate_limit",
+        ]
+    )
+
+
 @dataclass(frozen=True)
 class DispatchResult:
     job_id: str
     state: JobState
     result: dict[str, Any] | None = None
     error: str = ""
+
+
+@dataclass(frozen=True)
+class _AdmissionPlan:
+    access: WorkspaceAccess
+    policy: WorkspaceQueuePolicy
+    isolation: WorkerIsolationSpec
+    idempotency_key: str
+    runtime_seconds: int
+    payload_sha256: str
+    payload_json: str
+    payload_bytes: int
 
 
 class DevelopmentJobQueue:
@@ -1033,7 +1069,7 @@ class DevelopmentJobQueue:
                         "Inline-Secrets sind in Queue-Jobs verboten; kurzlebige Credentials benötigen einen Broker"
                     )
 
-    def enqueue(
+    def _prepare_admission(
         self,
         *,
         actor_user_id: str,
@@ -1041,8 +1077,8 @@ class DevelopmentJobQueue:
         repository_id: str,
         pipeline: WorkerPipelineJob,
         idempotency_key: str,
-        priority: int = 0,
-    ) -> QueuedDevelopmentJob:
+        priority: int,
+    ) -> _AdmissionPlan:
         access = self._access(actor_user_id, workspace_id)
         key = idempotency_key.strip()
         if not key or len(key) > 200 or any(ord(ch) < 32 for ch in key):
@@ -1092,8 +1128,75 @@ class DevelopmentJobQueue:
             pipeline=pipeline,
         )
         payload_json = _canonical_json(pipeline.model_dump(mode="json"))
-        if len(payload_json.encode("utf-8")) > 1_000_000:
+        payload_bytes = len(payload_json.encode("utf-8"))
+        if payload_bytes > 1_000_000:
             raise AdmissionDenied("Worker-Payload überschreitet 1 MB")
+        return _AdmissionPlan(
+            access=access,
+            policy=policy,
+            isolation=isolation,
+            idempotency_key=key,
+            runtime_seconds=runtime_seconds,
+            payload_sha256=payload_sha256,
+            payload_json=payload_json,
+            payload_bytes=payload_bytes,
+        )
+
+    def preflight_submission(
+        self,
+        *,
+        actor_user_id: str,
+        workspace_id: str,
+        repository_id: str,
+        pipeline: WorkerPipelineJob,
+        idempotency_key: str,
+        priority: int = 0,
+    ) -> JobAdmissionPreflight:
+        """Validate stable admission gates without creating or reserving a job."""
+        plan = self._prepare_admission(
+            actor_user_id=actor_user_id,
+            workspace_id=workspace_id,
+            repository_id=repository_id,
+            pipeline=pipeline,
+            idempotency_key=idempotency_key,
+            priority=priority,
+        )
+        return JobAdmissionPreflight(
+            repository_id=repository_id,
+            image=plan.isolation.image,
+            memory_mb=plan.isolation.memory_mb,
+            cpus=plan.isolation.cpus,
+            pids_limit=plan.isolation.pids_limit,
+            runtime_seconds=plan.runtime_seconds,
+            max_attempts=plan.policy.max_attempts,
+            payload_bytes=plan.payload_bytes,
+        )
+
+    def enqueue(
+        self,
+        *,
+        actor_user_id: str,
+        workspace_id: str,
+        repository_id: str,
+        pipeline: WorkerPipelineJob,
+        idempotency_key: str,
+        priority: int = 0,
+    ) -> QueuedDevelopmentJob:
+        plan = self._prepare_admission(
+            actor_user_id=actor_user_id,
+            workspace_id=workspace_id,
+            repository_id=repository_id,
+            pipeline=pipeline,
+            idempotency_key=idempotency_key,
+            priority=priority,
+        )
+        access = plan.access
+        policy = plan.policy
+        isolation = plan.isolation
+        key = plan.idempotency_key
+        runtime_seconds = plan.runtime_seconds
+        payload_sha256 = plan.payload_sha256
+        payload_json = plan.payload_json
         now = _utcnow()
         job_id = str(uuid4())
         with self._lock, self._connect() as conn:
