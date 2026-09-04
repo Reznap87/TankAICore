@@ -1,8 +1,30 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 3. September 2026
+**Statusdatum:** 4. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Job-Preflight v1 — lokaler Nachweis 4. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 203 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Gateway-, Queue- und Reality-Contract-Prüfungen: 46 PASS
+- `python -m pip check`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: gültiger Preflight, Repository-Scope-Ablehnung, Image-/Ressourcen-Admission,
+  identische stabile Prüflogik für Preflight und Submit sowie strukturierte
+  Schema-Validierung
+- geprüft: kein Development-Job, keine Agent-Job-Freigabe, keine Queue-Kapazitäts- oder
+  Idempotenzreservierung; Audit-Protokollierung bleibt aktiv
+- dynamische Idempotenz-, Queue-Kapazitäts- und Nutzerlimit-Prüfungen werden im Receipt als
+  aufgeschoben ausgewiesen und erst beim Submit atomar geprüft
+- lokale TypeScript-/Wrangler- und Container-Prüfung war ohne installierte npm-Artefakte und
+  Docker-Runtime nicht ausführbar; die verpflichtenden GitHub-Jobs `test` und `cloudflare`
+  müssen deshalb vor jedem Merge Typprüfung, Worker-Dry-Run, Produktions-Container-Build und
+  Container-Smoke vollständig bestätigen
+- keine Secrets gesetzt oder gelesen, keine Queue oder Runtime aktiviert, kein Provideraufruf
+  und kein Deployment
 
 ## Unreleased: External-Agent-Validierungsfehler v1 — lokaler Nachweis 3. September 2026
 

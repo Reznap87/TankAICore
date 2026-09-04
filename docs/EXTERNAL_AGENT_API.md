@@ -147,12 +147,13 @@ Authorization: Bearer tkai_v1_REDACTED
 | `GET` | `/api/v1/repositories` | `repositories:read` |
 | `GET` | `/api/v1/jobs` | `jobs:read` |
 | `GET` | `/api/v1/jobs/{job_id}` | `jobs:read` |
+| `POST` | `/api/v1/jobs/preflight` | `jobs:submit` |
 | `POST` | `/api/v1/jobs` | `jobs:submit` |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `jobs:cancel` |
 
-`GET /api/v1/capabilities` nennt unter `job_submission` den Submit-Pfad, die
-HTTP-Methode, Pfad und Version des zugehörigen Schemas sowie Version, Pfadformat
-und Obergrenze strukturierter Validierungsfehler. Ein Client kann danach den
+`GET /api/v1/capabilities` nennt unter `job_submission` den Submit- und
+Preflight-Pfad, die HTTP-Methode, Pfad und Version des zugehörigen Schemas sowie
+Version, Pfadformat und Obergrenze strukturierter Validierungsfehler. Ein Client kann danach den
 vollständigen JSON-Schema-Draft-2020-12-Vertrag abrufen:
 
 ```bash
@@ -169,6 +170,58 @@ Felder sind nicht zulässig. Das Schema gewährt keine Berechtigung und ersetzt
 weder Token-Scopes noch Repository-Allowlist, Workspace-Policy, freigegebene
 Image-Digests oder Ressourcenbudgets; diese Laufzeit-Gates werden bei jeder
 Einreichung erneut geprüft.
+
+### Admission-Preflight ohne Einreihung
+
+Ein Client kann denselben Auftrag vor dem Submit gegen die aktuell stabilen
+Admission-Gates prüfen:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data @job.json \
+  https://TANKAI_HOST/api/v1/jobs/preflight
+```
+
+Der Preflight verwendet dasselbe strikt typisierte Envelope und dieselbe interne
+Admission-Funktion wie `POST /api/v1/jobs`. Er prüft Bearer-Scope,
+Repository-Allowlist und -Bindung, Workspace-/Queue-Policy, Rollen,
+Container-Isolation, Image-Digest, Ressourcen- und Laufzeitbudget,
+Inline-Secret-Sperre sowie Payload-Größe. Bei Erfolg liefert er beispielsweise:
+
+```json
+{
+  "preflight": {
+    "valid": true,
+    "snapshot_only": true,
+    "job_enqueued": false,
+    "final_submit_revalidates": true,
+    "queue_capacity_reserved": false,
+    "idempotency_reserved": false,
+    "repository_id": "REPOSITORY_UUID",
+    "image": "tankai-worker@sha256:APPROVED_DIGEST",
+    "memory_mb": 512,
+    "cpus": 1.0,
+    "pids_limit": 128,
+    "runtime_seconds": 480,
+    "max_attempts": 3,
+    "payload_bytes": 2048,
+    "dynamic_checks_deferred": [
+      "idempotency",
+      "queue_capacity",
+      "user_rate_limit"
+    ]
+  }
+}
+```
+
+Der Aufruf erzeugt keinen Development-Job und keine Agent-Job-Freigabe; nur der
+sicherheitsrelevante Audit-Eintrag wird protokolliert. Er reserviert weder einen
+Queue-Platz noch den Idempotenzschlüssel. Diese dynamischen Zustände können sich
+nach dem Snapshot ändern und werden deshalb erst beim echten Submit zusammen mit
+allen stabilen Regeln atomar beziehungsweise erneut geprüft. Ein erfolgreicher
+Preflight ist folglich keine Annahmegarantie.
 
 ### Strukturierte Validierungsfehler
 

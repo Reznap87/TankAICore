@@ -227,6 +227,55 @@ def test_admission_blocks_image_resource_and_runtime_overruns(queue_env) -> None
         enqueue(env, key="bad-runtime", job=pipeline(timeout=40))
 
 
+def test_preflight_uses_admission_gates_without_reserving_a_job(queue_env) -> None:
+    env = queue_env
+    receipt = env["queue"].preflight_submission(
+        actor_user_id=env["owner"],
+        workspace_id=env["workspace"],
+        repository_id=env["binding"].repository_id,
+        pipeline=pipeline(),
+        idempotency_key="preflight-only",
+    )
+    assert receipt.valid is True
+    assert receipt.snapshot_only is True
+    assert receipt.job_enqueued is False
+    assert receipt.final_submit_revalidates is True
+    assert receipt.queue_capacity_reserved is False
+    assert receipt.idempotency_reserved is False
+    assert receipt.repository_id == env["binding"].repository_id
+    assert receipt.image == IMAGE
+    assert receipt.runtime_seconds == 40
+    assert receipt.max_attempts == 2
+    assert receipt.payload_bytes > 0
+    assert receipt.dynamic_checks_deferred == [
+        "idempotency",
+        "queue_capacity",
+        "user_rate_limit",
+    ]
+    assert env["queue"].list_jobs(
+        actor_user_id=env["owner"], workspace_id=env["workspace"]
+    ) == []
+
+    with pytest.raises(AdmissionDenied, match="Image"):
+        env["queue"].preflight_submission(
+            actor_user_id=env["owner"],
+            workspace_id=env["workspace"],
+            repository_id=env["binding"].repository_id,
+            pipeline=pipeline(image=OTHER_IMAGE),
+            idempotency_key="preflight-rejected",
+        )
+    assert env["queue"].list_jobs(
+        actor_user_id=env["owner"], workspace_id=env["workspace"]
+    ) == []
+
+    submitted = enqueue(
+        env,
+        key="preflight-only",
+        job=pipeline(memory_mb=300),
+    )
+    assert submitted.memory_mb == 300
+
+
 def test_claim_is_priority_ordered_and_respects_workspace_concurrency(queue_env) -> None:
     env = queue_env
     low = enqueue(env, key="low", priority=-1)

@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.3
+Version: 5.7.4
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 3. September 2026
+Statusdatum: 4. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 3. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 4. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.3-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.4-Inkrements:
 
-b9a4ccb623619aeb016482161015da3b72533d1b
+5c94ca686dd3bee2c4871b25362d5e46ec02cd59
 
 Zugehöriger Repository-Git-Tree:
 
-539803430983b0ca1957c36296c78fc2b32f7a38
+5bc7c867f26c30314018da20d82c287ce63377dc
 
 Commit-Titel:
 
-feat: publish external agent job schema (#35)
+feat: return structured agent validation errors (#36)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Validierungsfehler-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Job-Preflight-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,8 +99,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand b9a4ccb623619aeb016482161015da3b72533d1b mit Git-Tree
-539803430983b0ca1957c36296c78fc2b32f7a38,
+geschützter main-Ausgangsstand 5c94ca686dd3bee2c4871b25362d5e46ec02cd59 mit Git-Tree
+5bc7c867f26c30314018da20d82c287ce63377dc,
 
 keine offenen Pull Requests und genau ein offenes Issue, Issue #25
 ops: production live-provider readiness gate, zum Prüfzeitpunkt dieses Reality-Syncs,
@@ -141,6 +141,14 @@ Vorvalidierung ermöglicht, ohne die serverseitige Admission zu ersetzen,
 
 TankAI Core CI Run #59, Run 33602286155, auf dem PR-#35-Head
 2d0585d909a1f8fc244eb44e697cc1f3565b4ba0: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Produktions-Container-Build und Container-Smoke, ohne offene Reviews,
+Threads oder Mergekonflikt,
+
+die begrenzten, versionierten External-Agent-Validierungsfehler aus PR #36, die Fehlerpfade und
+Codes ohne Eingabewerte oder interne Pydantic-Meldungen zurückgeben,
+
+TankAI Core CI Run #61, Run 33722925902, auf dem PR-#36-Head
+cb71462e056ec7dcf194179f6aa8258b614d5bfd: completed/success; die Jobs test und cloudflare
 bestanden einschließlich Produktions-Container-Build und Container-Smoke, ohne offene Reviews,
 Threads oder Mergekonflikt,
 
@@ -306,6 +314,12 @@ development.external_agent_validation_errors.v1 -> IMPLEMENTED; ungültige v1-Jo
 liefern begrenzte, versionierte JSON-Pointer und Fehlercodes, aber keine Eingabewerte, internen
 Pydantic-Meldungen oder Fehlerkontexte.
 
+development.external_agent_job_preflight.v1 -> IMPLEMENTED; externe KI-Clients können Schema,
+Repository-Allowlist, Workspace-/Queue-Policy, Image-Digest, Ressourcen, Laufzeit, Inline-Secret-
+Sperre und Payload-Größe vor einem Submit mit demselben Admission-Vertrag prüfen. Der Preflight
+erzeugt keinen Job und reserviert weder Queue-Kapazität noch Idempotenz; der echte Submit prüft
+alle Regeln einschließlich dynamischer Limits erneut.
+
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
 Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
@@ -460,6 +474,14 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.4, 4. September 2026:
+
+Geschützten main-Ausgangsstand auf 5c94ca686dd3bee2c4871b25362d5e46ec02cd59 / Tree
+5bc7c867f26c30314018da20d82c287ce63377dc gebunden; PR #36 und CI Run #61 als erfolgreichen
+External-Agent-Validierungsfehler-Nachweis aufgenommen; nicht einreihenden Job-Preflight mit
+gemeinsamem Admission-Vertrag ergänzt, ohne Queue-Kapazität, Idempotenz, Host, Provider oder
+Deployment zu reservieren beziehungsweise zu aktivieren.
 
 5.7.3, 3. September 2026:
 

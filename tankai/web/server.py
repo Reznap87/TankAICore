@@ -1119,6 +1119,7 @@ class Handler(BaseHTTPRequestHandler):
                     "job_submission": {
                         "method": "POST",
                         "path": "/api/v1/jobs",
+                        "preflight_path": "/api/v1/jobs/preflight",
                         "schema_path": "/api/v1/job-schema",
                         "schema_version": 1,
                         "validation_errors": {
@@ -1140,6 +1141,7 @@ class Handler(BaseHTTPRequestHandler):
                     "submission": {
                         "method": "POST",
                         "path": "/api/v1/jobs",
+                        "preflight_path": "/api/v1/jobs/preflight",
                         "content_type": "application/json",
                         "required_scope": "jobs:submit",
                         "validation_errors": {
@@ -1233,7 +1235,9 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "Nicht gefunden"}, 404)
 
     def _do_agent_post(self, path: str) -> None:
-        if path == "/api/v1/jobs":
+        if path in {"/api/v1/jobs", "/api/v1/jobs/preflight"}:
+            preflight = path.endswith("/preflight")
+            audit_event = "agent_job_preflight" if preflight else "agent_job_enqueue"
             context = self._agent_context(scope="jobs:submit")
             if context is None:
                 return
@@ -1256,7 +1260,7 @@ class Handler(BaseHTTPRequestHandler):
             if repository_id not in context.repository_ids:
                 self._audit_agent(
                     context,
-                    "agent_job_enqueue",
+                    audit_event,
                     success=False,
                     details={"reason": "repository_scope"},
                 )
@@ -1268,6 +1272,23 @@ class Handler(BaseHTTPRequestHandler):
                 namespaced_pipeline = self._namespace_agent_pipeline(
                     context, clean_key, submission.pipeline
                 )
+                if preflight:
+                    receipt = queue.preflight_submission(
+                        actor_user_id=context.owner_user_id,
+                        workspace_id=context.workspace_id,
+                        repository_id=repository_id,
+                        pipeline=namespaced_pipeline,
+                        idempotency_key=f"agent:{context.agent_id}:{clean_key}",
+                        priority=submission.priority,
+                    )
+                    self._audit_agent(
+                        context,
+                        audit_event,
+                        success=True,
+                        details={"repository_id": repository_id},
+                    )
+                    self._json({"preflight": receipt.model_dump(mode="json")})
+                    return
                 job = queue.enqueue(
                     actor_user_id=context.owner_user_id,
                     workspace_id=context.workspace_id,
@@ -1283,7 +1304,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 self._audit_agent(
                     context,
-                    "agent_job_enqueue",
+                    audit_event,
                     success=True,
                     details={"job_id": job.job_id, "repository_id": repository_id},
                 )
@@ -1291,7 +1312,7 @@ class Handler(BaseHTTPRequestHandler):
             except PermissionError as exc:
                 self._audit_agent(
                     context,
-                    "agent_job_enqueue",
+                    audit_event,
                     success=False,
                     details={"reason": "permission"},
                 )
@@ -1299,7 +1320,7 @@ class Handler(BaseHTTPRequestHandler):
             except PydanticValidationError as exc:
                 self._audit_agent(
                     context,
-                    "agent_job_enqueue",
+                    audit_event,
                     success=False,
                     details={"reason": "validation"},
                 )
@@ -1307,7 +1328,7 @@ class Handler(BaseHTTPRequestHandler):
             except (QueueError, ValueError) as exc:
                 self._audit_agent(
                     context,
-                    "agent_job_enqueue",
+                    audit_event,
                     success=False,
                     details={"reason": "admission"},
                 )
