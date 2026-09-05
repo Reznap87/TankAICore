@@ -60,7 +60,10 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 - Bestehende Schema-5-Zustände werden ohne Verlust ihrer bisherigen Tasks und Agenten auf Schema 6 migriert; das Capability-Register und die Task-Bindungen werden dabei explizit ergänzt.
 - Der Cloudflare-Build ist in den bestehenden CI-Pfad integriert: Bindungstypen werden aus `wrangler.jsonc` erzeugt, TypeScript wird strikt geprüft, der Worker wird nur als Dry-Run gebaut und das Produktions-Containerimage wird gebaut.
 - Der Produktionsdeploy ist vom Merge getrennt und nur manuell auf `main` mit exakter Bestätigung, Bindung an das GitHub-Environment `production` und serieller Produktions-Concurrency möglich; dessen externe Schutzregeln sind vor einem Deploy live zu verifizieren.
-- Externe GitHub Actions sind auf vollständige Commit-SHAs und Wrangler ist für den Produktionsworkflow auf `4.124.0` festgesetzt.
+- Externe GitHub Actions sind auf vollständige Commit-SHAs festgesetzt; die verpflichtende CI
+  verwendet die Node.js-24-/ESM-kompatiblen offiziellen v7.0.0-Releases von `checkout`,
+  `setup-python` und `setup-node`. Wrangler bleibt für den Produktionsworkflow auf `4.124.0`
+  festgesetzt.
 
 ## Was 1.9.0 zusätzlich umsetzt
 

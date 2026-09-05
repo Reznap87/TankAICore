@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.4
+Version: 5.7.5
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 4. September 2026
+Statusdatum: 5. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 4. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 5. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.4-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.5-Inkrements:
 
-5c94ca686dd3bee2c4871b25362d5e46ec02cd59
+62e8addc852d2178f7ec415b9c6184f3bef92a04
 
 Zugehöriger Repository-Git-Tree:
 
-5bc7c867f26c30314018da20d82c287ce63377dc
+f43f1bed75eb58eb46be05e4ad833bbb1a1df002
 
 Commit-Titel:
 
-feat: return structured agent validation errors (#36)
+feat: add external agent job preflight (#37)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Job-Preflight-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des CI-Node-24-Action-Runtime-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,8 +99,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 5c94ca686dd3bee2c4871b25362d5e46ec02cd59 mit Git-Tree
-5bc7c867f26c30314018da20d82c287ce63377dc,
+geschützter main-Ausgangsstand 62e8addc852d2178f7ec415b9c6184f3bef92a04 mit Git-Tree
+f43f1bed75eb58eb46be05e4ad833bbb1a1df002,
 
 keine offenen Pull Requests und genau ein offenes Issue, Issue #25
 ops: production live-provider readiness gate, zum Prüfzeitpunkt dieses Reality-Syncs,
@@ -151,6 +151,20 @@ TankAI Core CI Run #61, Run 33722925902, auf dem PR-#36-Head
 cb71462e056ec7dcf194179f6aa8258b614d5bfd: completed/success; die Jobs test und cloudflare
 bestanden einschließlich Produktions-Container-Build und Container-Smoke, ohne offene Reviews,
 Threads oder Mergekonflikt,
+
+der nicht einreihende External-Agent-Job-Preflight aus PR #37 mit gemeinsamem Admission-Vertrag
+für Preflight und Submit,
+
+TankAI Core CI Run #63, Run 33845023336, auf dem PR-#37-Head
+35429ce950f9c6cd4ec03af3d6060df0f0ad453d: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Produktions-Container-Build und Container-Smoke, ohne offene Reviews,
+Threads oder Mergekonflikt,
+
+TankAI Core CI Run #64, Run 33845771461, auf dem gemergten main-Commit
+62e8addc852d2178f7ec415b9c6184f3bef92a04: completed/success; die Jobs test und cloudflare
+bestanden. Beide Jobs meldeten jedoch weiterhin die bevorstehende Entfernung der von
+`actions/checkout@v4`, `actions/setup-python@v5` und `actions/setup-node@v4` verwendeten
+Node.js-20-Action-Runtime,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -320,6 +334,11 @@ Sperre und Payload-Größe vor einem Submit mit demselben Admission-Vertrag prü
 erzeugt keinen Job und reserviert weder Queue-Kapazität noch Idempotenz; der echte Submit prüft
 alle Regeln einschließlich dynamischer Limits erneut.
 
+ops.ci.node24_action_runtime -> IMPLEMENTED; die verpflichtende CI verwendet die offiziellen,
+unveränderlich gepinnten v7.0.0-Releases von `actions/checkout`, `actions/setup-python` und
+`actions/setup-node`. Diese Releases verwenden Node.js 24 beziehungsweise den aktuellen ESM-
+Action-Stack; Python 3.12, Node.js 22, Cache-, Berechtigungs- und Buildverträge bleiben gleich.
+
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
 Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
@@ -474,6 +493,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.5, 5. September 2026:
+
+Geschützten main-Ausgangsstand auf 62e8addc852d2178f7ec415b9c6184f3bef92a04 / Tree
+f43f1bed75eb58eb46be05e4ad833bbb1a1df002 gebunden; PR #37 sowie CI Runs #63 und #64 als
+erfolgreichen External-Agent-Job-Preflight-Nachweis aufgenommen; die in CI #64 konkret
+gemeldeten Node.js-20-Action-Runtime-Warnungen durch unveränderliche offizielle v7.0.0-Pins in
+der verpflichtenden CI behoben, ohne Berechtigungen, Secrets, Produktionsworkflows oder
+Deployment zu verändern.
 
 5.7.4, 4. September 2026:
 

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### CI-Action-Runtime Node.js 24
+
+- Die verpflichtende CI verwendet die offiziellen v7.0.0-Releases von `actions/checkout`,
+  `actions/setup-python` und `actions/setup-node`, jeweils auf vollständige Commit-SHAs gepinnt.
+- Damit entfallen die in beiden Pflichtjobs gemeldeten Node.js-20-Action-Runtime-Warnungen.
+- Python 3.12, Node.js 22, npm-/pip-Caches, Berechtigungen und sämtliche Test-, Build- und
+  Container-Smoke-Schritte bleiben unverändert.
+- Ein Regressionstest verhindert die Rückkehr der abgekündigten Action-Pins in `ci.yml`.
+
 ### External-Agent-Job-Preflight v1
 
 - Nicht einreihenden `POST /api/v1/jobs/preflight` für externe KI-Clients ergänzt.

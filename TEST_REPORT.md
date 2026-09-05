@@ -1,8 +1,27 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 4. September 2026
+**Statusdatum:** 5. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: CI-Action-Runtime Node.js 24 — lokaler Nachweis 5. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 204 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Action-Pin-, Workflow- und Reality-Contract-Prüfungen: 4 PASS
+- `python -m pip check`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- offizielle Release-Tags per `git ls-remote` gegen die unveränderlich verwendeten vollständigen
+  Commit-SHAs geprüft: `actions/checkout@v7.0.0`, `actions/setup-python@v7.0.0` und
+  `actions/setup-node@v7.0.0`
+- die `action.yml`-Metadaten aller drei exakten Commits deklarieren `runs.using: node24`
+- geprüft: Python 3.12, Node.js 22, Caches, Berechtigungen, Install-, Test-, Build- und
+  Container-Smoke-Schritte sind unverändert
+- der Pull-Request-Lauf muss zusätzlich bestätigen, dass beide Pflichtjobs erfolgreich sind und
+  keine Node.js-20-Action-Runtime-Warnung mehr erzeugen
+- keine Secrets gelesen oder verändert, keine Produktionsworkflows ausgeführt, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Job-Preflight v1 — lokaler Nachweis 4. September 2026
 
