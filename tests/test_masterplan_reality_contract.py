@@ -10,11 +10,13 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.5" in current
-    assert "Statusdatum: 5. September 2026" in current
-    assert "62e8addc852d2178f7ec415b9c6184f3bef92a04" in current
-    assert "f43f1bed75eb58eb46be05e4ad833bbb1a1df002" in current
-    assert "TankAI Core CI Run #64" in current
+    assert "Version: 5.7.6" in current
+    assert "Statusdatum: 6. September 2026" in current
+    assert "3c9cae6034b037c03dacd3e1c5b9d2bf5fd8316c" in current
+    assert "079c7fcc433a49b95a2962a2551bb4b409c8b184" in current
+    assert "TankAI Core CI Run #65" in current
+    assert "TankAI Core CI Run #67" in current
+    assert "PR #39" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current

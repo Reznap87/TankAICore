@@ -1,8 +1,28 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 5. September 2026
+**Statusdatum:** 6. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: repositoryweite Node.js-24-Action-Runtime — lokaler Nachweis 6. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 204 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Action-Pin-, Workflow-, Deploy-Gate- und Reality-Contract-Prüfungen: 17 PASS
+- `python -m pip check`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- offizielle Release-Tags per `git ls-remote` gegen die vollständig verwendeten Commit-SHAs
+  geprüft: `actions/checkout@v7.0.1`, `actions/setup-python@v7.0.0`,
+  `actions/setup-node@v7.0.0` und `actions/upload-artifact@v6.0.0`
+- die `action.yml`-Metadaten aller vier exakten Commits deklarieren `runs.using: node24`
+- geprüft: sämtliche sechs Checkout-, drei Setup-Python-, drei Setup-Node- und eine
+  Upload-Artifact-Verwendung entsprechen den freigegebenen unveränderlichen Pins
+- geprüft: Workflow-Trigger, Berechtigungen, Production-Environment, Secret-Zugriffe,
+  exakte Deploy-Bestätigung sowie Test-, Build-, Preflight-, Backup- und Deploy-Befehle sind
+  unverändert
+- kein manueller Workflow ausgeführt, keine Secrets gelesen oder verändert, kein Provideraufruf
+  und kein Deployment
 
 ## Unreleased: CI-Action-Runtime Node.js 24 — lokaler Nachweis 5. September 2026
 

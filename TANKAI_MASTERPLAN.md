@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.5
+Version: 5.7.6
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 5. September 2026
+Statusdatum: 6. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 5. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 6. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.5-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.6-Inkrements:
 
-62e8addc852d2178f7ec415b9c6184f3bef92a04
+3c9cae6034b037c03dacd3e1c5b9d2bf5fd8316c
 
 Zugehöriger Repository-Git-Tree:
 
-f43f1bed75eb58eb46be05e4ad833bbb1a1df002
+079c7fcc433a49b95a2962a2551bb4b409c8b184
 
 Commit-Titel:
 
-feat: add external agent job preflight (#37)
+ci: migrate required actions to Node 24 (#38)
 
-Dieser Stand ist der Ausgangsstand des CI-Node-24-Action-Runtime-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des repositoryweiten Node-24-Action-Runtime-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,11 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 62e8addc852d2178f7ec415b9c6184f3bef92a04 mit Git-Tree
-f43f1bed75eb58eb46be05e4ad833bbb1a1df002,
+geschützter main-Ausgangsstand 3c9cae6034b037c03dacd3e1c5b9d2bf5fd8316c mit Git-Tree
+079c7fcc433a49b95a2962a2551bb4b409c8b184,
 
-keine offenen Pull Requests und genau ein offenes Issue, Issue #25
-ops: production live-provider readiness gate, zum Prüfzeitpunkt dieses Reality-Syncs,
+genau ein offener Pull Request, PR #39 `feat: add local Qwen2.5 Coder GGUF runtime`, und genau
+ein offenes Issue, Issue #25 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt
+dieses Reality-Syncs; PR #39 arbeitet an zwei separaten Compose-/Dokumentationsdateien und wird
+durch dieses Workflow-Inkrement nicht dupliziert oder verändert,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -165,6 +167,16 @@ TankAI Core CI Run #64, Run 33845771461, auf dem gemergten main-Commit
 bestanden. Beide Jobs meldeten jedoch weiterhin die bevorstehende Entfernung der von
 `actions/checkout@v4`, `actions/setup-python@v5` und `actions/setup-node@v4` verwendeten
 Node.js-20-Action-Runtime,
+
+TankAI Core CI Run #65, Run 33951260538, auf dem PR-#38-Head
+880ae0ac51541b6d6202216c9ba6e801359d29c1: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Produktions-Container-Build und Container-Smoke ohne die vorherigen
+Node.js-20-Action-Runtime-Warnungen; PR #38 wurde anschließend konfliktfrei gemergt,
+
+TankAI Core CI Run #67, Run 33963674221, auf dem offenen PR-#39-Head
+69ca078b408face5545bcbff3a5b3f2e6a220d97: completed/success; die Jobs test und cloudflare
+bestanden. PR #39 ist mergebar und hat keine Reviews oder Review-Threads, bleibt aber als
+parallel bearbeiteter lokaler Modellpfad von diesem Inkrement getrennt,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -334,10 +346,11 @@ Sperre und Payload-Größe vor einem Submit mit demselben Admission-Vertrag prü
 erzeugt keinen Job und reserviert weder Queue-Kapazität noch Idempotenz; der echte Submit prüft
 alle Regeln einschließlich dynamischer Limits erneut.
 
-ops.ci.node24_action_runtime -> IMPLEMENTED; die verpflichtende CI verwendet die offiziellen,
-unveränderlich gepinnten v7.0.0-Releases von `actions/checkout`, `actions/setup-python` und
-`actions/setup-node`. Diese Releases verwenden Node.js 24 beziehungsweise den aktuellen ESM-
-Action-Stack; Python 3.12, Node.js 22, Cache-, Berechtigungs- und Buildverträge bleiben gleich.
+ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
+JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
+`actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
+`actions/upload-artifact` v6.0.0. Python 3.12, Node.js 22, Trigger, Caches, Berechtigungs-,
+Environment-, Secret-, Build-, Preflight-, Backup- und Deployverträge bleiben gleich.
 
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
@@ -493,6 +506,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.6, 6. September 2026:
+
+Geschützten main-Ausgangsstand auf 3c9cae6034b037c03dacd3e1c5b9d2bf5fd8316c / Tree
+079c7fcc433a49b95a2962a2551bb4b409c8b184 gebunden; PR #38 und CI Run #65 als erfolgreichen
+Node.js-24-Nachweis der Pflicht-CI aufgenommen; den separaten offenen PR #39 samt erfolgreicher
+CI #67 als parallel bearbeiteten lokalen Modellpfad ausgewiesen; sämtliche verwendeten
+First-Party-JavaScript-Actions repositoryweit auf offizielle, unveränderlich gepinnte
+Node.js-24-Releases vereinheitlicht, ohne Trigger, Berechtigungen, Secrets, Environment-Gates,
+Provider, Production-Runtime oder Workflow-Befehle zu verändern beziehungsweise auszuführen.
 
 5.7.5, 5. September 2026:
 
