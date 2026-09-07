@@ -1,11 +1,11 @@
 services:
   llama:
-    image: ghcr.io/ggml-org/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:7fa75431b8a78f9528cab4aaf65e8ae3e13da546a3cc7221247ca81bab864d84
     command:
       - --model
       - /models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
       - --model-url
-      - "${LOCAL_LLM_MODEL_URL:-https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf}"
+      - "${LOCAL_LLM_MODEL_URL:-https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/1f629da0c8bed16b9e50cee91c70693650e66c35/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf}"
       - --alias
       - qwen2.5-coder-7b-instruct
       - --host
@@ -26,7 +26,7 @@ services:
   tankai:
     depends_on:
       llama:
-        condition: service_started
+        condition: service_healthy
     environment:
       TANKAI_LLM: "openai"
       OPENAI_API_KEY: "${LOCAL_LLM_API_KEY:-local-tankai}"

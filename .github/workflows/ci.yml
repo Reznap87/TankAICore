@@ -46,6 +46,11 @@ jobs:
         run: npm run cf:check
       - name: Verify Worker artifact
         run: test -s dist/cloudflare.js
+      - name: Validate local Qwen Compose contract
+        run: |
+          install -m 600 .env.example .env
+          trap 'rm -f .env' EXIT
+          docker compose -f docker-compose.yml -f docker-compose.local-llm.yml config --quiet
       - name: Build production container
         run: docker build --iidfile "${RUNNER_TEMP}/tankai-core-production.iid" --tag "tankai-core-ci:${GITHUB_SHA}" .
       - name: Smoke-test production web container

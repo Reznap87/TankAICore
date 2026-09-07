@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.6
+Version: 5.7.7
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 6. September 2026
+Statusdatum: 7. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 6. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 7. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.6-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.7-Inkrements:
 
-3c9cae6034b037c03dacd3e1c5b9d2bf5fd8316c
+357e8bb51d0b5be0f285a8699916746f321b289a
 
 Zugehöriger Repository-Git-Tree:
 
-079c7fcc433a49b95a2962a2551bb4b409c8b184
+a18ecc459d4bf47380ca3b8312f00c335e13051e
 
 Commit-Titel:
 
-ci: migrate required actions to Node 24 (#38)
+ci: migrate all first-party actions to Node 24 (#40)
 
-Dieser Stand ist der Ausgangsstand des repositoryweiten Node-24-Action-Runtime-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des lokalen Qwen2.5-Coder-Runtime-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 3c9cae6034b037c03dacd3e1c5b9d2bf5fd8316c mit Git-Tree
-079c7fcc433a49b95a2962a2551bb4b409c8b184,
+geschützter main-Ausgangsstand 357e8bb51d0b5be0f285a8699916746f321b289a mit Git-Tree
+a18ecc459d4bf47380ca3b8312f00c335e13051e,
 
 genau ein offener Pull Request, PR #39 `feat: add local Qwen2.5 Coder GGUF runtime`, und genau
 ein offenes Issue, Issue #25 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt
-dieses Reality-Syncs; PR #39 arbeitet an zwei separaten Compose-/Dokumentationsdateien und wird
-durch dieses Workflow-Inkrement nicht dupliziert oder verändert,
+dieses Reality-Syncs; dieses Inkrement aktualisiert ausschließlich PR #39, statt einen
+konkurrierenden lokalen Modellpfad zu beginnen,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -175,8 +175,17 @@ Node.js-20-Action-Runtime-Warnungen; PR #38 wurde anschließend konfliktfrei gem
 
 TankAI Core CI Run #67, Run 33963674221, auf dem offenen PR-#39-Head
 69ca078b408face5545bcbff3a5b3f2e6a220d97: completed/success; die Jobs test und cloudflare
-bestanden. PR #39 ist mergebar und hat keine Reviews oder Review-Threads, bleibt aber als
-parallel bearbeiteter lokaler Modellpfad von diesem Inkrement getrennt,
+bestanden. PR #39 ist mergebar und hat keine Reviews oder Review-Threads; dieses Inkrement führt
+den bereits begonnenen lokalen Modellpfad gezielt weiter, statt ihn parallel zu duplizieren,
+
+TankAI Core CI Run #68, Run 34017724767, auf dem PR-#40-Head
+450c1daf9811598a62dd675d164629aceb1c7815: completed/success; die Jobs test und cloudflare
+bestanden einschließlich TypeScript-/Wrangler-Prüfung, Produktions-Container-Build und
+Container-Smoke; PR #40 wurde anschließend konfliktfrei gemergt,
+
+TankAI Core CI Run #69, Run 34017810046, auf dem gemergten main-Commit
+357e8bb51d0b5be0f285a8699916746f321b289a: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -352,6 +361,12 @@ JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Rel
 `actions/upload-artifact` v6.0.0. Python 3.12, Node.js 22, Trigger, Caches, Berechtigungs-,
 Environment-, Secret-, Build-, Preflight-, Backup- und Deployverträge bleiben gleich.
 
+development.local_qwen25_coder_runtime -> IMPLEMENTED; ein separater Compose-Override verbindet
+TankAI über den vorhandenen OpenAI-kompatiblen Adapter mit Qwen2.5-Coder-7B-Instruct Q4_K_M.
+Serverimage und Modellrevision sind unveränderlich gebunden, TankAI wartet auf den eingebauten
+`llama.cpp`-Healthcheck, und Port 8080 bleibt im internen Compose-Netzwerk. Dies ist kein
+Host-Readiness-, Provider-, Produktions- oder Deployment-Receipt.
+
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
 Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
@@ -471,6 +486,10 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    Host-Receipt mit `python -m tankai.dev_orchestrator.host_readiness --data-root /srv/tankai`
    erzeugen und nur bei `ready=true` fortfahren.
 
+   Der lokale Qwen2.5-Coder-Compose-Pfad darf auf diesem Host erst nach ausreichender RAM-/
+   Speicherprüfung gestartet werden. Sein unveränderlicher Image-/Modellvertrag ersetzt weder
+   den Host-Doctor noch die getrennten Queue-, Repository- und Service-Agent-Gates.
+
 4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
    bereits implementierte Service-Agent-Operator-CLI verwenden. Der externe Programmieragent
    liest danach den in den Capabilities beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene
@@ -506,6 +525,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.7, 7. September 2026:
+
+Geschützten main-Ausgangsstand auf 357e8bb51d0b5be0f285a8699916746f321b289a / Tree
+a18ecc459d4bf47380ca3b8312f00c335e13051e gebunden; PR #40 sowie CI Runs #68 und #69 als
+erfolgreichen repositoryweiten Node.js-24-Nachweis aufgenommen; den einzigen offenen PR #39
+statt eines konkurrierenden Modellpfads aktualisiert; lokalen Qwen2.5-Coder-Compose-Pfad durch
+unveränderliche Image-/Modellquellen, internes Netzwerk und Modell-Readiness-Gate gehärtet,
+ohne Modell, Container, Queue, Provider oder Production-Runtime zu starten beziehungsweise zu
+verändern.
 
 5.7.6, 6. September 2026:
 

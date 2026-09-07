@@ -7,15 +7,26 @@ TankAICore can use a local GGUF model through its existing OpenAI-compatible pro
 - Model: `Qwen2.5-Coder-7B-Instruct`
 - Quantization: `Q4_K_M`
 - GGUF source: `bartowski/Qwen2.5-Coder-7B-Instruct-GGUF`
-- Default model URL: `https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf`
-- Runtime: `llama.cpp` OpenAI-compatible server
+- Default model revision: `1f629da0c8bed16b9e50cee91c70693650e66c35`
+- Default model URL: `https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/1f629da0c8bed16b9e50cee91c70693650e66c35/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf`
+- Model SHA-256: `1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6`
+- Runtime: `llama.cpp` OpenAI-compatible server, pinned as `ghcr.io/ggml-org/llama.cpp:server@sha256:7fa75431b8a78f9528cab4aaf65e8ae3e13da546a3cc7221247ca81bab864d84`
 - API model alias: `qwen2.5-coder-7b-instruct`
 
-The model volume is persistent. On the first start, `llama.cpp` downloads the GGUF into the named Docker volume; later restarts reuse the local file.
+The image digest resolves an official multi-architecture OCI index for Linux amd64, arm64 and
+s390x. The model revision and image digest are immutable so the default stack cannot silently
+change between starts. The model volume is persistent. On the first start, `llama.cpp` downloads
+the GGUF into the named Docker volume; later restarts reuse the local file.
 
 ## Start
 
 From the TankAICore repository:
+
+If the normal TankAI `.env` does not exist yet, create and configure it first:
+
+```bash
+cp .env.example .env
+```
 
 ```bash
 docker compose \
@@ -25,6 +36,10 @@ docker compose \
 ```
 
 The model is about 4.68 GB, so the first start requires enough free disk space and can take longer while the model is downloaded and loaded.
+
+The official server image contains a `/health` check. It reports HTTP 503 while the model is
+loading and HTTP 200 only when inference is ready. Compose waits for that healthy state before it
+starts TankAICore, preventing early requests from failing during model download or initialization.
 
 The `llama` service is only exposed to the internal Compose network. TankAICore reaches it at:
 
@@ -94,6 +109,10 @@ To override the model source without editing Compose:
 ```dotenv
 LOCAL_LLM_MODEL_URL=https://example.invalid/model.gguf
 ```
+
+An override deliberately leaves the pinned default contract. Verify the replacement artifact's
+origin and SHA-256 before starting it; TankAICore does not claim the default checksum for a custom
+URL.
 
 ## Stop
 
