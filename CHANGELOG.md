@@ -4,12 +4,16 @@
 
 ### CI-Action-Runtime Node.js 24
 
-- Die verpflichtende CI verwendet die offiziellen v7.0.0-Releases von `actions/checkout`,
-  `actions/setup-python` und `actions/setup-node`, jeweils auf vollständige Commit-SHAs gepinnt.
-- Damit entfallen die in beiden Pflichtjobs gemeldeten Node.js-20-Action-Runtime-Warnungen.
-- Python 3.12, Node.js 22, npm-/pip-Caches, Berechtigungen und sämtliche Test-, Build- und
-  Container-Smoke-Schritte bleiben unverändert.
-- Ein Regressionstest verhindert die Rückkehr der abgekündigten Action-Pins in `ci.yml`.
+- Alle Workflow-Verwendungen von `actions/checkout`, `actions/setup-python`,
+  `actions/setup-node` und `actions/upload-artifact` verwenden offizielle Node.js-24-Releases,
+  jeweils auf vollständige Commit-SHAs gepinnt.
+- `actions/checkout` wurde repositoryweit auf v7.0.1 vereinheitlicht; `setup-python` und
+  `setup-node` verwenden v7.0.0, `upload-artifact` v6.0.0.
+- Damit sind neben der verpflichtenden CI auch Production Preflight, Live-Provider-Readiness,
+  Release Backup und der separat manuelle Cloudflare-Deploy von alten Action-Runtimes befreit.
+- Trigger, Python 3.12, Node.js 22, Caches, Berechtigungen, Environment-Gates, Secret-Zugriffe
+  und sämtliche Test-, Build-, Backup-, Preflight- und Deploy-Befehle bleiben unverändert.
+- Ein repositoryweiter Regressionstest verhindert abweichende First-Party-Action-Pins.
 
 ### External-Agent-Job-Preflight v1
 
