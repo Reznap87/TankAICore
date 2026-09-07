@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Lokaler Qwen2.5-Coder-Runtime-Pfad
+
+- Isolierten Compose-Override für Qwen2.5-Coder-7B-Instruct Q4_K_M ergänzt; die bestehende
+  Produktions-Compose-Datei und der standardmäßige Mock-Provider bleiben unverändert.
+- Das offizielle multiarchfähige `llama.cpp`-Serverimage ist auf einen unveränderlichen
+  OCI-Index-Digest festgesetzt; die Modell-URL verwendet eine unveränderliche Hugging-Face-
+  Revision statt des beweglichen `main`-Zweigs.
+- TankAI startet erst, nachdem der eingebaute `llama.cpp`-Healthcheck das vollständig geladene
+  Modell als bereit meldet; der Serverport bleibt ausschließlich im Compose-Netzwerk sichtbar.
+- Regressionstests binden Image, Modellrevision, dokumentierte Modellprüfsumme, Readiness-Gate
+  und die unveränderten Produktionsdefaults.
+
 ### CI-Action-Runtime Node.js 24
 
 - Alle Workflow-Verwendungen von `actions/checkout`, `actions/setup-python`,

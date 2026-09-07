@@ -1,8 +1,29 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 6. September 2026
+**Statusdatum:** 7. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: lokaler Qwen2.5-Coder-Runtime-Pfad — Nachweis 7. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 207 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte lokale Runtime-, Action-Pin-, Workflow- und Reality-Contract-Prüfungen: 7 PASS
+- `python -m pip check`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- offizieller `ghcr.io/ggml-org/llama.cpp:server`-OCI-Index am 7. September 2026 auf
+  `sha256:7fa75431b8a78f9528cab4aaf65e8ae3e13da546a3cc7221247ca81bab864d84`
+  aufgelöst; Index enthält Linux amd64, arm64 und s390x
+- Modellrepository-`main` auf Revision `1f629da0c8bed16b9e50cee91c70693650e66c35`
+  aufgelöst und diese Revision statt eines beweglichen Zweigs gebunden
+- veröffentlichte Q4_K_M-Dateigröße 4,68 GB und SHA-256
+  `1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6` dokumentiert
+- geprüft: TankAI wartet auf `service_healthy`, nutzt ausschließlich
+  `http://llama:8080/v1`, veröffentlicht Port 8080 nicht und ändert die Produktions-Compose-
+  Defaults nicht
+- keine Modelldatei heruntergeladen, kein Container oder Provider gestartet, keine Secrets
+  gelesen oder verändert und kein Deployment
 
 ## Unreleased: repositoryweite Node.js-24-Action-Runtime — lokaler Nachweis 6. September 2026
 

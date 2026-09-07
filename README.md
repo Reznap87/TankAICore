@@ -18,6 +18,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Vector-Persistenz | Ohne Pickle |
 | OpenAI / Anthropic | Adapter implementiert |
 | Getrennter Critic | Separater Provider/Modell konfigurierbar und erzwingbar |
+| Lokaler Code-LLM-Pfad | Isolierter Qwen2.5-Coder-GGUF-Server mit unveränderlichen Quellen und Bereitschafts-Gate |
 | Websuche | Brave Search API oder Tavily Search API |
 | Seitenabruf | HTML/Text/JSON mit Größenlimit und SSRF-Schutz |
 | Quellenbelege | Stabile `[SRC-XXXXXXXX]`-IDs, Receipt-Provenance und Quellenkatalog |
@@ -34,7 +35,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 202 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 207 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
