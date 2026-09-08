@@ -1,8 +1,33 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 7. September 2026
+**Statusdatum:** 8. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: lokale Qwen-Modellintegrität — Nachweis 8. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 212 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte lokale Runtime- und Reality-Contract-Prüfungen: 9 PASS
+- POSIX-Shell-Syntaxprüfung des Modell-Initializers: PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev`: 0 bekannte Funde
+- Wrangler 4.124.0 Typgenerierung, TypeScript 7.0.2 `tsc --noEmit` und Worker-Dry-Run mit
+  `--containers-rollout=none`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: erfolgreicher Download wird nur nach passender SHA-256 atomar installiert;
+  Prüfsummenabweichungen löschen die temporäre Datei und hinterlassen kein scheinbar gültiges
+  Modell
+- geprüft: eine manipulierte persistierte Modelldatei wird weder überschrieben noch gestartet;
+  der Init-Dienst beendet sich fail-closed
+- geprüft: Compose bindet denselben unveränderlichen Serverimage-Digest an Init und Inferenz und
+  erzwingt die Reihenfolge `service_completed_successfully` → `service_healthy` → TankAI
+- die lokale Umgebung besitzt keine Docker-/Podman-Runtime; die echte zusammengeführte
+  Compose-Auswertung und der Produktions-Container-Smoke bleiben deshalb Pflichtchecks der
+  GitHub-CI vor einem Merge
+- kein GGUF heruntergeladen, kein Container oder Provider gestartet, keine Secrets gelesen oder
+  verändert und kein Deployment ausgelöst
 
 ## Unreleased: lokaler Qwen2.5-Coder-Runtime-Pfad — Nachweis 7. September 2026
 

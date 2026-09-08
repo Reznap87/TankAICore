@@ -15,8 +15,9 @@ TankAICore can use a local GGUF model through its existing OpenAI-compatible pro
 
 The image digest resolves an official multi-architecture OCI index for Linux amd64, arm64 and
 s390x. The model revision and image digest are immutable so the default stack cannot silently
-change between starts. The model volume is persistent. On the first start, `llama.cpp` downloads
-the GGUF into the named Docker volume; later restarts reuse the local file.
+change between starts. The model volume is persistent. On the first start, the one-shot
+`qwen-model-init` service downloads the GGUF into that volume, verifies the configured SHA-256
+and atomically installs the file. Every later Compose start verifies the cached file again.
 
 ## Start
 
@@ -35,11 +36,18 @@ docker compose \
   up -d --build
 ```
 
-The model is about 4.68 GB, so the first start requires enough free disk space and can take longer while the model is downloaded and loaded.
+The model is about 4.68 GB, so the first start requires enough free disk space and can take
+longer while the model is downloaded, verified and loaded. `llama` starts only after
+`qwen-model-init` exits successfully. A partial download, a wrong checksum, a non-HTTPS model
+URL or a modified cached file stops the stack before inference starts.
 
 The official server image contains a `/health` check. It reports HTTP 503 while the model is
 loading and HTTP 200 only when inference is ready. Compose waits for that healthy state before it
-starts TankAICore, preventing early requests from failing during model download or initialization.
+starts TankAICore. The complete startup chain is therefore:
+
+```text
+verified model file -> healthy llama.cpp server -> TankAI
+```
 
 The `llama` service is only exposed to the internal Compose network. TankAICore reaches it at:
 
@@ -68,9 +76,14 @@ docker compose \
   ps
 ```
 
-Watch model startup/download logs:
+Check the integrity initializer and then watch server startup logs:
 
 ```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.local-llm.yml \
+  logs qwen-model-init
+
 docker compose \
   -f docker-compose.yml \
   -f docker-compose.local-llm.yml \
@@ -108,11 +121,13 @@ To override the model source without editing Compose:
 
 ```dotenv
 LOCAL_LLM_MODEL_URL=https://example.invalid/model.gguf
+LOCAL_LLM_MODEL_SHA256=REPLACE_WITH_EXACT_64_CHARACTER_SHA256
 ```
 
-An override deliberately leaves the pinned default contract. Verify the replacement artifact's
-origin and SHA-256 before starting it; TankAICore does not claim the default checksum for a custom
-URL.
+URL and checksum must be changed together. The initializer accepts HTTPS only and will not start
+`llama.cpp` unless the downloaded or cached file matches the configured checksum. An override
+deliberately leaves the pinned default contract; verify the replacement artifact's origin before
+starting it.
 
 ## Stop
 

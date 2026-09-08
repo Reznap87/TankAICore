@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.7
+Version: 5.7.8
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 7. September 2026
+Statusdatum: 8. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 7. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 8. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.7-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.8-Inkrements:
 
-357e8bb51d0b5be0f285a8699916746f321b289a
+39f9fc52816ca9d2fb12ebe93437b9718226a030
 
 Zugehöriger Repository-Git-Tree:
 
-a18ecc459d4bf47380ca3b8312f00c335e13051e
+7ae4dc68f1512947ca376dbae9f78c786ff60893
 
 Commit-Titel:
 
-ci: migrate all first-party actions to Node 24 (#40)
+feat: add reproducible local Qwen2.5 Coder runtime (#39)
 
-Dieser Stand ist der Ausgangsstand des lokalen Qwen2.5-Coder-Runtime-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des lokalen Qwen2.5-Coder-Modellintegritäts-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 357e8bb51d0b5be0f285a8699916746f321b289a mit Git-Tree
-a18ecc459d4bf47380ca3b8312f00c335e13051e,
+geschützter main-Ausgangsstand 39f9fc52816ca9d2fb12ebe93437b9718226a030 mit Git-Tree
+7ae4dc68f1512947ca376dbae9f78c786ff60893,
 
-genau ein offener Pull Request, PR #39 `feat: add local Qwen2.5 Coder GGUF runtime`, und genau
-ein offenes Issue, Issue #25 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt
-dieses Reality-Syncs; dieses Inkrement aktualisiert ausschließlich PR #39, statt einen
-konkurrierenden lokalen Modellpfad zu beginnen,
+kein offener Pull Request und genau ein offenes Issue, Issue #25
+`ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
+verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige lokale
+Modellintegritäts-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -173,10 +173,9 @@ TankAI Core CI Run #65, Run 33951260538, auf dem PR-#38-Head
 bestanden einschließlich Produktions-Container-Build und Container-Smoke ohne die vorherigen
 Node.js-20-Action-Runtime-Warnungen; PR #38 wurde anschließend konfliktfrei gemergt,
 
-TankAI Core CI Run #67, Run 33963674221, auf dem offenen PR-#39-Head
+TankAI Core CI Run #67, Run 33963674221, auf dem ursprünglichen PR-#39-Head
 69ca078b408face5545bcbff3a5b3f2e6a220d97: completed/success; die Jobs test und cloudflare
-bestanden. PR #39 ist mergebar und hat keine Reviews oder Review-Threads; dieses Inkrement führt
-den bereits begonnenen lokalen Modellpfad gezielt weiter, statt ihn parallel zu duplizieren,
+bestanden; der PR wurde danach auf den aktuellen main-Stand gebracht und gehärtet,
 
 TankAI Core CI Run #68, Run 34017724767, auf dem PR-#40-Head
 450c1daf9811598a62dd675d164629aceb1c7815: completed/success; die Jobs test und cloudflare
@@ -186,6 +185,17 @@ Container-Smoke; PR #40 wurde anschließend konfliktfrei gemergt,
 TankAI Core CI Run #69, Run 34017810046, auf dem gemergten main-Commit
 357e8bb51d0b5be0f285a8699916746f321b289a: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+TankAI Core CI Run #70, Run 34092845781, auf dem finalen PR-#39-Head
+e47d5ad56a50b555932ddf6b9507146fcac5a480: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Compose-Vertragsprüfung, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #39 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #71, Run 34093032087, auf dem gemergten main-Commit
+39f9fc52816ca9d2fb12ebe93437b9718226a030: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich lokaler Compose-Vertragsprüfung, Produktions-Container-Build und
+Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -367,6 +377,12 @@ Serverimage und Modellrevision sind unveränderlich gebunden, TankAI wartet auf 
 `llama.cpp`-Healthcheck, und Port 8080 bleibt im internen Compose-Netzwerk. Dies ist kein
 Host-Readiness-, Provider-, Produktions- oder Deployment-Receipt.
 
+development.local_qwen25_coder_model_integrity -> IMPLEMENTED; ein einmaliger Init-Dienst ohne
+`privileged`-Modus akzeptiert nur HTTPS, lädt das Modell in eine temporäre Datei, prüft
+die gebundene SHA-256-Prüfsumme und installiert es erst danach atomar. Auch ein bereits
+vorhandenes Modell wird vor jedem `llama.cpp`-Start erneut geprüft; Abweichungen blockieren die
+Startkette fail-closed. Dies ist kein Modelldownload-, Host- oder Runtime-Receipt.
+
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
 Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
@@ -487,8 +503,10 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    erzeugen und nur bei `ready=true` fortfahren.
 
    Der lokale Qwen2.5-Coder-Compose-Pfad darf auf diesem Host erst nach ausreichender RAM-/
-   Speicherprüfung gestartet werden. Sein unveränderlicher Image-/Modellvertrag ersetzt weder
-   den Host-Doctor noch die getrennten Queue-, Repository- und Service-Agent-Gates.
+   Speicherprüfung gestartet werden. Sein Init-Dienst muss das gebundene oder ausdrücklich
+   ersetzte Modell vor jedem Serverstart per SHA-256 prüfen; erst danach folgen der
+   `llama.cpp`-Healthcheck und TankAI. Dieser Vertrag ersetzt weder den Host-Doctor noch die
+   getrennten Queue-, Repository- und Service-Agent-Gates.
 
 4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
    bereits implementierte Service-Agent-Operator-CLI verwenden. Der externe Programmieragent
@@ -525,6 +543,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.8, 8. September 2026:
+
+Geschützten main-Ausgangsstand auf 39f9fc52816ca9d2fb12ebe93437b9718226a030 / Tree
+7ae4dc68f1512947ca376dbae9f78c786ff60893 gebunden; PR #39 sowie CI Runs #70 und #71 als
+erfolgreichen lokalen Qwen2.5-Coder-Runtime-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert; die bisher nur dokumentierte
+Modellprüfsumme durch einen atomaren, wiederholbaren und fail-closed SHA-256-Init-Vertrag vor dem
+`llama.cpp`-Start technisch erzwungen, ohne Modell, Container, Provider oder Production-Runtime
+zu starten beziehungsweise zu verändern.
 
 5.7.7, 7. September 2026:
 

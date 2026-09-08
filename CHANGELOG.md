@@ -4,6 +4,13 @@
 
 ### Lokaler Qwen2.5-Coder-Runtime-Pfad
 
+- Einen einmaligen Modell-Init-Dienst ohne `privileged`-Modus ergänzt: Er akzeptiert nur HTTPS,
+  lädt in eine temporäre Datei, erzwingt die konfigurierte SHA-256-Prüfsumme und installiert das
+  GGUF erst danach atomar in das persistente Volume.
+- Bereits vorhandene Modelldateien werden vor jedem Serverstart erneut geprüft. Beschädigte oder
+  ausgetauschte Dateien sowie unvollständige Downloads blockieren `llama.cpp` fail-closed.
+- Compose bindet die Reihenfolge jetzt vollständig als erfolgreicher Modell-Init → gesunder
+  `llama.cpp`-Server → TankAI; benutzerdefinierte Modellquellen benötigen URL und Prüfsumme.
 - Isolierten Compose-Override für Qwen2.5-Coder-7B-Instruct Q4_K_M ergänzt; die bestehende
   Produktions-Compose-Datei und der standardmäßige Mock-Provider bleiben unverändert.
 - Das offizielle multiarchfähige `llama.cpp`-Serverimage ist auf einen unveränderlichen

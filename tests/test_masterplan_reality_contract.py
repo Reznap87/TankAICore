@@ -10,11 +10,13 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.7" in current
-    assert "Statusdatum: 7. September 2026" in current
-    assert "357e8bb51d0b5be0f285a8699916746f321b289a" in current
-    assert "a18ecc459d4bf47380ca3b8312f00c335e13051e" in current
-    assert "TankAI Core CI Run #68" in current
+    assert "Version: 5.7.8" in current
+    assert "Statusdatum: 8. September 2026" in current
+    assert "39f9fc52816ca9d2fb12ebe93437b9718226a030" in current
+    assert "7ae4dc68f1512947ca376dbae9f78c786ff60893" in current
+    assert "kein offener Pull Request" in current
+    assert "TankAI Core CI Run #70" in current
+    assert "TankAI Core CI Run #71" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert (
@@ -33,6 +35,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "development.external_agent_job_preflight.v1 -> IMPLEMENTED" in current
     assert "ops.ci.node24_action_runtime -> IMPLEMENTED" in current
     assert "development.local_qwen25_coder_runtime -> IMPLEMENTED" in current
+    assert "development.local_qwen25_coder_model_integrity -> IMPLEMENTED" in current
     assert (
         "Die repositoryseitigen Vorarbeiten dafür sind durch PRs #26 bis #29 abgeschlossen"
         in current
