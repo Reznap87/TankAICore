@@ -197,6 +197,17 @@ TankAI Core CI Run #71, Run 34093032087, auf dem gemergten main-Commit
 bestanden erneut einschließlich lokaler Compose-Vertragsprüfung, Produktions-Container-Build und
 Container-Smoke,
 
+TankAI Core CI Run #72, Run 34196769373, auf dem PR-#41-Head
+8ce0326ca7c2e65403bd91aab30ed6e27ed48541: completed/success; die Jobs test und cloudflare
+bestanden einschließlich SHA-256-Initializer-Regressionen, Compose-Vertragsprüfung,
+TypeScript-/Wrangler-Prüfung, Produktions-Container-Build und Container-Smoke; PR #41 wurde
+anschließend konfliktfrei gemergt,
+
+TankAI Core CI Run #73, Run 34196963840, auf dem gemergten main-Commit
+ae3622b905396a0212c797ecea9cdca056d7b36c: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Compose-Vertragsprüfung, Produktions-Container-Build und
+Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -381,7 +392,9 @@ development.local_qwen25_coder_model_integrity -> IMPLEMENTED; ein einmaliger In
 `privileged`-Modus akzeptiert nur HTTPS, lädt das Modell in eine temporäre Datei, prüft
 die gebundene SHA-256-Prüfsumme und installiert es erst danach atomar. Auch ein bereits
 vorhandenes Modell wird vor jedem `llama.cpp`-Start erneut geprüft; Abweichungen blockieren die
-Startkette fail-closed. Dies ist kein Modelldownload-, Host- oder Runtime-Receipt.
+Startkette fail-closed. Derselbe Check umschließt den Serverprozess, sodass auch ein automatischer
+Container-Neustart die Prüfung nicht umgehen kann. Dies ist kein Modelldownload-, Host- oder
+Runtime-Receipt.
 
 ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
 Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
@@ -505,8 +518,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    Der lokale Qwen2.5-Coder-Compose-Pfad darf auf diesem Host erst nach ausreichender RAM-/
    Speicherprüfung gestartet werden. Sein Init-Dienst muss das gebundene oder ausdrücklich
    ersetzte Modell vor jedem Serverstart per SHA-256 prüfen; erst danach folgen der
-   `llama.cpp`-Healthcheck und TankAI. Dieser Vertrag ersetzt weder den Host-Doctor noch die
-   getrennten Queue-, Repository- und Service-Agent-Gates.
+   `llama.cpp`-Healthcheck und TankAI. Der Serverprozess muss durch denselben Check gestartet
+   werden, damit eine Container-Restart-Policy keinen Bypass erzeugt. Dieser Vertrag ersetzt weder
+   den Host-Doctor noch die getrennten Queue-, Repository- und Service-Agent-Gates.
 
 4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
    bereits implementierte Service-Agent-Operator-CLI verwenden. Der externe Programmieragent
@@ -547,12 +561,13 @@ implementiert oder produktiv betrieben wird.
 5.7.8, 8. September 2026:
 
 Geschützten main-Ausgangsstand auf 39f9fc52816ca9d2fb12ebe93437b9718226a030 / Tree
-7ae4dc68f1512947ca376dbae9f78c786ff60893 gebunden; PR #39 sowie CI Runs #70 und #71 als
-erfolgreichen lokalen Qwen2.5-Coder-Runtime-Nachweis aufgenommen; keinen offenen PR und Issue #25
-als einzigen extern blockierten Vorgang verifiziert; die bisher nur dokumentierte
-Modellprüfsumme durch einen atomaren, wiederholbaren und fail-closed SHA-256-Init-Vertrag vor dem
-`llama.cpp`-Start technisch erzwungen, ohne Modell, Container, Provider oder Production-Runtime
-zu starten beziehungsweise zu verändern.
+7ae4dc68f1512947ca376dbae9f78c786ff60893 gebunden; PRs #39 und #41 sowie CI Runs #70 bis #73
+als erfolgreichen lokalen Qwen2.5-Coder-Runtime- und Modellintegritätsnachweis aufgenommen;
+keinen offenen PR und Issue #25 als einzigen extern blockierten Vorgang verifiziert; die bisher
+nur dokumentierte Modellprüfsumme durch einen atomaren, wiederholbaren und fail-closed
+SHA-256-Init-Vertrag technisch erzwungen und den Serverprozess mit demselben Check umschlossen,
+damit automatische Container-Neustarts keinen Bypass erzeugen; kein Modell, Container, Provider
+oder Production-Runtime wurde gestartet beziehungsweise verändert.
 
 5.7.7, 7. September 2026:
 

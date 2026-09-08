@@ -5,11 +5,22 @@ set -eu
 MODEL_URL=${LOCAL_LLM_MODEL_URL:-}
 EXPECTED_SHA256=${LOCAL_LLM_MODEL_SHA256:-}
 MODEL_PATH=${LOCAL_LLM_MODEL_PATH:-/models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf}
+SERVER_BINARY=${LOCAL_LLM_SERVER_BINARY:-/app/llama-server}
+START_SERVER=0
 
 fail() {
     printf '%s\n' "local Qwen model init: $*" >&2
     exit 1
 }
+
+case "${1:-}" in
+    --exec-server)
+        START_SERVER=1
+        shift
+        ;;
+    "") ;;
+    *) fail "unsupported initializer mode" ;;
+esac
 
 case "$MODEL_URL" in
     https://*) ;;
@@ -35,10 +46,20 @@ verify_model() {
     [ "$actual_sha256" = "$EXPECTED_SHA256" ]
 }
 
+finish() {
+    message=$1
+    shift
+    printf '%s\n' "local Qwen model init: $message"
+    if [ "$START_SERVER" -eq 1 ]; then
+        [ -x "$SERVER_BINARY" ] || fail "llama server binary is not executable"
+        exec "$SERVER_BINARY" "$@"
+    fi
+}
+
 if [ -e "$MODEL_PATH" ]; then
     [ -f "$MODEL_PATH" ] || fail "cached model path is not a regular file"
     verify_model "$MODEL_PATH" || fail "cached model SHA-256 mismatch"
-    printf '%s\n' "local Qwen model init: cached model verified"
+    finish "cached model verified" "$@"
     exit 0
 fi
 
@@ -64,4 +85,4 @@ verify_model "$temporary_path" || fail "downloaded model SHA-256 mismatch"
 chmod 0444 "$temporary_path"
 mv -f -- "$temporary_path" "$MODEL_PATH"
 trap - EXIT HUP INT TERM
-printf '%s\n' "local Qwen model init: downloaded model verified and installed"
+finish "downloaded model verified and installed" "$@"

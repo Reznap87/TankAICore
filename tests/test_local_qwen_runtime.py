@@ -45,7 +45,8 @@ def test_model_checksum_gate_completes_before_llama_starts() -> None:
     text = LOCAL_COMPOSE.read_text(encoding="utf-8")
 
     assert "qwen-model-init:" in text
-    assert "./scripts/local_qwen_model_init.sh:" in text
+    assert text.count("./scripts/local_qwen_model_init.sh:") == 2
+    assert "--exec-server" in text
     assert "condition: service_completed_successfully" in text
     assert text.index("condition: service_completed_successfully") < text.index(
         "condition: service_healthy"
@@ -59,6 +60,8 @@ def _run_model_init(
     expected_sha256: str,
     cached_content: bytes | None = None,
     model_url: str = "https://models.example.invalid/model.gguf",
+    script_args: tuple[str, ...] = (),
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     model_path = tmp_path / "models" / "model.gguf"
     model_path.parent.mkdir()
@@ -93,8 +96,9 @@ def _run_model_init(
         "LOCAL_LLM_MODEL_SHA256": expected_sha256,
         "LOCAL_LLM_MODEL_PATH": str(model_path),
     }
+    env.update(extra_env or {})
     result = subprocess.run(
-        ["/bin/sh", str(MODEL_INIT)],
+        ["/bin/sh", str(MODEL_INIT), *script_args],
         env=env,
         text=True,
         capture_output=True,
@@ -159,6 +163,36 @@ def test_model_init_rejects_a_non_https_source_before_download(tmp_path: Path) -
     assert result.returncode != 0
     assert "model URL must use HTTPS" in result.stderr
     assert not model_path.exists()
+
+
+def test_llama_wrapper_rechecks_cached_model_before_every_process_start(
+    tmp_path: Path,
+) -> None:
+    content = b"verified cached model for server start"
+    server = tmp_path / "llama-server"
+    receipt = tmp_path / "server-args.txt"
+    server.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' \"$*\" > \"$FAKE_SERVER_RECEIPT\"\n",
+        encoding="utf-8",
+    )
+    server.chmod(0o755)
+
+    result, model_path = _run_model_init(
+        tmp_path,
+        downloaded_content=content,
+        expected_sha256=hashlib.sha256(content).hexdigest(),
+        cached_content=content,
+        script_args=("--exec-server", "--model", "/models/model.gguf", "--port", "8080"),
+        extra_env={
+            "LOCAL_LLM_SERVER_BINARY": str(server),
+            "FAKE_SERVER_RECEIPT": str(receipt),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert model_path.read_bytes() == content
+    assert receipt.read_text(encoding="utf-8") == "--model /models/model.gguf --port 8080\n"
 
 
 def test_local_runtime_does_not_change_production_compose_defaults() -> None:

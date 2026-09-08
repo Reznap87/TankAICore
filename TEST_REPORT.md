@@ -7,9 +7,9 @@
 ## Unreleased: lokale Qwen-Modellintegrität — Nachweis 8. September 2026
 
 - `python -m compileall -q tankai tests`: PASS
-- `python -m pytest -q`: 212 PASS
+- `python -m pytest -q`: 213 PASS
 - `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
-- gezielte lokale Runtime- und Reality-Contract-Prüfungen: 9 PASS
+- gezielte lokale Runtime- und Reality-Contract-Prüfungen: 10 PASS
 - POSIX-Shell-Syntaxprüfung des Modell-Initializers: PASS
 - `python -m pip check`: PASS
 - `npm audit --omit=dev`: 0 bekannte Funde
@@ -23,6 +23,8 @@
   der Init-Dienst beendet sich fail-closed
 - geprüft: Compose bindet denselben unveränderlichen Serverimage-Digest an Init und Inferenz und
   erzwingt die Reihenfolge `service_completed_successfully` → `service_healthy` → TankAI
+- geprüft: derselbe Check startet den eigentlichen `llama.cpp`-Prozess erst nach erfolgreicher
+  Prüfung und verhindert damit einen Bypass über automatische Container-Neustarts
 - die lokale Umgebung besitzt keine Docker-/Podman-Runtime; die echte zusammengeführte
   Compose-Auswertung und der Produktions-Container-Smoke bleiben deshalb Pflichtchecks der
   GitHub-CI vor einem Merge
