@@ -17,6 +17,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
+    assert "TankAI Core CI Run #72" in current
+    assert "TankAI Core CI Run #73" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert (

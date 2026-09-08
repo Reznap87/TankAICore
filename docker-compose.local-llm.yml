@@ -1,6 +1,11 @@
 x-local-llm-image: &local-llm-image
   image: ghcr.io/ggml-org/llama.cpp:server@sha256:7fa75431b8a78f9528cab4aaf65e8ae3e13da546a3cc7221247ca81bab864d84
 
+x-local-model-environment: &local-model-environment
+  LOCAL_LLM_MODEL_URL: "${LOCAL_LLM_MODEL_URL:-https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/1f629da0c8bed16b9e50cee91c70693650e66c35/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf}"
+  LOCAL_LLM_MODEL_SHA256: "${LOCAL_LLM_MODEL_SHA256:-1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6}"
+  LOCAL_LLM_MODEL_PATH: /models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
+
 services:
   qwen-model-init:
     <<: *local-llm-image
@@ -8,9 +13,7 @@ services:
       - /bin/sh
       - /opt/tankai/local_qwen_model_init.sh
     environment:
-      LOCAL_LLM_MODEL_URL: "${LOCAL_LLM_MODEL_URL:-https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/1f629da0c8bed16b9e50cee91c70693650e66c35/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf}"
-      LOCAL_LLM_MODEL_SHA256: "${LOCAL_LLM_MODEL_SHA256:-1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6}"
-      LOCAL_LLM_MODEL_PATH: /models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
+      <<: *local-model-environment
     volumes:
       - qwen25_coder_models:/models
       - ./scripts/local_qwen_model_init.sh:/opt/tankai/local_qwen_model_init.sh:ro
@@ -29,6 +32,12 @@ services:
     depends_on:
       qwen-model-init:
         condition: service_completed_successfully
+    entrypoint:
+      - /bin/sh
+      - /opt/tankai/local_qwen_model_init.sh
+      - --exec-server
+    environment:
+      <<: *local-model-environment
     command:
       - --model
       - /models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
@@ -44,6 +53,7 @@ services:
       - "${LOCAL_LLM_PARALLEL:-1}"
     volumes:
       - qwen25_coder_models:/models
+      - ./scripts/local_qwen_model_init.sh:/opt/tankai/local_qwen_model_init.sh:ro
     expose:
       - "8080"
     restart: unless-stopped

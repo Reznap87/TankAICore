@@ -9,6 +9,8 @@
   GGUF erst danach atomar in das persistente Volume.
 - Bereits vorhandene Modelldateien werden vor jedem Serverstart erneut geprüft. Beschädigte oder
   ausgetauschte Dateien sowie unvollständige Downloads blockieren `llama.cpp` fail-closed.
+- Der `llama.cpp`-Prozess wird vom selben Integritätscheck gestartet, sodass auch automatische
+  Container-Neustarts die Prüfung nicht umgehen können.
 - Compose bindet die Reihenfolge jetzt vollständig als erfolgreicher Modell-Init → gesunder
   `llama.cpp`-Server → TankAI; benutzerdefinierte Modellquellen benötigen URL und Prüfsumme.
 - Isolierten Compose-Override für Qwen2.5-Coder-7B-Instruct Q4_K_M ergänzt; die bestehende

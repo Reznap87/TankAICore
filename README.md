@@ -35,7 +35,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 212 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 213 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
@@ -196,9 +196,10 @@ WSL2 müssen die Daten im Linux-Dateisystem liegen; `/mnt/c`, Netzlaufwerke, NFS
 fail-closed abgelehnt.
 
 Der optionale [lokale Qwen2.5-Coder-Pfad](docs/LOCAL_QWEN25_CODER.md) lädt das gebundene GGUF in
-ein persistentes internes Volume. Ein einmaliger Init-Dienst prüft vor jedem Serverstart die
-konfigurierte SHA-256-Prüfsumme; erst danach folgen `llama.cpp`-Healthcheck und TankAI-Start.
-Modell- und API-Port bleiben im Compose-Netzwerk.
+ein persistentes internes Volume. Ein einmaliger Init-Dienst prüft vor dem ersten Serverstart die
+konfigurierte SHA-256-Prüfsumme. Derselbe Check umschließt zusätzlich den Serverprozess und
+läuft deshalb auch nach einem automatischen Container-Neustart; erst danach folgen
+`llama.cpp`-Healthcheck und TankAI-Start. Modell- und API-Port bleiben im Compose-Netzwerk.
 
 ### Betriebsgrenze des Fencings
 

@@ -17,7 +17,9 @@ The image digest resolves an official multi-architecture OCI index for Linux amd
 s390x. The model revision and image digest are immutable so the default stack cannot silently
 change between starts. The model volume is persistent. On the first start, the one-shot
 `qwen-model-init` service downloads the GGUF into that volume, verifies the configured SHA-256
-and atomically installs the file. Every later Compose start verifies the cached file again.
+and atomically installs the file. The `llama` service uses the same initializer as its process
+wrapper, so the cached file is checked again immediately before every server process start,
+including an automatic container restart.
 
 ## Start
 
@@ -46,7 +48,7 @@ loading and HTTP 200 only when inference is ready. Compose waits for that health
 starts TankAICore. The complete startup chain is therefore:
 
 ```text
-verified model file -> healthy llama.cpp server -> TankAI
+verified download -> pre-process checksum check -> healthy llama.cpp server -> TankAI
 ```
 
 The `llama` service is only exposed to the internal Compose network. TankAICore reaches it at:
