@@ -5,9 +5,13 @@ import sqlite3
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from tankai.dev_orchestrator.bootstrap_readiness import (
+    evaluate_bootstrap_configuration,
+)
 from tankai.dev_orchestrator.queue_cli import main as queue_cli_main
 from tankai.dev_orchestrator.job_queue import (
     AdmissionDenied,
@@ -716,6 +720,121 @@ def test_queue_cli_manages_service_agent_token_lifecycle(queue_env, capsys) -> N
 
     assert queue_cli_main(common + ["list-service-agents"] + actor) == 0
     assert json.loads(capsys.readouterr().out)["agents"][0]["is_active"] is False
+
+
+def test_bootstrap_readiness_requires_submission_ready_agent(queue_env, capsys) -> None:
+    env = queue_env
+    common = [
+        "--queue-db", str(env["tmp"] / "queue.db"),
+        "--fence-db", str(env["queue"].fence_store.path),
+        "--auth-db", str(env["tmp"] / "auth.db"),
+        "--repository-base", str(env["tmp"] / "repositories"),
+        "--workspace-base", str(env["tmp"] / "worktrees"),
+        "--state-base", str(env["tmp"] / "states"),
+    ]
+    actor = [
+        "--actor-email", "owner@example.com",
+        "--workspace-id", env["workspace"],
+    ]
+
+    assert queue_cli_main(common + ["bootstrap-readiness"] + actor) == 2
+    missing = json.loads(capsys.readouterr().out)
+    assert missing["ready"] is False
+    assert [item["status"] for item in missing["checks"]] == [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "FAIL",
+    ]
+    assert missing["counts"]["submission_ready_tokens"] == 0
+
+    owner_actor = SimpleNamespace(
+        user_id=env["owner"],
+        tenant_id=env["tenant"],
+        workspace_id=env["workspace"],
+        role="owner",
+    )
+    agent = env["auth"].create_service_agent(
+        actor=owner_actor,
+        name="Bootstrap Coder",
+    )
+    token = env["auth"].create_agent_token(
+        actor=owner_actor,
+        agent_id=agent.agent_id,
+        scopes=["jobs:read", "jobs:submit"],
+        repository_ids=[env["binding"].repository_id],
+    )
+
+    assert queue_cli_main(common + ["bootstrap-readiness"] + actor) == 0
+    ready = json.loads(capsys.readouterr().out)
+    assert ready["ready"] is True
+    assert all(item["status"] == "PASS" for item in ready["checks"])
+    assert ready["counts"]["submission_ready_tokens"] == 1
+    assert ready["host_readiness_not_evaluated"] is True
+    assert ready["runtime_activation_not_evaluated"] is True
+    assert ready["next_actions"] == []
+    serialized = json.dumps(ready).casefold()
+    assert "secret" not in serialized
+    assert "token_id" not in serialized
+    assert "token_prefix" not in serialized
+    assert "agent_id" not in serialized
+    assert str(env["tmp"]).casefold() not in serialized
+
+    env["auth"].revoke_agent_token(
+        actor=owner_actor,
+        agent_id=agent.agent_id,
+        token_id=token.token_id,
+    )
+    assert queue_cli_main(common + ["bootstrap-readiness"] + actor) == 2
+    revoked = json.loads(capsys.readouterr().out)
+    assert revoked["ready"] is False
+    assert revoked["counts"]["submission_ready_tokens"] == 0
+
+    repository_path = Path(env["binding"].repository_path)
+    (repository_path / ".git").rename(repository_path / ".git-disabled")
+    assert queue_cli_main(common + ["bootstrap-readiness"] + actor) == 2
+    invalid_repository = json.loads(capsys.readouterr().out)
+    assert invalid_repository["checks"][1]["status"] == "FAIL"
+    assert invalid_repository["counts"]["repositories_valid"] == 0
+    assert str(repository_path) not in json.dumps(invalid_repository)
+
+
+def test_bootstrap_readiness_rejects_members(queue_env, capsys) -> None:
+    env = queue_env
+    result = queue_cli_main(
+        [
+            "--queue-db",
+            str(env["tmp"] / "queue.db"),
+            "--fence-db",
+            str(env["queue"].fence_store.path),
+            "--auth-db",
+            str(env["tmp"] / "auth.db"),
+            "--repository-base",
+            str(env["tmp"] / "repositories"),
+            "--workspace-base",
+            str(env["tmp"] / "worktrees"),
+            "--state-base",
+            str(env["tmp"] / "states"),
+            "bootstrap-readiness",
+            "--actor-email",
+            "member@example.com",
+            "--workspace-id",
+            env["workspace"],
+        ]
+    )
+
+    assert result == 2
+    assert "Nur Owner oder Admins" in capsys.readouterr().out
+    with pytest.raises(PermissionError, match="Nur Owner oder Admins"):
+        evaluate_bootstrap_configuration(
+            env["queue"],
+            actor=SimpleNamespace(
+                user_id=env["member"],
+                tenant_id=env["tenant"],
+                workspace_id=env["workspace"],
+                role="owner",
+            ),
+        )
 
 
 def test_queue_cli_rejects_member_and_unregistered_agent_scope(queue_env, capsys) -> None:

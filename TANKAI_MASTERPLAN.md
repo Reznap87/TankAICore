@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.8
+Version: 5.7.9
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 8. September 2026
+Statusdatum: 9. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 8. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 9. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.8-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.9-Inkrements:
 
-39f9fc52816ca9d2fb12ebe93437b9718226a030
+bd546f8a34c17d2cb1f709779637bc77aa954ffc
 
 Zugehöriger Repository-Git-Tree:
 
-7ae4dc68f1512947ca376dbae9f78c786ff60893
+cc694d265dd39a9763a757a89e6d29355fc9c565
 
 Commit-Titel:
 
-feat: add reproducible local Qwen2.5 Coder runtime (#39)
+fix: enforce model integrity across llama restarts (#42)
 
-Dieser Stand ist der Ausgangsstand des lokalen Qwen2.5-Coder-Modellintegritäts-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des Single-Host-Konfigurations-Readiness-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 39f9fc52816ca9d2fb12ebe93437b9718226a030 mit Git-Tree
-7ae4dc68f1512947ca376dbae9f78c786ff60893,
+geschützter main-Ausgangsstand bd546f8a34c17d2cb1f709779637bc77aa954ffc mit Git-Tree
+cc694d265dd39a9763a757a89e6d29355fc9c565,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
-verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige lokale
-Modellintegritäts-Inkrement nicht wiederholt,
+verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
+Single-Host-Konfigurations-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -205,6 +205,17 @@ anschließend konfliktfrei gemergt,
 
 TankAI Core CI Run #73, Run 34196963840, auf dem gemergten main-Commit
 ae3622b905396a0212c797ecea9cdca056d7b36c: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Compose-Vertragsprüfung, Produktions-Container-Build und
+Container-Smoke,
+
+TankAI Core CI Run #74, Run 34197679925, auf dem PR-#42-Head
+1a6b241e8ea17c6f8ec7ab6af20715348382e29b: completed/success; die Jobs test und cloudflare
+bestanden einschließlich der Restart-Bypass-Regression, Compose-Vertragsprüfung,
+Produktions-Container-Build und Container-Smoke; PR #42 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #75, Run 34197824142, auf dem gemergten main-Commit
+bd546f8a34c17d2cb1f709779637bc77aa954ffc: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Compose-Vertragsprüfung, Produktions-Container-Build und
 Container-Smoke,
 
@@ -401,6 +412,13 @@ Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständi
 Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
 Eigenschaften von Docker/Podman und erzeugt dabei nur einen JSON-Receipt.
 
+ops.development.single_host_runner_bootstrap.configuration_readiness -> IMPLEMENTED; ein
+Owner-/Admin-Befehl prüft den gemeinsamen gespeicherten Vertrag aus aktiver Queue-Policy,
+weiterhin gültiger Repository-Bindung, einreichungsberechtigtem Service-Agenten und einem nicht
+abgelaufenen `jobs:read`-/`jobs:submit`-Token mit Repository-Überschneidung. Der JSON-Receipt
+enthält nur aggregierte Zähler, aktiviert keinen Prozess und ersetzt weder Host-Receipt noch
+Submit-Admission.
+
 Diese repositoryseitigen Nachweise schließen das übergeordnete Production-Gate nicht. Sie dürfen
 nicht als Live-Provider-, Deployment- oder laufender Runner-Receipt umgedeutet werden.
 
@@ -447,11 +465,12 @@ ein aktueller manueller Readiness-Receipt für den dann gewählten Vertrag,
 ein separat autorisierter, kostenbegrenzter Live-Smoke und gegebenenfalls ein neuer Deploy.
 
 Der Rest dieses Gates ist deshalb EXTERN BLOCKIERT. Unabhängige sichere Entwicklungsarbeit bleibt
-zulässig. Für ops.development.single_host_runner_bootstrap ist der read-only Repository-Doctor
-IMPLEMENTIERT. Der konkrete Host bleibt OFFEN, bis dieser Doctor auf einem dedizierten nicht-root
-Linux- oder WSL2-Host mit rootless Docker/Podman vollständig PASS meldet. Dieser Pfad
-veröffentlicht keinen Runtime-Socket und aktiviert ohne Operator-Konfiguration weder Queue noch
-externe Agenten.
+zulässig. Für ops.development.single_host_runner_bootstrap sind der read-only Host-Doctor und der
+nicht aktivierende Konfigurations-Receipt repositoryseitig IMPLEMENTIERT. Der konkrete Host und
+seine tatsächliche Workspace-Konfiguration bleiben OFFEN, bis beide Receipts auf einem
+dedizierten nicht-root Linux- oder WSL2-Host mit rootless Docker/Podman vollständig PASS melden.
+Dieser Pfad veröffentlicht keinen Runtime-Socket und aktiviert ohne Operatorentscheidung weder
+Queue noch externe Agenten.
 
 Das Gate selbst autorisiert weder das Setzen neuer Secret-Werte noch einen weiteren
 Production-Deploy noch kostenpflichtige Modellaufrufe.
@@ -522,11 +541,13 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    werden, damit eine Container-Restart-Policy keinen Bypass erzeugt. Dieser Vertrag ersetzt weder
    den Host-Doctor noch die getrennten Queue-, Repository- und Service-Agent-Gates.
 
-4. Nach erfolgreichem Runtime-Doctor, aktiver Workspace-Policy und registriertem Repository die
-   bereits implementierte Service-Agent-Operator-CLI verwenden. Der externe Programmieragent
-   liest danach den in den Capabilities beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene
-   Payloads anhand der begrenzten strukturierten Fehlercodes und kann erst dann einen lokal
-   vorvalidierten, eng begrenzten v1-Job übergeben.
+4. Nach erfolgreichem Runtime-Doctor die gespeicherte Workspace-Konfiguration mit dem
+   Owner-/Admin-Befehl `bootstrap-readiness` prüfen. Nur bei `ready=true` sind aktive Policy,
+   gültige Git-Registrierung und ein nicht abgelaufener, passend gescopter Service-Agenten-Token
+   gemeinsam belegt. Der externe Programmieragent liest danach den in den Capabilities
+   beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene Payloads anhand der begrenzten
+   strukturierten Fehlercodes und kann erst dann einen lokal vorvalidierten, eng begrenzten
+   v1-Job übergeben; der Submit validiert alle Gates erneut.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -557,6 +578,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.9, 9. September 2026:
+
+Geschützten main-Ausgangsstand auf bd546f8a34c17d2cb1f709779637bc77aa954ffc / Tree
+cc694d265dd39a9763a757a89e6d29355fc9c565 gebunden; PR #42 sowie CI Runs #74 und #75 als
+erfolgreichen Nachweis der Restart-sicheren Modellintegrität aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; einen Owner-/Admin-Receipt für
+den gemeinsamen Single-Host-Konfigurationsvertrag aus aktiver Queue-Policy, gültiger
+Git-Registrierung und einreichungsfähigem Service-Agenten-Token ergänzt, ohne Queue, Worker,
+Token, Provider oder Production-Runtime zu aktivieren beziehungsweise zu verändern.
 
 5.7.8, 8. September 2026:
 

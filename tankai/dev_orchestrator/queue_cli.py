@@ -12,6 +12,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from tankai.web.auth import AgentManagementActor, AuthStore
 
+from .bootstrap_readiness import evaluate_bootstrap_configuration
 from .job_queue import (
     DevelopmentJobQueue,
     QueueError,
@@ -147,6 +148,13 @@ def build_parser() -> argparse.ArgumentParser:
     deactivate_agent.add_argument("--actor-email", required=True)
     deactivate_agent.add_argument("--workspace-id", required=True)
     deactivate_agent.add_argument("--agent-id", required=True)
+
+    readiness = sub.add_parser(
+        "bootstrap-readiness",
+        help="Prüft Queue-, Repository- und Agenten-Konfiguration ohne Aktivierung",
+    )
+    readiness.add_argument("--actor-email", required=True)
+    readiness.add_argument("--workspace-id", required=True)
 
     fence_status = sub.add_parser("fence-status", help="Zeigt den externen Repository-Fence")
     fence_status.add_argument("--actor-email", required=True)
@@ -436,6 +444,13 @@ def main(argv: list[str] | None = None) -> int:
                 agent_id=args.agent_id,
             )
             _dump({"ok": True})
+        elif args.command == "bootstrap-readiness":
+            result = evaluate_bootstrap_configuration(
+                queue,
+                actor=_agent_actor(queue, args.actor_email, args.workspace_id),
+            )
+            _dump(result)
+            return 0 if result["ready"] else 2
         elif args.command == "fence-status":
             result = queue.fence_status(
                 actor_user_id=_actor(queue, args.actor_email),

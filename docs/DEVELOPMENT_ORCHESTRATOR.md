@@ -471,6 +471,29 @@ abgelehnt. Der JSON-Receipt nennt jeden Check als `PASS`, `FAIL` oder `UNKNOWN`;
 Der Doctor richtet weder die Queue noch Auth-Datenbank, Service-Agenten, Tokens oder einen
 Systemdienst ein. Der öffentliche Webprozess darf weiterhin keinen Docker-/Podman-Socket erhalten.
 
+Nach einem erfolgreichen Host-Receipt prüft der Operator den getrennten gespeicherten
+Konfigurationsvertrag:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  bootstrap-readiness \
+  --actor-email operator@example.com \
+  --workspace-id WORKSPACE_ID
+```
+
+Nur Owner/Admins dürfen diesen Receipt erzeugen. `ready=true` setzt eine aktive Queue-Policy,
+eine aktive und auf dem Dateisystem weiterhin gültige Git-Registrierung sowie einen aktiven,
+einreichungsberechtigten Service-Agenten mit nicht abgelaufenem `jobs:read`-/`jobs:submit`-Token
+für mindestens eines dieser Repositories voraus. Die Ausgabe enthält nur aggregierte Zähler und
+keine Token- oder Hostpfad-Metadaten. Sie aktiviert keinen Worker und ersetzt weder den
+Host-Receipt noch die erneute Admission jedes tatsächlichen Submits.
+
 ## Labelgebundener Container-Reaper ab 1.6.0
 
 Container aus Queue-Worker-Läufen erhalten zusätzlich zu `tankai.managed`, `tankai.run_id` und `tankai.phase` folgende vom Dispatcher erzeugte Labels:

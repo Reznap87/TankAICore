@@ -132,6 +132,31 @@ Weitere Lifecycle-Befehle sind `list-service-agents`, `list-agent-tokens`,
 Roh-Token aus. Die Deaktivierung widerruft alle noch aktiven Tokens des Agenten
 atomar.
 
+Vor dem ersten Clientzugriff kann ein Owner oder Admin den gespeicherten
+Konfigurationsvertrag zusammenhängend prüfen:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue/development-jobs.db \
+  --fence-db /srv/tankai/fences/development-fences.db \
+  --auth-db /srv/tankai/data/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees \
+  --state-base /srv/tankai/states \
+  bootstrap-readiness \
+  --actor-email admin@example.com \
+  --workspace-id WORKSPACE_UUID
+```
+
+Der JSON-Receipt enthält ausschließlich aggregierte Zähler, keine Token-IDs,
+Token-Präfixe, Roh-Tokens oder Hostpfade. Exitcode `0` und `ready=true` verlangen
+eine aktive mandantengebundene Policy, mindestens eine weiterhin gültige aktive
+Git-Registrierung und mindestens einen nicht widerrufenen beziehungsweise nicht
+abgelaufenen `jobs:read`-/`jobs:submit`-Token eines einreichungsberechtigten
+Service-Agenten mit Repository-Überschneidung. Exitcode `2` bedeutet unvollständige
+Konfiguration. Der Receipt ist nur eine Momentaufnahme: Er prüft weder Host noch
+laufenden Web-/Worker-Prozess und ersetzt nicht die erneute Admission beim Submit.
+
 ## Machine-to-Machine-Endpunkte
 
 Alle v1-Endpunkte benötigen:

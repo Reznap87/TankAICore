@@ -1,8 +1,34 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 8. September 2026
+**Statusdatum:** 9. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Single-Host-Konfigurations-Readiness — Nachweis 9. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 215 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Bootstrap-Readiness- und Reality-Contract-Prüfungen: 3 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev`: 0 bekannte Funde
+- Wrangler 4.124.0 Typgenerierung und TypeScript 7.0.2 `tsc --noEmit`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: fehlende Service-Agenten-/Token-Konfiguration ergibt Exitcode 2 und `ready=false`;
+  aktive Policy, gültiges Git-Repository, berechtigter Agent und passender nicht abgelaufener
+  Token ergeben Exitcode 0 und `ready=true`
+- geprüft: Token-Widerruf macht denselben Receipt sofort wieder fail-closed; Member dürfen den
+  workspaceweiten Status nicht abrufen; eine Registrierung, deren Pfad keine gültige Git-Wurzel
+  mehr ist, zählt nicht als einsatzbereites Repository
+- geprüft: Receipt enthält nur aggregierte Zähler und weder Token-Geheimnisse/-Metadaten noch
+  Hostpfade; Host- und Runtime-Status bleiben ausdrücklich außerhalb dieses Snapshots
+- der lokale Worker-Dry-Run wurde nach erfolgreicher Typgenerierung durch die externe
+  Netzwerkfreigabe der Build-Umgebung blockiert; Docker/Podman ist lokal nicht installiert.
+  Worker-Dry-Run, Compose-Prüfung, Produktions-Container-Build und Container-Smoke bleiben daher
+  verpflichtende GitHub-CI-Gates vor einem Merge
+- außerhalb isolierter temporärer Testdatenbanken keine Queue, kein Worker, kein Service-Agent
+  oder Token aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: lokale Qwen-Modellintegrität — Nachweis 8. September 2026
 
