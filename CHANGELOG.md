@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Single-Host-Konfigurations-Readiness
+
+- Owner-/Admin-Befehl `bootstrap-readiness` für einen zusammenhängenden JSON-Receipt über die
+  gespeicherte Queue-, Repository- und Service-Agenten-Konfiguration ergänzt.
+- `ready=true` verlangt eine aktive mandantengebundene Queue-Policy, mindestens eine weiterhin
+  gültige aktive Git-Registrierung und einen nicht abgelaufenen `jobs:read`-/`jobs:submit`-Token
+  eines einreichungsberechtigten Service-Agenten für dasselbe Repository.
+- Die Ausgabe enthält nur aggregierte Zähler und konkrete nächste Operator-Schritte, aber keine
+  Token-IDs, Token-Präfixe, Roh-Tokens oder Hostpfade.
+- Der Receipt aktiviert weder Queue noch Worker und weist ausdrücklich aus, dass Host-Bereitschaft,
+  Runtime-Aktivierung und die erneute Admission jedes Submits getrennt bleiben.
+
 ### Lokaler Qwen2.5-Coder-Runtime-Pfad
 
 - Einen einmaligen Modell-Init-Dienst ohne `privileged`-Modus ergänzt: Er akzeptiert nur HTTPS,

@@ -35,10 +35,11 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 213 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 215 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
+| Runner-Konfigurations-Doctor | Owner-/Admin-Receipt für aktive Queue-Policy, weiterhin gültige Repository-Bindung und einreichungsfähigen Service-Agenten-Token |
 | Admission-Control | Bindung an Nutzer, Mandant, Workspace, registriertes Repository, Rollen, Image-Digest und Ressourcenbudget |
 | Development-API | Authentifiziertes Einreichen, Auflisten und Abbrechen noch nicht geleaster Jobs |
 | External Agent Gateway v1 | Zeitlich begrenzte, widerrufbare Maschinen-Tokens mit Workspace-, Scope-, Repository- und Job-Isolation |
@@ -194,6 +195,13 @@ python -m tankai.dev_orchestrator.host_readiness \
 Nur ein Receipt mit `ready=true` gibt den nächsten manuellen Einrichtungsschritt frei. Unter
 WSL2 müssen die Daten im Linux-Dateisystem liegen; `/mnt/c`, Netzlaufwerke, NFS und SMB werden
 fail-closed abgelehnt.
+
+Danach prüft `bootstrap-readiness` die bereits gespeicherte Workspace-Konfiguration, ohne Queue,
+Worker oder externen Agenten zu aktivieren. Der Befehl gibt nur aggregierte Zähler aus und meldet
+erst dann `ready=true`, wenn aktive Policy, gültige Git-Registrierung, berechtigter Service-Agent
+und ein nicht abgelaufener `jobs:read`-/`jobs:submit`-Token für dasselbe Repository
+zusammenpassen. Der Host-Receipt bleibt getrennt erforderlich; jeder spätere Submit wird erneut
+vollständig validiert.
 
 Der optionale [lokale Qwen2.5-Coder-Pfad](docs/LOCAL_QWEN25_CODER.md) lädt das gebundene GGUF in
 ein persistentes internes Volume. Ein einmaliger Init-Dienst prüft vor dem ersten Serverstart die
