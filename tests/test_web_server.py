@@ -586,6 +586,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "max_errors": 20,
             },
         }
+        assert capabilities["job_monitoring"] == {
+            "status_path_template": "/api/v1/jobs/{job_id}",
+            "history_path_template": "/api/v1/jobs/{job_id}/history",
+            "history_version": 1,
+        }
 
         status, _, job_schema = client.get(
             "/api/v1/job-schema", bearer=secret
@@ -796,6 +801,23 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         status, _, job = client.get(f"/api/v1/jobs/{job_id}", bearer=secret)
         assert status == 200
         assert job["job"]["job_id"] == job_id
+        status, _, history = client.get(
+            f"/api/v1/jobs/{job_id}/history", bearer=secret
+        )
+        assert status == 200
+        assert history["history"]["version"] == 1
+        assert history["history"]["job_id"] == job_id
+        assert history["history"]["snapshot_only"] is True
+        assert history["history"]["truncated_before"] is False
+        assert [event["state"] for event in history["history"]["events"]] == [
+            "queued"
+        ]
+        serialized_history = json.dumps(history)
+        assert owner not in serialized_history
+        assert agent_id not in serialized_history
+        assert "details" not in serialized_history
+        assert "sequence" not in serialized_history
+        assert "actor" not in serialized_history
 
         status, _, second_agent = client.post(
             "/api/agents", {"name": "Read Only"}, csrf=csrf
@@ -817,6 +839,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 404
         assert "nicht gefunden" in hidden["error"]
+        status, _, hidden_history = client.get(
+            f"/api/v1/jobs/{job_id}/history", bearer=second_secret
+        )
+        assert status == 404
+        assert "nicht gefunden" in hidden_history["error"]
         status, _, submit_denied = client.post(
             "/api/v1/jobs", job_payload, bearer=second_secret
         )
@@ -828,6 +855,13 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 200
         assert cancelled["job"]["state"] == "cancelled"
+        status, _, cancelled_history = client.get(
+            f"/api/v1/jobs/{job_id}/history", bearer=secret
+        )
+        assert status == 200
+        assert [
+            event["state"] for event in cancelled_history["history"]["events"]
+        ] == ["queued", "cancelled"]
 
         status, _, revoked = client.post(
             f"/api/agents/{agent_id}/tokens/{token_id}/revoke", {}, csrf=csrf

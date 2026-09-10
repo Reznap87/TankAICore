@@ -172,6 +172,7 @@ Authorization: Bearer tkai_v1_REDACTED
 | `GET` | `/api/v1/repositories` | `repositories:read` |
 | `GET` | `/api/v1/jobs` | `jobs:read` |
 | `GET` | `/api/v1/jobs/{job_id}` | `jobs:read` |
+| `GET` | `/api/v1/jobs/{job_id}/history` | `jobs:read` |
 | `POST` | `/api/v1/jobs/preflight` | `jobs:submit` |
 | `POST` | `/api/v1/jobs` | `jobs:submit` |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `jobs:cancel` |
@@ -247,6 +248,44 @@ Queue-Platz noch den Idempotenzschlüssel. Diese dynamischen Zustände können s
 nach dem Snapshot ändern und werden deshalb erst beim echten Submit zusammen mit
 allen stabilen Regeln atomar beziehungsweise erneut geprüft. Ein erfolgreicher
 Preflight ist folglich keine Annahmegarantie.
+
+### Begrenzter Job-Zustandsverlauf
+
+Nach dem Submit bewirbt `GET /api/v1/capabilities` unter `job_monitoring` den
+Status- und History-Pfad sowie die History-Version. Ein Client mit `jobs:read`
+kann den Verlauf seines eigenen Jobs abrufen:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  "https://TANKAI_HOST/api/v1/jobs/JOB_UUID/history"
+```
+
+Die Antwort ist eine Momentaufnahme und enthält höchstens die 100 neuesten
+öffentlichen Zustandswechsel in chronologischer Reihenfolge:
+
+```json
+{
+  "history": {
+    "version": 1,
+    "job_id": "JOB_UUID",
+    "snapshot_only": true,
+    "truncated_before": false,
+    "events": [
+      {"state": "queued", "occurred_at": "2026-09-10T06:30:00+00:00"},
+      {"state": "leased", "occurred_at": "2026-09-10T06:30:05+00:00"},
+      {"state": "running", "occurred_at": "2026-09-10T06:30:06+00:00"}
+    ]
+  }
+}
+```
+
+`truncated_before=true` bedeutet, dass ältere Zustände nicht in dieser Antwort
+enthalten sind. Die Route prüft dieselbe Agenten-Jobfreigabe und die aktuelle
+Repository-Allowlist wie der Einzelstatus. Jobs anderer Service-Agenten bleiben
+auch bei gemeinsamem Owner und Repository mit `404` verborgen. Veröffentlicht
+werden nur Zustand und UTC-Zeit; interne Eventtypen, Details, Fehlertexte,
+Akteur-/Worker-IDs, Fence-Epochen und die globale Queue-Sequenz bleiben privat.
 
 ### Strukturierte Validierungsfehler
 
@@ -339,6 +378,8 @@ oder mit einem parallelen Auftrag kollidieren.
 - Der menschliche Owner muss weiterhin aktiv Mitglied des Workspaces sein.
 - Repository-Scopes werden vor jedem Einreichen und Lesen erneut geprüft.
 - Agenten sehen nur explizit ihnen zugeordnete Jobs.
+- Der Jobverlauf enthält nur öffentliche Zustände und UTC-Zeit, niemals interne
+  Ereignisdetails, Akteur-/Worker-IDs, Fence-Daten oder globale Sequenznummern.
 - Pipeline-Befehle, Hostpfade und Token-Geheimnisse erscheinen nicht in
   Job-Listenantworten.
 - Erfolgreiche Standard-Worker liefern nur einen gefilterten Receipt mit

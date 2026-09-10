@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### External-Agent-Jobverlauf v1
+
+- Scope- und jobgebundenes `GET /api/v1/jobs/{job_id}/history` ergänzt.
+- Die versionierte Antwort liefert höchstens die 100 neuesten öffentlichen Zustandswechsel in
+  chronologischer Reihenfolge und kennzeichnet eine Kürzung mit `truncated_before`.
+- Interne Eventtypen und -details, Fehlertexte, Akteur-/Worker-IDs, Fence-Epochen, Hostpfade und
+  die globale Queue-Sequenz werden nicht veröffentlicht.
+- `/api/v1/capabilities` bewirbt Status- und History-Pfad maschinenlesbar; fremde Agenten-Jobs
+  bleiben auch bei gemeinsamer Repository-Freigabe mit `404` verborgen.
+
 ### Single-Host-Konfigurations-Readiness
 
 - Owner-/Admin-Befehl `bootstrap-readiness` für einen zusammenhängenden JSON-Receipt über die

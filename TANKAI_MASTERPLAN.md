@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.9
+Version: 5.7.10
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 9. September 2026
+Statusdatum: 10. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 9. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 10. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.9-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.10-Inkrements:
 
-bd546f8a34c17d2cb1f709779637bc77aa954ffc
+e1548701a6acce5d71cc7246deec0d88ce985d83
 
 Zugehöriger Repository-Git-Tree:
 
-cc694d265dd39a9763a757a89e6d29355fc9c565
+aae4b0ae2177de051c61fca74dfdfc82389c46b7
 
 Commit-Titel:
 
-fix: enforce model integrity across llama restarts (#42)
+feat: add runner configuration readiness receipt (#43)
 
-Dieser Stand ist der Ausgangsstand des Single-Host-Konfigurations-Readiness-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Jobverlauf-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand bd546f8a34c17d2cb1f709779637bc77aa954ffc mit Git-Tree
-cc694d265dd39a9763a757a89e6d29355fc9c565,
+geschützter main-Ausgangsstand e1548701a6acce5d71cc7246deec0d88ce985d83 mit Git-Tree
+aae4b0ae2177de051c61fca74dfdfc82389c46b7,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Single-Host-Konfigurations-Inkrement nicht wiederholt,
+External-Agent-Jobverlauf-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -218,6 +218,20 @@ TankAI Core CI Run #75, Run 34197824142, auf dem gemergten main-Commit
 bd546f8a34c17d2cb1f709779637bc77aa954ffc: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Compose-Vertragsprüfung, Produktions-Container-Build und
 Container-Smoke,
+
+der zusammenhängende Single-Host-Konfigurations-Readiness-Receipt aus PR #43 für aktive
+Queue-Policy, weiterhin gültige Git-Registrierung und einreichungsfähigen Service-Agenten-Token,
+ohne Host, Queue, Worker oder Agenten zu aktivieren,
+
+TankAI Core CI Run #76, Run 34323108041, auf dem PR-#43-Head
+41764eb63d2695a466e87d1b3f335c3fcc952e03: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Bootstrap-Readiness-Regressionen, TypeScript-/Wrangler-Prüfung,
+Compose-Vertrag, Produktions-Container-Build und Container-Smoke; PR #43 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #77, Run 34323292500, auf dem gemergten main-Commit
+e1548701a6acce5d71cc7246deec0d88ce985d83: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -387,6 +401,12 @@ Sperre und Payload-Größe vor einem Submit mit demselben Admission-Vertrag prü
 erzeugt keinen Job und reserviert weder Queue-Kapazität noch Idempotenz; der echte Submit prüft
 alle Regeln einschließlich dynamischer Limits erneut.
 
+development.external_agent_job_history.v1 -> IMPLEMENTED; externe KI-Clients können höchstens
+die 100 neuesten öffentlichen Zustandswechsel ihres eigenen Jobs chronologisch abrufen. Die
+Route bleibt an `jobs:read`, die konkrete Agenten-Jobfreigabe und die aktuelle Repository-
+Allowlist gebunden; interne Eventdetails, Akteur-/Worker-IDs, Fence-Epochen, Fehlertexte,
+Hostpfade und globale Queue-Sequenzen werden nicht veröffentlicht.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -548,6 +568,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene Payloads anhand der begrenzten
    strukturierten Fehlercodes und kann erst dann einen lokal vorvalidierten, eng begrenzten
    v1-Job übergeben; der Submit validiert alle Gates erneut.
+   Den weiteren Ablauf liest der Agent über den in `job_monitoring` beworbenen, auf 100
+   öffentliche Zustandswechsel begrenzten History-Pfad. Fremde Agenten-Jobs und interne
+   Queue-Ereignisdetails bleiben verborgen.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -578,6 +601,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.10, 10. September 2026:
+
+Geschützten main-Ausgangsstand auf e1548701a6acce5d71cc7246deec0d88ce985d83 / Tree
+aae4b0ae2177de051c61fca74dfdfc82389c46b7 gebunden; PR #43 sowie CI Runs #76 und #77 als
+erfolgreichen Single-Host-Konfigurations-Readiness-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; einen auf 100 Einträge begrenzten,
+versionierten Zustandsverlauf für eigene External-Agent-Jobs ergänzt, ohne interne Eventdaten,
+Queue, Worker, Token, Provider, Host oder Production-Runtime offenzulegen beziehungsweise zu
+aktivieren.
 
 5.7.9, 9. September 2026:
 
