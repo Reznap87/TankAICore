@@ -201,6 +201,19 @@ class QueuedDevelopmentJob(QueueModel):
     error: str = ""
 
 
+class PublicJobStateEvent(QueueModel):
+    state: JobState
+    occurred_at: datetime
+
+
+class JobStateHistory(QueueModel):
+    version: int = 1
+    job_id: str
+    snapshot_only: bool = True
+    truncated_before: bool = False
+    events: list[PublicJobStateEvent]
+
+
 class JobLease(QueueModel):
     lease_token: str
     fence_epoch: int
@@ -381,6 +394,8 @@ class DevelopmentJobQueue:
                     details_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS idx_job_events_job_sequence
+                    ON job_events(job_id, sequence);
                 INSERT OR REPLACE INTO queue_meta(key,value) VALUES('schema_version','3');
                 COMMIT;
                 """
@@ -1326,6 +1341,68 @@ class DevelopmentJobQueue:
         if row is None:
             raise PermissionError("Auftrag nicht gefunden oder nicht zugreifbar")
         return self._job_from_row(row)
+
+    def job_state_history(
+        self,
+        *,
+        actor_user_id: str,
+        workspace_id: str,
+        job_id: str,
+    ) -> JobStateHistory:
+        """Return a bounded state-only history after enforcing normal job access."""
+        self.get_job(
+            actor_user_id=actor_user_id,
+            workspace_id=workspace_id,
+            job_id=job_id,
+        )
+        event_states = {
+            "job_enqueued": JobState.QUEUED,
+            "job_leased": JobState.LEASED,
+            "job_started": JobState.RUNNING,
+            "job_succeeded": JobState.SUCCEEDED,
+            "job_requeued": JobState.QUEUED,
+            "job_failed": JobState.FAILED,
+            "job_cancelled": JobState.CANCELLED,
+            "job_integrity_failed": JobState.FAILED,
+        }
+        public_event_types = (*event_states, "lease_expired")
+        placeholders = ",".join("?" for _ in public_event_types)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT event_type,details_json,created_at
+                FROM job_events
+                WHERE job_id=? AND event_type IN ({placeholders})
+                ORDER BY sequence DESC
+                LIMIT 101
+                """,
+                (job_id, *public_event_types),
+            ).fetchall()
+
+        truncated = len(rows) > 100
+        events: list[PublicJobStateEvent] = []
+        for row in reversed(rows[:100]):
+            state = event_states.get(row["event_type"])
+            if row["event_type"] == "lease_expired":
+                try:
+                    details = json.loads(row["details_json"])
+                except (TypeError, ValueError):
+                    details = {}
+                requeued = isinstance(details, dict) and details.get("requeued") is True
+                state = JobState.QUEUED if requeued else JobState.FAILED
+            occurred_at = _parse_time(row["created_at"])
+            if state is not None and occurred_at is not None:
+                events.append(
+                    PublicJobStateEvent(
+                        state=state,
+                        occurred_at=occurred_at,
+                    )
+                )
+        return JobStateHistory(
+            job_id=job_id,
+            truncated_before=truncated,
+            events=events,
+        )
 
     def cancel_job(
         self,

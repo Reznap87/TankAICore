@@ -35,7 +35,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 215 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 216 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
@@ -45,6 +45,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External Agent Gateway v1 | Zeitlich begrenzte, widerrufbare Maschinen-Tokens mit Workspace-, Scope-, Repository- und Job-Isolation |
 | External-Agent-Job-Schema | Authentifizierter JSON-Schema-Draft-2020-12-Vertrag für maschinelle Discovery und Vorvalidierung von v1-Aufträgen |
 | External-Agent-Validierungsfehler | Begrenzte, versionierte JSON-Pointer und Fehlercodes ohne Spiegelung von Eingabewerten oder internen Meldungen |
+| External-Agent-Jobverlauf | Auf 100 Einträge begrenzter Zustandsverlauf eigener Jobs ohne interne Ereignis-, Akteur- oder Worker-Daten |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
 | Web-UI | CSP, Security-Header, sichere DOM-Erzeugung |
@@ -256,7 +257,10 @@ zurückgibt. Über `POST /api/v1/jobs/preflight` prüfen sie denselben Auftrag
 außerdem gegen die aktuellen stabilen Scope-, Repository-, Policy-, Image-,
 Ressourcen-, Laufzeit-, Inline-Secret- und Payload-Gates, ohne einen Job
 einzureihen. Queue-Kapazität, Nutzerlimit und Idempotenz werden dabei nicht
-reserviert und beim echten Submit erneut beziehungsweise atomar geprüft.
+reserviert und beim echten Submit erneut beziehungsweise atomar geprüft. Über
+`GET /api/v1/jobs/{job_id}/history` können Clients anschließend ausschließlich
+die chronologischen Zustände ihres eigenen Jobs verfolgen. Interne Eventdetails,
+Akteur-/Worker-IDs und die globale Queue-Sequenz werden nicht veröffentlicht.
 
 Die Verwaltungs- und M2M-Verträge einschließlich Beispielpayload stehen in
 [`docs/EXTERNAL_AGENT_API.md`](docs/EXTERNAL_AGENT_API.md). Version 1 ist bewusst

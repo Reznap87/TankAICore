@@ -1,8 +1,33 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 9. September 2026
+**Statusdatum:** 10. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Jobverlauf v1 — Nachweis 10. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 216 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Queue-, External-Agent-API- und Reality-Contract-Prüfungen: 3 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev`: 0 bekannte Funde
+- Wrangler 4.124.0 Typgenerierung und TypeScript 7.0.2 `tsc --noEmit`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: eigener Agenten-Job liefert `queued`, `leased`, `running` und `succeeded` in
+  chronologischer Reihenfolge; ein Abbruch liefert `queued` und `cancelled`
+- geprüft: höchstens 100 neue Zustände werden ausgegeben und `truncated_before=true` markiert
+  vorhandene ältere Zustände
+- geprüft: ein anderer Service-Agent erhält trotz gleicher Repository-Freigabe `404`; die Antwort
+  enthält keine internen Eventdetails, Akteur-/Worker-IDs, Fence-Daten, Fehler-/Hostpfade oder
+  globale Queue-Sequenz
+- der vollständige lokale Wrangler-Dry-Run erreichte Typgenerierung und Typecheck, konnte den
+  konfigurierten Container jedoch ohne installierte Docker-/Podman-Runtime nicht bauen.
+  Worker-Artefakt, Compose-Prüfung, Produktions-Container-Build und Container-Smoke bleiben
+  deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: Single-Host-Konfigurations-Readiness — Nachweis 9. September 2026
 

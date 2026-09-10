@@ -314,6 +314,69 @@ def test_lease_token_is_required_and_completion_is_persisted(queue_env) -> None:
     assert stored.lease_expires_at is None
 
 
+def test_job_state_history_is_ordered_bounded_and_sanitized(queue_env) -> None:
+    env = queue_env
+    job = enqueue(env, user=env["member"])
+    lease = env["queue"].claim_next(worker_id="private-worker", lease_seconds=60)
+    assert lease is not None
+    env["queue"].start_job(job_id=job.job_id, lease_token=lease.lease_token)
+    env["queue"].complete_job(
+        job_id=job.job_id,
+        lease_token=lease.lease_token,
+        result={"host_path": "/srv/private/worktree"},
+    )
+
+    history = env["queue"].job_state_history(
+        actor_user_id=env["member"],
+        workspace_id=env["workspace"],
+        job_id=job.job_id,
+    )
+    assert history.version == 1
+    assert history.snapshot_only is True
+    assert history.truncated_before is False
+    assert [event.state for event in history.events] == [
+        JobState.QUEUED,
+        JobState.LEASED,
+        JobState.RUNNING,
+        JobState.SUCCEEDED,
+    ]
+    serialized = history.model_dump_json()
+    assert "private-worker" not in serialized
+    assert "/srv/private" not in serialized
+    assert "lease_token" not in serialized
+    assert "sequence" not in serialized
+    assert "details" not in serialized
+
+    with sqlite3.connect(env["queue"].path) as conn:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.executemany(
+            """
+            INSERT INTO job_events(job_id,event_type,actor_id,details_json,created_at)
+            VALUES(?,?,?,?,?)
+            """,
+            [
+                (job.job_id, "job_requeued", "private-worker", "{}", now)
+                for _ in range(101)
+            ],
+        )
+        conn.commit()
+    bounded = env["queue"].job_state_history(
+        actor_user_id=env["member"],
+        workspace_id=env["workspace"],
+        job_id=job.job_id,
+    )
+    assert bounded.truncated_before is True
+    assert len(bounded.events) == 100
+    assert {event.state for event in bounded.events} == {JobState.QUEUED}
+
+    with pytest.raises(PermissionError):
+        env["queue"].job_state_history(
+            actor_user_id=env["foreign"],
+            workspace_id=env["foreign_workspace"],
+            job_id=job.job_id,
+        )
+
+
 def test_failed_job_can_requeue_only_within_attempt_budget(queue_env) -> None:
     env = queue_env
     job = enqueue(env)

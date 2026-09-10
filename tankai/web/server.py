@@ -1128,6 +1128,11 @@ class Handler(BaseHTTPRequestHandler):
                             "max_errors": _EXTERNAL_VALIDATION_ERROR_LIMIT,
                         },
                     },
+                    "job_monitoring": {
+                        "status_path_template": "/api/v1/jobs/{job_id}",
+                        "history_path_template": "/api/v1/jobs/{job_id}/history",
+                        "history_version": 1,
+                    },
                 }
             )
             return
@@ -1213,6 +1218,29 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"jobs": jobs})
             except (PermissionError, QueueError, ValueError) as exc:
                 self._json({"error": str(exc)}, 403)
+            return
+        match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})/history", path)
+        if match:
+            context = self._agent_context(scope="jobs:read")
+            if context is None:
+                return
+            try:
+                UUID(match.group(1))
+                job = self._agent_job(context, match.group(1))
+                if job.repository_id not in context.repository_ids:
+                    raise PermissionError(
+                        "Repository ist für diesen KI-Agenten nicht freigegeben"
+                    )
+                history = self.app.job_queue.job_state_history(
+                    actor_user_id=context.owner_user_id,
+                    workspace_id=context.workspace_id,
+                    job_id=job.job_id,
+                )
+                self._json({"history": history.model_dump(mode="json")})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 404)
+            except (QueueError, ValueError) as exc:
+                self._json({"error": str(exc)}, 409)
             return
         match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})", path)
         if match:
