@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.10
+Version: 5.7.11
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 10. September 2026
+Statusdatum: 11. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 10. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 11. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.10-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.11-Inkrements:
 
-e1548701a6acce5d71cc7246deec0d88ce985d83
+4678d0749d460b639735927c0a7325e7a839d4ec
 
 Zugehöriger Repository-Git-Tree:
 
-aae4b0ae2177de051c61fca74dfdfc82389c46b7
+8f49c69bfdf90ff740e145c164be959884ed58c2
 
 Commit-Titel:
 
-feat: add runner configuration readiness receipt (#43)
+feat: expose external agent job history (#44)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Jobverlauf-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Paginierungs-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand e1548701a6acce5d71cc7246deec0d88ce985d83 mit Git-Tree
-aae4b0ae2177de051c61fca74dfdfc82389c46b7,
+geschützter main-Ausgangsstand 4678d0749d460b639735927c0a7325e7a839d4ec mit Git-Tree
+8f49c69bfdf90ff740e145c164be959884ed58c2,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Jobverlauf-Inkrement nicht wiederholt,
+External-Agent-Joblisten-Paginierungs-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -231,6 +231,19 @@ konfliktfrei gemergt,
 
 TankAI Core CI Run #77, Run 34323292500, auf dem gemergten main-Commit
 e1548701a6acce5d71cc7246deec0d88ce985d83: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+der begrenzte External-Agent-Jobverlauf aus PR #44 mit ausschließlich öffentlichen Zuständen,
+ohne interne Eventdetails, Akteur-/Worker-IDs oder globale Queue-Sequenz,
+
+TankAI Core CI Run #78, Run 34445565590, auf dem PR-#44-Head
+fa0557f7e6af42e5b8a61aa3a0f59ada76fcae50: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Jobverlauf-Regressionen, TypeScript-/Wrangler-Prüfung,
+Compose-Vertrag, Produktions-Container-Build und Container-Smoke; PR #44 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #79, Run 34445717186, auf dem gemergten main-Commit
+4678d0749d460b639735927c0a7325e7a839d4ec: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -407,6 +420,12 @@ Route bleibt an `jobs:read`, die konkrete Agenten-Jobfreigabe und die aktuelle R
 Allowlist gebunden; interne Eventdetails, Akteur-/Worker-IDs, Fence-Epochen, Fehlertexte,
 Hostpfade und globale Queue-Sequenzen werden nicht veröffentlicht.
 
+development.external_agent_job_pagination.v1 -> IMPLEMENTED; externe KI-Clients können die
+Liste eigener Jobs mit stabiler Keyset-Paginierung vollständig über die feste bisherige
+100er-Grenze hinaus lesen. Limit und Cursor werden strikt begrenzt; jeder Cursor bleibt an den
+Service-Agenten und die aktuelle Repository-Allowlist gebunden. Ungültige oder fremde Werte
+werden ohne Spiegelung neutral abgewiesen.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -571,6 +590,8 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    Den weiteren Ablauf liest der Agent über den in `job_monitoring` beworbenen, auf 100
    öffentliche Zustandswechsel begrenzten History-Pfad. Fremde Agenten-Jobs und interne
    Queue-Ereignisdetails bleiben verborgen.
+   Die dort ebenfalls beworbene Jobliste wird bei mehr als 100 eigenen Aufträgen über den
+   begrenzten `next_cursor` vollständig seitenweise gelesen.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -601,6 +622,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.11, 11. September 2026:
+
+Geschützten main-Ausgangsstand auf 4678d0749d460b639735927c0a7325e7a839d4ec / Tree
+8f49c69bfdf90ff740e145c164be959884ed58c2 gebunden; PR #44 sowie CI Runs #78 und #79 als
+erfolgreichen External-Agent-Jobverlauf-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert; die bisher nach 100 Einträgen endende
+External-Agent-Jobliste um eine stabile, begrenzte und agenten-/repositorygebundene
+Cursor-Paginierung erweitert, ohne Queue, Worker, Token, Provider, Host oder Production-Runtime
+zu aktivieren.
 
 5.7.10, 10. September 2026:
 

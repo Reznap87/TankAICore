@@ -20,7 +20,7 @@ from socketserver import ThreadingMixIn
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +52,8 @@ _EXTERNAL_VALIDATION_ERROR_LIMIT = 20
 _EXTERNAL_VALIDATION_PATH_DEPTH = 16
 _EXTERNAL_VALIDATION_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
 _EXTERNAL_VALIDATION_CODE_RE = re.compile(r"^[a-z0-9_.-]{1,80}$")
+_EXTERNAL_JOB_LIST_DEFAULT_LIMIT = 100
+_EXTERNAL_JOB_LIST_MAX_LIMIT = 100
 _BRAND_ASSET_ROOT = Path(__file__).with_name("static")
 _BRAND_ASSETS = {
     "/favicon.ico": ("image/x-icon", (_BRAND_ASSET_ROOT / "favicon.ico").read_bytes()),
@@ -1129,9 +1131,17 @@ class Handler(BaseHTTPRequestHandler):
                         },
                     },
                     "job_monitoring": {
+                        "list_path": "/api/v1/jobs",
                         "status_path_template": "/api/v1/jobs/{job_id}",
                         "history_path_template": "/api/v1/jobs/{job_id}/history",
                         "history_version": 1,
+                        "pagination": {
+                            "version": 1,
+                            "cursor_parameter": "cursor",
+                            "limit_parameter": "limit",
+                            "default_limit": _EXTERNAL_JOB_LIST_DEFAULT_LIMIT,
+                            "max_limit": _EXTERNAL_JOB_LIST_MAX_LIMIT,
+                        },
                     },
                 }
             )
@@ -1202,9 +1212,37 @@ class Handler(BaseHTTPRequestHandler):
                 return
             jobs = []
             try:
-                for job_id in self.app.auth.agent_job_ids(
-                    agent_id=context.agent_id, limit=100
+                query = parse_qs(
+                    urlsplit(self.path).query,
+                    keep_blank_values=True,
+                    strict_parsing=True,
+                    max_num_fields=2,
+                )
+                if set(query) - {"cursor", "limit"} or any(
+                    len(values) != 1 for values in query.values()
                 ):
+                    raise ValueError("Ungültige Joblisten-Paginierung")
+                limit_raw = query.get(
+                    "limit", [str(_EXTERNAL_JOB_LIST_DEFAULT_LIMIT)]
+                )[0]
+                if not re.fullmatch(r"[1-9][0-9]{0,2}", limit_raw):
+                    raise ValueError("Ungültige Joblisten-Paginierung")
+                limit = int(limit_raw)
+                if limit > _EXTERNAL_JOB_LIST_MAX_LIMIT:
+                    raise ValueError("Ungültige Joblisten-Paginierung")
+                cursor = query.get("cursor", [None])[0]
+                if cursor is not None:
+                    try:
+                        UUID(cursor)
+                    except ValueError as exc:
+                        raise ValueError("Ungültige Joblisten-Paginierung") from exc
+                page = self.app.auth.agent_job_page(
+                    agent_id=context.agent_id,
+                    repository_ids=context.repository_ids,
+                    limit=limit,
+                    cursor=cursor,
+                )
+                for job_id in page.job_ids:
                     try:
                         job = queue.get_job(
                             actor_user_id=context.owner_user_id,
@@ -1215,8 +1253,19 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     if job.repository_id in context.repository_ids:
                         jobs.append(self._external_job_payload(job))
-                self._json({"jobs": jobs})
-            except (PermissionError, QueueError, ValueError) as exc:
+                self._json(
+                    {
+                        "jobs": jobs,
+                        "pagination": {
+                            "version": 1,
+                            "limit": limit,
+                            "next_cursor": page.next_cursor,
+                        },
+                    }
+                )
+            except ValueError:
+                self._json({"error": "Ungültige Joblisten-Paginierung"}, 400)
+            except (PermissionError, QueueError) as exc:
                 self._json({"error": str(exc)}, 403)
             return
         match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})/history", path)

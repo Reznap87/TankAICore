@@ -1,8 +1,32 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 10. September 2026
+**Statusdatum:** 11. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Joblisten-Paginierung v1 — Nachweis 11. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 217 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Pagination-, External-Agent-API- und Reality-Contract-Prüfungen: 3 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- TypeScript 7.0.2 `tsc --noEmit`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: eine Liste mit 102 eigenen Jobs bleibt über zwei Seiten vollständig und ohne
+  Duplikate erreichbar; identische Zeitstempel werden deterministisch aufgelöst
+- geprüft: Standardlimit 100, frei wählbares Limit 1 bis 100, versionierter
+  `next_cursor` und maschinenlesbare Capability-Discovery
+- geprüft: fremde beziehungsweise nicht mehr freigegebene Cursor sowie leere, zu große,
+  mehrfache und unbekannte Parameter liefern neutral HTTP 400, ohne Werte zu spiegeln
+- lokale Wrangler-Typgenerierung und der vollständige Worker-Dry-Run wurden von der externen
+  Netzwerkfreigabe der Build-Umgebung blockiert; Docker/Podman ist lokal nicht installiert.
+  Worker-Artefakt, Compose-Prüfung, Produktions-Container-Build und Container-Smoke bleiben
+  deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Jobverlauf v1 — Nachweis 10. September 2026
 

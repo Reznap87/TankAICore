@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### External-Agent-Joblisten-Paginierung v1
+
+- Stabile Cursor-Paginierung für `GET /api/v1/jobs` mit einem konfigurierbaren Limit von 1 bis
+  höchstens 100 Einträgen pro Seite ergänzt.
+- Die kompatible Standardanfrage liefert weiterhin bis zu 100 Jobs und zusätzlich einen
+  versionierten Pagination-Block mit `next_cursor`.
+- Cursor bleiben an Service-Agent und aktuelle Repository-Allowlist gebunden; fremde,
+  manipulierte, mehrfache oder unbekannte Parameter werden neutral und ohne Wertspiegelung
+  abgewiesen.
+- `/api/v1/capabilities` veröffentlicht Listenpfad, Parameter, Version sowie Standard- und
+  Maximalgrenze für maschinelle Clients.
+
 ### External-Agent-Jobverlauf v1
 
 - Scope- und jobgebundenes `GET /api/v1/jobs/{job_id}/history` ergänzt.

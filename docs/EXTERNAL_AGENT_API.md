@@ -249,6 +249,40 @@ nach dem Snapshot ändern und werden deshalb erst beim echten Submit zusammen mi
 allen stabilen Regeln atomar beziehungsweise erneut geprüft. Ein erfolgreicher
 Preflight ist folglich keine Annahmegarantie.
 
+### Begrenzte Joblisten-Paginierung
+
+`GET /api/v1/capabilities` bewirbt unter `job_monitoring` den Listenpfad und den
+versionierten Pagination-Vertrag. Ohne Query-Parameter liefert `GET /api/v1/jobs`
+wie bisher die bis zu 100 neuesten eigenen Jobs. Kleinere Seiten können mit
+`limit` zwischen 1 und 100 angefordert werden:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  "https://TANKAI_HOST/api/v1/jobs?limit=25"
+```
+
+Jede Antwort enthält zusätzlich den tatsächlich verwendeten Grenzwert und den
+Cursor für die nächste Seite:
+
+```json
+{
+  "jobs": [],
+  "pagination": {
+    "version": 1,
+    "limit": 25,
+    "next_cursor": "JOB_UUID"
+  }
+}
+```
+
+Ist `next_cursor` nicht `null`, übergibt der Client den Wert unverändert als
+`cursor` an die nächste Anfrage. Die Sortierung ist stabil und erreicht dadurch
+auch Jobs jenseits der ersten 100 Einträge. Der Cursor ist an denselben
+Service-Agenten und die aktuelle Repository-Allowlist gebunden. Ungültige,
+fremde, mehrfach angegebene oder unbekannte Pagination-Parameter liefern eine
+neutrale HTTP-400-Antwort, ohne den übermittelten Wert zu spiegeln.
+
 ### Begrenzter Job-Zustandsverlauf
 
 Nach dem Submit bewirbt `GET /api/v1/capabilities` unter `job_monitoring` den
@@ -378,6 +412,8 @@ oder mit einem parallelen Auftrag kollidieren.
 - Der menschliche Owner muss weiterhin aktiv Mitglied des Workspaces sein.
 - Repository-Scopes werden vor jedem Einreichen und Lesen erneut geprüft.
 - Agenten sehen nur explizit ihnen zugeordnete Jobs.
+- Joblisten-Cursor gelten nur für denselben Agenten und ein aktuell freigegebenes
+  Repository; pro Seite werden höchstens 100 Einträge gelesen.
 - Der Jobverlauf enthält nur öffentliche Zustände und UTC-Zeit, niemals interne
   Ereignisdetails, Akteur-/Worker-IDs, Fence-Daten oder globale Sequenznummern.
 - Pipeline-Befehle, Hostpfade und Token-Geheimnisse erscheinen nicht in
