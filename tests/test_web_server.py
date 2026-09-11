@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import threading
 from http.cookiejar import CookieJar
@@ -98,6 +99,78 @@ def test_password_hashing_and_session_revocation(tmp_path) -> None:
     assert store.resolve_session(session.token) is not None
     store.revoke_session(session.context.session_id, user_id=user_id)
     assert store.resolve_session(session.token) is None
+
+
+def test_agent_job_pagination_reaches_past_first_hundred_and_scopes_cursor(
+    tmp_path,
+) -> None:
+    store = AuthStore(tmp_path / "auth.db")
+    store.create_user_with_tenant(
+        email="pagination@example.com",
+        password="Pagination-password-123",
+        display_name="Pagination Owner",
+        tenant_name="Pagination Tenant",
+    )
+    session = store.authenticate(
+        email="pagination@example.com", password="Pagination-password-123"
+    )
+    assert session is not None
+    agent = store.create_service_agent(actor=session.context, name="Paging Agent")
+    repository_id = "00000000-0000-4000-8000-000000000101"
+    other_repository_id = "00000000-0000-4000-8000-000000000102"
+    token = store.create_agent_token(
+        actor=session.context,
+        agent_id=agent.agent_id,
+        scopes=["jobs:read"],
+        repository_ids=[repository_id, other_repository_id],
+    )
+    context = store.resolve_agent_token(token.token)
+    assert context is not None
+
+    expected_job_ids = [
+        f"00000000-0000-4000-8000-{index:012d}" for index in range(1, 103)
+    ]
+    for job_id in expected_job_ids:
+        store.grant_agent_job(
+            context=context,
+            job_id=job_id,
+            repository_id=repository_id,
+        )
+    foreign_repository_job = "00000000-0000-4000-8000-000000000999"
+    store.grant_agent_job(
+        context=context,
+        job_id=foreign_repository_job,
+        repository_id=other_repository_id,
+    )
+    with sqlite3.connect(store.path) as conn:
+        conn.execute(
+            "UPDATE agent_job_grants SET created_at='2026-09-11T06:00:00+00:00'"
+        )
+
+    first = store.agent_job_page(
+        agent_id=agent.agent_id,
+        repository_ids=[repository_id],
+        limit=100,
+    )
+    assert list(first.job_ids) == expected_job_ids[:100]
+    assert first.next_cursor == expected_job_ids[99]
+    second = store.agent_job_page(
+        agent_id=agent.agent_id,
+        repository_ids=[repository_id],
+        limit=100,
+        cursor=first.next_cursor,
+    )
+    assert list(second.job_ids) == expected_job_ids[100:]
+    assert second.next_cursor is None
+    assert set(first.job_ids + second.job_ids) == set(expected_job_ids)
+    assert foreign_repository_job not in first.job_ids + second.job_ids
+
+    with pytest.raises(ValueError, match="Ungültige Joblisten-Paginierung"):
+        store.agent_job_page(
+            agent_id=agent.agent_id,
+            repository_ids=[repository_id],
+            cursor=foreign_repository_job,
+        )
 
 
 def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
@@ -587,9 +660,17 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             },
         }
         assert capabilities["job_monitoring"] == {
+            "list_path": "/api/v1/jobs",
             "status_path_template": "/api/v1/jobs/{job_id}",
             "history_path_template": "/api/v1/jobs/{job_id}/history",
             "history_version": 1,
+            "pagination": {
+                "version": 1,
+                "cursor_parameter": "cursor",
+                "limit_parameter": "limit",
+                "default_limit": 100,
+                "max_limit": 100,
+            },
         }
 
         status, _, job_schema = client.get(
@@ -797,7 +878,52 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         status, _, jobs = client.get("/api/v1/jobs", bearer=secret)
         assert status == 200
         assert [item["job_id"] for item in jobs["jobs"]] == [job_id]
+        assert jobs["pagination"] == {
+            "version": 1,
+            "limit": 100,
+            "next_cursor": None,
+        }
         assert "pipeline" not in jobs["jobs"][0]
+
+        second_payload = {
+            **job_payload,
+            "idempotency_key": "agent-job-2",
+        }
+        status, _, second_job = client.post(
+            "/api/v1/jobs", second_payload, bearer=secret
+        )
+        assert status == 202
+        second_job_id = second_job["job"]["job_id"]
+        status, _, first_page = client.get(
+            "/api/v1/jobs?limit=1", bearer=secret
+        )
+        assert status == 200
+        assert [item["job_id"] for item in first_page["jobs"]] == [second_job_id]
+        assert first_page["pagination"]["limit"] == 1
+        cursor = first_page["pagination"]["next_cursor"]
+        assert cursor == second_job_id
+        status, _, second_page = client.get(
+            f"/api/v1/jobs?limit=1&cursor={cursor}", bearer=secret
+        )
+        assert status == 200
+        assert [item["job_id"] for item in second_page["jobs"]] == [job_id]
+        assert second_page["pagination"] == {
+            "version": 1,
+            "limit": 1,
+            "next_cursor": None,
+        }
+        for invalid_query in (
+            "limit=0",
+            "limit=101",
+            "limit=1&limit=2",
+            "cursor=not-a-job-id",
+            "unexpected=DO_NOT_REFLECT_THIS_VALUE",
+        ):
+            status, _, invalid_page = client.get(
+                f"/api/v1/jobs?{invalid_query}", bearer=secret
+            )
+            assert status == 400
+            assert invalid_page == {"error": "Ungültige Joblisten-Paginierung"}
         status, _, job = client.get(f"/api/v1/jobs/{job_id}", bearer=secret)
         assert status == 200
         assert job["job"]["job_id"] == job_id
@@ -844,6 +970,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 404
         assert "nicht gefunden" in hidden_history["error"]
+        status, _, foreign_cursor = client.get(
+            f"/api/v1/jobs?cursor={cursor}", bearer=second_secret
+        )
+        assert status == 400
+        assert foreign_cursor == {"error": "Ungültige Joblisten-Paginierung"}
         status, _, submit_denied = client.post(
             "/api/v1/jobs", job_payload, bearer=second_secret
         )

@@ -174,6 +174,12 @@ class AgentAuthContext:
 
 
 @dataclass(frozen=True)
+class AgentJobPage:
+    job_ids: tuple[str, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True)
 class AgentTokenCreated:
     token_id: str
     token: str
@@ -1181,6 +1187,63 @@ class AuthStore:
                 (agent_id, bounded_limit),
             ).fetchall()
         return [str(row["job_id"]) for row in rows]
+
+    def agent_job_page(
+        self,
+        *,
+        agent_id: str,
+        repository_ids: Iterable[str],
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> AgentJobPage:
+        if (
+            not isinstance(limit, int)
+            or isinstance(limit, bool)
+            or not 1 <= limit <= 100
+        ):
+            raise ValueError("Ungültige Joblisten-Paginierung")
+        allowed_repositories = self._normalize_repository_ids(repository_ids)
+        placeholders = ",".join("?" for _ in allowed_repositories)
+        base_parameters: list[object] = [agent_id, *allowed_repositories]
+        cursor_clause = ""
+        if cursor is not None:
+            try:
+                UUID(cursor)
+            except ValueError as exc:
+                raise ValueError("Ungültige Joblisten-Paginierung") from exc
+
+        with self._connect() as conn:
+            if cursor is not None:
+                cursor_row = conn.execute(
+                    "SELECT created_at,job_id FROM agent_job_grants "
+                    f"WHERE agent_id=? AND repository_id IN ({placeholders}) AND job_id=?",
+                    (*base_parameters, cursor),
+                ).fetchone()
+                if cursor_row is None:
+                    raise ValueError("Ungültige Joblisten-Paginierung")
+                cursor_clause = (
+                    "AND (created_at < ? OR (created_at = ? AND job_id > ?)) "
+                )
+                base_parameters.extend(
+                    [
+                        cursor_row["created_at"],
+                        cursor_row["created_at"],
+                        cursor_row["job_id"],
+                    ]
+                )
+            rows = conn.execute(
+                "SELECT job_id FROM agent_job_grants "
+                f"WHERE agent_id=? AND repository_id IN ({placeholders}) "
+                f"{cursor_clause}ORDER BY created_at DESC,job_id LIMIT ?",
+                (*base_parameters, limit + 1),
+            ).fetchall()
+
+        visible_rows = rows[:limit]
+        job_ids = tuple(str(row["job_id"]) for row in visible_rows)
+        return AgentJobPage(
+            job_ids=job_ids,
+            next_cursor=job_ids[-1] if len(rows) > limit else None,
+        )
 
     def agent_can_access_job(self, *, agent_id: str, job_id: str) -> bool:
         with self._connect() as conn:
