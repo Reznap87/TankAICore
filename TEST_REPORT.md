@@ -1,8 +1,32 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 11. September 2026
+**Statusdatum:** 12. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Conditional-Polling v1 — Nachweis 12. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 217 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte External-Agent-HTTP- und Reality-Contract-Prüfungen: PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler 4.124.0 Typgenerierung und TypeScript 7.0.2 `tsc --noEmit`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: Einzelstatus und Zustandsverlauf liefern starke, reproduzierbare `ETag`-Validatoren;
+  ein passendes starkes oder schwaches `If-None-Match` ergibt `304` ohne Body
+- geprüft: ein Jobabbruch verändert Status und Verlauf, sodass ein alter Validator wieder `200`
+  mit dem neuen öffentlichen Zustand und einem neuen `ETag` erhält
+- geprüft: bekannte Validatoren umgehen weder Authentifizierung noch Scope-, Agenten-Job- oder
+  Repository-Isolation; ein fremder Service-Agent erhält weiterhin neutral `404`
+- der vollständige lokale Wrangler-Dry-Run wurde nach Typgenerierung und Typecheck von der
+  Ausführungsumgebung vor einer externen Übertragung des Worker-Bundles blockiert; Docker/Podman
+  ist lokal nicht installiert. Worker-Artefakt, Compose-Prüfung, Produktions-Container-Build und
+  Container-Smoke bleiben deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Joblisten-Paginierung v1 — Nachweis 11. September 2026
 

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Conditional-Polling v1
+
+- Einzelstatus und Zustandsverlauf eigener Jobs liefern jetzt einen starken `ETag` über ihre
+  bereits gefilterte öffentliche JSON-Darstellung.
+- Bei passendem `If-None-Match` antworten beide Routen mit `304 Not Modified` ohne Body; ein
+  geänderter Jobzustand erzeugt wieder `200` und einen neuen Validator.
+- Authentifizierung, `jobs:read`, Agenten-Jobfreigabe und aktuelle Repository-Allowlist werden
+  vor der bedingten Antwort unverändert geprüft; fremde Jobs bleiben mit `404` verborgen.
+- `/api/v1/capabilities` veröffentlicht Header, Statuscode und Vertragsversion für maschinelle
+  Clients; die bestehende `Cache-Control: no-store`-Vorgabe bleibt erhalten.
+
 ### External-Agent-Joblisten-Paginierung v1
 
 - Stabile Cursor-Paginierung für `GET /api/v1/jobs` mit einem konfigurierbaren Limit von 1 bis

@@ -321,6 +321,31 @@ auch bei gemeinsamem Owner und Repository mit `404` verborgen. Veröffentlicht
 werden nur Zustand und UTC-Zeit; interne Eventtypen, Details, Fehlertexte,
 Akteur-/Worker-IDs, Fence-Epochen und die globale Queue-Sequenz bleiben privat.
 
+### Bedingtes Status-Polling
+
+Der Einzelstatus und der Zustandsverlauf liefern bei einer erfolgreichen `200`-Antwort jeweils
+einen starken `ETag` über genau ihre bereits gefilterte öffentliche JSON-Darstellung. Der Client
+kann diesen Wert beim nächsten Poll unverändert mitsenden:
+
+```bash
+curl --silent --show-error --include \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  -H 'If-None-Match: "ZUVOR_GELIEFERTER_ETAG"' \
+  "https://TANKAI_HOST/api/v1/jobs/JOB_UUID"
+```
+
+Ist die öffentliche Darstellung unverändert, folgt `304 Not Modified` mit demselben `ETag` und
+ohne JSON-Body. Nach einem Zustandswechsel antwortet die Route wieder mit `200`, der aktuellen
+Darstellung und einem neuen `ETag`. Dasselbe Verfahren gilt für den `/history`-Pfad. Jede
+Anfrage muss weiterhin authentifiziert sein; Scope, konkrete Agenten-Jobfreigabe und aktuelle
+Repository-Allowlist werden vor dem Vergleich geprüft. Ein fremder Job bleibt daher auch mit
+einem bekannten Validator als `404` verborgen. Überlange oder nicht passende Header werden
+ignoriert und lösen eine normale `200`-Antwort aus. `Cache-Control: no-store` bleibt erhalten;
+der maschinelle Client verwaltet den Validator ausdrücklich selbst.
+
+Der versionierte `conditional_get`-Block unter `job_monitoring` nennt Request-Header,
+Response-Header und den Statuscode für unveränderte Antworten maschinenlesbar.
+
 ### Strukturierte Validierungsfehler
 
 Kann der Submit-Endpunkt den JSON-Body nicht als
