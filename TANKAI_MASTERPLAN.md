@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.11
+Version: 5.7.12
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 11. September 2026
+Statusdatum: 12. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 11. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 12. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.11-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.12-Inkrements:
 
-4678d0749d460b639735927c0a7325e7a839d4ec
+aa9aa456164f69386a01c00a38fd96621960486a
 
 Zugehöriger Repository-Git-Tree:
 
-8f49c69bfdf90ff740e145c164be959884ed58c2
+91c38a4ce7c0e8186b54bf8de7b0ae414de71d56
 
 Commit-Titel:
 
-feat: expose external agent job history (#44)
+feat: paginate external agent job lists (#45)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Paginierungs-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Conditional-Polling-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 4678d0749d460b639735927c0a7325e7a839d4ec mit Git-Tree
-8f49c69bfdf90ff740e145c164be959884ed58c2,
+geschützter main-Ausgangsstand aa9aa456164f69386a01c00a38fd96621960486a mit Git-Tree
+91c38a4ce7c0e8186b54bf8de7b0ae414de71d56,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Joblisten-Paginierungs-Inkrement nicht wiederholt,
+External-Agent-Conditional-Polling-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -244,6 +244,19 @@ konfliktfrei gemergt,
 
 TankAI Core CI Run #79, Run 34445717186, auf dem gemergten main-Commit
 4678d0749d460b639735927c0a7325e7a839d4ec: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+die stabile, begrenzte und agenten-/repositorygebundene External-Agent-Joblisten-Paginierung aus
+PR #45,
+
+TankAI Core CI Run #80, Run 34572005706, auf dem PR-#45-Head
+fc986339721841309e503f3b8ef2760379e6ffd8: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Paginierungs-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #45 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #81, Run 34572191464, auf dem gemergten main-Commit
+aa9aa456164f69386a01c00a38fd96621960486a: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -426,6 +439,12 @@ Liste eigener Jobs mit stabiler Keyset-Paginierung vollständig über die feste 
 Service-Agenten und die aktuelle Repository-Allowlist gebunden. Ungültige oder fremde Werte
 werden ohne Spiegelung neutral abgewiesen.
 
+development.external_agent_conditional_polling.v1 -> IMPLEMENTED; Einzelstatus und begrenzter
+Zustandsverlauf liefern einen starken Validator über ihre bereits gefilterte öffentliche
+JSON-Darstellung. Ein passendes `If-None-Match` erhält nach vollständiger Authentifizierung,
+Scope-, Agenten-Job- und Repository-Prüfung eine leere `304`-Antwort. Fremde Jobs bleiben
+unabhängig von bekannten Validatoren verborgen; `Cache-Control: no-store` bleibt bestehen.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -592,6 +611,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    Queue-Ereignisdetails bleiben verborgen.
    Die dort ebenfalls beworbene Jobliste wird bei mehr als 100 eigenen Aufträgen über den
    begrenzten `next_cursor` vollständig seitenweise gelesen.
+   Einzelstatus und Verlauf werden danach mit dem beworbenen `ETag` bedingt gepollt; eine leere
+   `304`-Antwort bedeutet ausschließlich, dass sich die öffentliche Darstellung seit dem
+   mitgesendeten Validator nicht geändert hat.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -622,6 +644,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.12, 12. September 2026:
+
+Geschützten main-Ausgangsstand auf aa9aa456164f69386a01c00a38fd96621960486a / Tree
+91c38a4ce7c0e8186b54bf8de7b0ae414de71d56 gebunden; PR #45 sowie CI Runs #80 und #81 als
+erfolgreichen External-Agent-Joblisten-Paginierungs-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; den Einzelstatus und begrenzten
+Zustandsverlauf um einen versionierten `ETag`-/`If-None-Match`-Vertrag erweitert, ohne
+Authentifizierungs-, Scope-, Agenten-, Repository- oder `no-store`-Grenzen zu lockern und ohne
+Queue, Worker, Provider, Host oder Production-Runtime zu aktivieren.
 
 5.7.11, 11. September 2026:
 

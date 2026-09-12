@@ -421,6 +421,33 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    @staticmethod
+    def _public_etag(obj: object) -> str:
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        return f'"{hashlib.sha256(body).hexdigest()}"'
+
+    @staticmethod
+    def _if_none_match_matches(header: str, etag: str) -> bool:
+        if not header or len(header) > 4096:
+            return False
+        expected = etag.removeprefix("W/")
+        return any(
+            candidate == "*" or candidate.removeprefix("W/") == expected
+            for candidate in (part.strip() for part in header.split(","))
+        )
+
+    def _conditional_json(self, obj: object) -> None:
+        etag = self._public_etag(obj)
+        if self._if_none_match_matches(
+            self.headers.get("If-None-Match", ""), etag
+        ):
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self._security_headers()
+            self.end_headers()
+            return
+        self._json(obj, headers={"ETag": etag})
+
     def _internal_error(self, operation: str) -> None:
         request_id = secrets.token_hex(6)
         print(f"[web] interner Fehler operation={operation} request_id={request_id}")
@@ -1135,6 +1162,12 @@ class Handler(BaseHTTPRequestHandler):
                         "status_path_template": "/api/v1/jobs/{job_id}",
                         "history_path_template": "/api/v1/jobs/{job_id}/history",
                         "history_version": 1,
+                        "conditional_get": {
+                            "version": 1,
+                            "request_header": "If-None-Match",
+                            "response_header": "ETag",
+                            "not_modified_status": 304,
+                        },
                         "pagination": {
                             "version": 1,
                             "cursor_parameter": "cursor",
@@ -1285,7 +1318,9 @@ class Handler(BaseHTTPRequestHandler):
                     workspace_id=context.workspace_id,
                     job_id=job.job_id,
                 )
-                self._json({"history": history.model_dump(mode="json")})
+                self._conditional_json(
+                    {"history": history.model_dump(mode="json")}
+                )
             except PermissionError as exc:
                 self._json({"error": str(exc)}, 404)
             except (QueueError, ValueError) as exc:
@@ -1303,7 +1338,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise PermissionError(
                         "Repository ist für diesen KI-Agenten nicht freigegeben"
                     )
-                self._json({"job": self._external_job_payload(job)})
+                self._conditional_json({"job": self._external_job_payload(job)})
             except PermissionError as exc:
                 self._json({"error": str(exc)}, 404)
             except (QueueError, ValueError) as exc:

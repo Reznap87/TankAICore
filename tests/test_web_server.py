@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import subprocess
 import threading
@@ -30,15 +31,32 @@ class Client:
         self.jar = CookieJar()
         self.opener = build_opener(HTTPCookieProcessor(self.jar))
 
-    def get(self, path: str, *, bearer: str | None = None):
+    @staticmethod
+    def _json_or_none(response):
+        body = response.read()
+        return json.loads(body) if body else None
+
+    def get(
+        self,
+        path: str,
+        *,
+        bearer: str | None = None,
+        headers: dict[str, str] | None = None,
+    ):
         request = Request(self.base + path)
         if bearer:
             request.add_header("Authorization", f"Bearer {bearer}")
+        for name, value in (headers or {}).items():
+            request.add_header(name, value)
         try:
             with self.opener.open(request, timeout=30) as response:
-                return response.status, dict(response.headers), json.load(response)
+                return (
+                    response.status,
+                    dict(response.headers),
+                    self._json_or_none(response),
+                )
         except HTTPError as exc:
-            return exc.code, dict(exc.headers), json.load(exc)
+            return exc.code, dict(exc.headers), self._json_or_none(exc)
 
     def post(
         self,
@@ -664,6 +682,12 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "status_path_template": "/api/v1/jobs/{job_id}",
             "history_path_template": "/api/v1/jobs/{job_id}/history",
             "history_version": 1,
+            "conditional_get": {
+                "version": 1,
+                "request_header": "If-None-Match",
+                "response_header": "ETag",
+                "not_modified_status": 304,
+            },
             "pagination": {
                 "version": 1,
                 "cursor_parameter": "cursor",
@@ -924,13 +948,36 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             )
             assert status == 400
             assert invalid_page == {"error": "Ungültige Joblisten-Paginierung"}
-        status, _, job = client.get(f"/api/v1/jobs/{job_id}", bearer=secret)
+        status, job_headers, job = client.get(
+            f"/api/v1/jobs/{job_id}", bearer=secret
+        )
         assert status == 200
         assert job["job"]["job_id"] == job_id
-        status, _, history = client.get(
+        job_etag = job_headers["ETag"]
+        assert re.fullmatch(r'"[0-9a-f]{64}"', job_etag)
+        status, unchanged_headers, unchanged = client.get(
+            f"/api/v1/jobs/{job_id}",
+            bearer=secret,
+            headers={"If-None-Match": f'"different", W/{job_etag}'},
+        )
+        assert status == 304
+        assert unchanged is None
+        assert unchanged_headers["ETag"] == job_etag
+        assert unchanged_headers["Cache-Control"] == "no-store"
+
+        status, history_headers, history = client.get(
             f"/api/v1/jobs/{job_id}/history", bearer=secret
         )
         assert status == 200
+        history_etag = history_headers["ETag"]
+        status, unchanged_headers, unchanged = client.get(
+            f"/api/v1/jobs/{job_id}/history",
+            bearer=secret,
+            headers={"If-None-Match": history_etag},
+        )
+        assert status == 304
+        assert unchanged is None
+        assert unchanged_headers["ETag"] == history_etag
         assert history["history"]["version"] == 1
         assert history["history"]["job_id"] == job_id
         assert history["history"]["snapshot_only"] is True
@@ -961,7 +1008,9 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert status == 201
         second_secret = second_token["token"]["secret"]
         status, _, hidden = client.get(
-            f"/api/v1/jobs/{job_id}", bearer=second_secret
+            f"/api/v1/jobs/{job_id}",
+            bearer=second_secret,
+            headers={"If-None-Match": job_etag},
         )
         assert status == 404
         assert "nicht gefunden" in hidden["error"]
@@ -986,10 +1035,21 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 200
         assert cancelled["job"]["state"] == "cancelled"
-        status, _, cancelled_history = client.get(
-            f"/api/v1/jobs/{job_id}/history", bearer=secret
+        status, changed_headers, changed_job = client.get(
+            f"/api/v1/jobs/{job_id}",
+            bearer=secret,
+            headers={"If-None-Match": job_etag},
         )
         assert status == 200
+        assert changed_job["job"]["state"] == "cancelled"
+        assert changed_headers["ETag"] != job_etag
+        status, changed_history_headers, cancelled_history = client.get(
+            f"/api/v1/jobs/{job_id}/history",
+            bearer=secret,
+            headers={"If-None-Match": history_etag},
+        )
+        assert status == 200
+        assert changed_history_headers["ETag"] != history_etag
         assert [
             event["state"] for event in cancelled_history["history"]["events"]
         ] == ["queued", "cancelled"]
