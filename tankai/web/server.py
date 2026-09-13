@@ -29,7 +29,11 @@ if str(ROOT) not in sys.path:
 
 from tankai import __version__
 from tankai.core.llm import LLMRateLimitExceeded
-from tankai.dev_orchestrator.job_queue import DevelopmentJobQueue, QueueError
+from tankai.dev_orchestrator.job_queue import (
+    DevelopmentJobQueue,
+    JobState,
+    QueueError,
+)
 from tankai.dev_orchestrator.models import (
     ExternalAgentJobSubmission,
     WorkerPipelineJob,
@@ -54,6 +58,13 @@ _EXTERNAL_VALIDATION_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
 _EXTERNAL_VALIDATION_CODE_RE = re.compile(r"^[a-z0-9_.-]{1,80}$")
 _EXTERNAL_JOB_LIST_DEFAULT_LIMIT = 100
 _EXTERNAL_JOB_LIST_MAX_LIMIT = 100
+_EXTERNAL_JOB_STATES = tuple(state.value for state in JobState)
+_EXTERNAL_JOB_TERMINAL_STATES = (
+    JobState.SUCCEEDED.value,
+    JobState.FAILED.value,
+    JobState.CANCELLED.value,
+)
+_EXTERNAL_JOB_CANCELABLE_STATES = (JobState.QUEUED.value,)
 _BRAND_ASSET_ROOT = Path(__file__).with_name("static")
 _BRAND_ASSETS = {
     "/favicon.ico": ("image/x-icon", (_BRAND_ASSET_ROOT / "favicon.ico").read_bytes()),
@@ -563,6 +574,7 @@ class Handler(BaseHTTPRequestHandler):
     @classmethod
     def _external_job_payload(cls, job) -> dict[str, Any]:
         payload = cls._development_job_payload(job)
+        payload["terminal"] = job.state.value in _EXTERNAL_JOB_TERMINAL_STATES
         payload["error"] = "Development job failed" if job.error else ""
         payload["error_details_available"] = bool(job.error)
         receipt: dict[str, Any] | None = None
@@ -1162,6 +1174,21 @@ class Handler(BaseHTTPRequestHandler):
                         "status_path_template": "/api/v1/jobs/{job_id}",
                         "history_path_template": "/api/v1/jobs/{job_id}/history",
                         "history_version": 1,
+                        "state_contract": {
+                            "version": 1,
+                            "states": list(_EXTERNAL_JOB_STATES),
+                            "terminal_states": list(
+                                _EXTERNAL_JOB_TERMINAL_STATES
+                            ),
+                            "cancel": {
+                                "method": "POST",
+                                "path_template": "/api/v1/jobs/{job_id}/cancel",
+                                "required_scope": "jobs:cancel",
+                                "allowed_states": list(
+                                    _EXTERNAL_JOB_CANCELABLE_STATES
+                                ),
+                            },
+                        },
                         "conditional_get": {
                             "version": 1,
                             "request_header": "If-None-Match",

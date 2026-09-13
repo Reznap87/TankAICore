@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.12
+Version: 5.7.13
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 12. September 2026
+Statusdatum: 13. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 12. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 13. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.12-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.13-Inkrements:
 
-aa9aa456164f69386a01c00a38fd96621960486a
+25cc18115a0fa508ec868da1fb40a82d131fb3ad
 
 Zugehöriger Repository-Git-Tree:
 
-91c38a4ce7c0e8186b54bf8de7b0ae414de71d56
+9e6c381d26177faadc887ac8fe272956938df143
 
 Commit-Titel:
 
-feat: paginate external agent job lists (#45)
+feat: add conditional external job polling (#46)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Conditional-Polling-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Jobzustandsvertrags-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand aa9aa456164f69386a01c00a38fd96621960486a mit Git-Tree
-91c38a4ce7c0e8186b54bf8de7b0ae414de71d56,
+geschützter main-Ausgangsstand 25cc18115a0fa508ec868da1fb40a82d131fb3ad mit Git-Tree
+9e6c381d26177faadc887ac8fe272956938df143,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Conditional-Polling-Inkrement nicht wiederholt,
+External-Agent-Jobzustandsvertrags-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -257,6 +257,20 @@ gemergt,
 
 TankAI Core CI Run #81, Run 34572191464, auf dem gemergten main-Commit
 aa9aa456164f69386a01c00a38fd96621960486a: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+das authentifizierte External-Agent-Conditional-Polling aus PR #46, das Einzelstatus und
+Zustandsverlauf mit starken Validatoren versieht, ohne die Zugriffskontrollen oder `no-store`
+zu lockern,
+
+TankAI Core CI Run #82, Run 34677862247, auf dem PR-#46-Head
+29943bda892c509a964bb2a76c591299631b833d: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Conditional-Polling-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #46 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #83, Run 34677965690, auf dem gemergten main-Commit
+25cc18115a0fa508ec868da1fb40a82d131fb3ad: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -445,6 +459,12 @@ JSON-Darstellung. Ein passendes `If-None-Match` erhält nach vollständiger Auth
 Scope-, Agenten-Job- und Repository-Prüfung eine leere `304`-Antwort. Fremde Jobs bleiben
 unabhängig von bekannten Validatoren verborgen; `Cache-Control: no-store` bleibt bestehen.
 
+development.external_agent_job_state_contract.v1 -> IMPLEMENTED; Capability-Discovery und
+Jobdarstellung weisen alle öffentlichen Zustände, die terminalen Polling-Enden und die einzige
+zustandsseitig zulässige Abbruchaktion maschinenlesbar aus. Methode, Pfadvorlage und benötigter
+Scope werden veröffentlicht, ohne die erneute Token-, Agenten-, Repository- und Queue-Prüfung zu
+ersetzen.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -614,6 +634,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    Einzelstatus und Verlauf werden danach mit dem beworbenen `ETag` bedingt gepollt; eine leere
    `304`-Antwort bedeutet ausschließlich, dass sich die öffentliche Darstellung seit dem
    mitgesendeten Validator nicht geändert hat.
+   Das Polling endet ausschließlich bei `terminal=true`; einen Abbruch versucht der Agent nur
+   bei vorhandenem `jobs:cancel`-Scope und dem im Zustandsvertrag ausgewiesenen Zustand
+   `queued`. Der Server validiert alle Grenzen trotzdem erneut.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -644,6 +667,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.13, 13. September 2026:
+
+Geschützten main-Ausgangsstand auf 25cc18115a0fa508ec868da1fb40a82d131fb3ad / Tree
+9e6c381d26177faadc887ac8fe272956938df143 gebunden; PR #46 sowie CI Runs #82 und #83 als
+erfolgreichen External-Agent-Conditional-Polling-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; einen versionierten öffentlichen
+Jobzustandsvertrag mit terminalem Polling-Ende und discoverbarer, weiterhin scope- und
+zustandsgebundener Abbruchaktion ergänzt, ohne Queue, Worker, Token, Provider, Host oder
+Production-Runtime zu aktivieren.
 
 5.7.12, 12. September 2026:
 

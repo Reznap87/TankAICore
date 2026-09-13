@@ -13,7 +13,7 @@ import pytest
 
 from tankai import __version__
 
-from tankai.dev_orchestrator.job_queue import WorkspaceQueuePolicy
+from tankai.dev_orchestrator.job_queue import JobState, WorkspaceQueuePolicy
 from tankai.dev_orchestrator.models import (
     CommandSpec,
     GateJob,
@@ -682,6 +682,24 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "status_path_template": "/api/v1/jobs/{job_id}",
             "history_path_template": "/api/v1/jobs/{job_id}/history",
             "history_version": 1,
+            "state_contract": {
+                "version": 1,
+                "states": [
+                    "queued",
+                    "leased",
+                    "running",
+                    "succeeded",
+                    "failed",
+                    "cancelled",
+                ],
+                "terminal_states": ["succeeded", "failed", "cancelled"],
+                "cancel": {
+                    "method": "POST",
+                    "path_template": "/api/v1/jobs/{job_id}/cancel",
+                    "required_scope": "jobs:cancel",
+                    "allowed_states": ["queued"],
+                },
+            },
             "conditional_get": {
                 "version": 1,
                 "request_header": "If-None-Match",
@@ -893,6 +911,14 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert safe_payload["result_receipt"]["run_id"] == "safe-run"
         assert safe_payload["error"] == "Development job failed"
         assert "/srv/private" not in json.dumps(safe_payload)
+        for state in JobState:
+            state_payload = web_server.Handler._external_job_payload(
+                stored_job.model_copy(update={"state": state})
+            )
+            assert state_payload["terminal"] is (
+                state
+                in {JobState.SUCCEEDED, JobState.FAILED, JobState.CANCELLED}
+            )
         status, _, duplicate_job = client.post(
             "/api/v1/jobs", job_payload, bearer=secret
         )
@@ -953,6 +979,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 200
         assert job["job"]["job_id"] == job_id
+        assert job["job"]["terminal"] is False
         job_etag = job_headers["ETag"]
         assert re.fullmatch(r'"[0-9a-f]{64}"', job_etag)
         status, unchanged_headers, unchanged = client.get(
@@ -1035,6 +1062,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 200
         assert cancelled["job"]["state"] == "cancelled"
+        assert cancelled["job"]["terminal"] is True
         status, changed_headers, changed_job = client.get(
             f"/api/v1/jobs/{job_id}",
             bearer=secret,
@@ -1042,6 +1070,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 200
         assert changed_job["job"]["state"] == "cancelled"
+        assert changed_job["job"]["terminal"] is True
         assert changed_headers["ETag"] != job_etag
         status, changed_history_headers, cancelled_history = client.get(
             f"/api/v1/jobs/{job_id}/history",
