@@ -346,6 +346,21 @@ der maschinelle Client verwaltet den Validator ausdrücklich selbst.
 Der versionierte `conditional_get`-Block unter `job_monitoring` nennt Request-Header,
 Response-Header und den Statuscode für unveränderte Antworten maschinenlesbar.
 
+### Maschinenlesbarer Zustands- und Abbruchvertrag
+
+Unter `job_monitoring.state_contract` veröffentlicht die Capability-Discovery die vollständige
+v1-Zustandsmenge `queued`, `leased`, `running`, `succeeded`, `failed` und `cancelled`. Die
+terminalen Zustände sind separat als `succeeded`, `failed` und `cancelled` ausgewiesen. Jede
+Jobdarstellung enthält passend dazu das boolesche Feld `terminal`; bei `true` kann der Client das
+Status-Polling beenden.
+
+Der Vertrag bewirbt außerdem den Abbruch als `POST /api/v1/jobs/{job_id}/cancel`, den benötigten
+Scope `jobs:cancel` und `queued` als einzigen zulässigen Zustand. Der Client kann diese Angaben
+zur Ablaufsteuerung verwenden, sie ersetzen aber keine serverseitige Prüfung. TankAI prüft beim
+Aufruf erneut Token, Scope, konkrete Agenten-Jobfreigabe, aktuelle Repository-Allowlist und den
+Queue-Zustand. Bereits geleaste, laufende oder terminale Jobs werden nicht über diesen Endpunkt
+abgebrochen.
+
 ### Strukturierte Validierungsfehler
 
 Kann der Submit-Endpunkt den JSON-Body nicht als

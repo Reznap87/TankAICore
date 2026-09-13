@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Jobzustandsvertrag v1
+
+- `/api/v1/capabilities` veröffentlicht jetzt alle Jobzustände, die terminalen Zustände und den
+  zulässigen Abbruchzustand als versionierten Maschinenvertrag.
+- Methode, Pfadvorlage und benötigter `jobs:cancel`-Scope des Abbruch-Endpunkts sind damit ohne
+  externes Vorwissen auffindbar.
+- Jede externe Jobdarstellung enthält zusätzlich `terminal`; Clients können dadurch Polling bei
+  `succeeded`, `failed` oder `cancelled` sicher beenden.
+- Der tatsächliche Abbruch bleibt auf eigene, weiterhin freigegebene Jobs im Zustand `queued`
+  beschränkt und wird serverseitig bei jedem Aufruf erneut geprüft.
+
 ### External-Agent-Conditional-Polling v1
 
 - Einzelstatus und Zustandsverlauf eigener Jobs liefern jetzt einen starken `ETag` über ihre

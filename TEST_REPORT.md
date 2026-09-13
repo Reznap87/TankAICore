@@ -1,8 +1,30 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 12. September 2026
+**Statusdatum:** 13. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Jobzustandsvertrag v1 — Nachweis 13. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 217 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte External-Agent-HTTP- und Reality-Contract-Prüfungen: PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler 4.124.0 Typgenerierung und TypeScript 7.0.2 `tsc --noEmit`: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: Capability-Discovery veröffentlicht exakt sechs öffentliche Zustände, die drei
+  terminalen Zustände und den ausschließlich für `queued` beworbenen Abbruchvertrag
+- geprüft: alle Jobdarstellungen kennzeichnen `queued`, `leased` und `running` mit
+  `terminal=false` sowie `succeeded`, `failed` und `cancelled` mit `terminal=true`
+- geprüft: Methode, Pfadvorlage und erforderlicher `jobs:cancel`-Scope sind maschinenlesbar; der
+  bestehende Abbruchpfad erzwingt weiterhin Agenten-, Repository-, Scope- und Queue-Grenzen
+- der vollständige Wrangler-Dry-Run und Produktions-Container-Smoke bleiben wegen fehlender
+  lokaler Docker-/Podman-Runtime verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Conditional-Polling v1 — Nachweis 12. September 2026
 
