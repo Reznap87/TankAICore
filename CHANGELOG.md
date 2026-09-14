@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### External-Agent-Ergebnis-Receipt v1
+
+- Authentifizierten JSON-Schema-Endpunkt `/api/v1/job-result-schema` für den öffentlichen
+  Ergebnis-Receipt erfolgreicher Worker-Läufe ergänzt.
+- Capability-Discovery veröffentlicht Version, Schema-Pfad und Antwortfeld; Commitformat,
+  Workerzustand, Phase sowie Anzahl und Länge geänderter Repository-Pfade sind begrenzt.
+- Der Jobstatus validiert dieselbe Receipt-Struktur vor jeder Ausgabe. Nicht vertragskonforme
+  interne Ergebnisse liefern fail-closed `result_receipt: null`, während `result_available` den
+  gespeicherten Rohzustand weiterhin getrennt kennzeichnet.
+- Host-/Workspace-Pfade, Befehle, Testausgaben, Statusmeldungen, Worker-IDs und interne
+  Fehlerdetails bleiben unveröffentlicht.
+
 ### External-Agent-Jobzustandsvertrag v1
 
 - `/api/v1/capabilities` veröffentlicht jetzt alle Jobzustände, die terminalen Zustände und den

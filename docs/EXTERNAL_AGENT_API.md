@@ -169,6 +169,7 @@ Authorization: Bearer tkai_v1_REDACTED
 |---|---|---|
 | `GET` | `/api/v1/capabilities` | gültiger Token |
 | `GET` | `/api/v1/job-schema` | gültiger Token |
+| `GET` | `/api/v1/job-result-schema` | gültiger Token |
 | `GET` | `/api/v1/repositories` | `repositories:read` |
 | `GET` | `/api/v1/jobs` | `jobs:read` |
 | `GET` | `/api/v1/jobs/{job_id}` | `jobs:read` |
@@ -360,6 +361,50 @@ zur Ablaufsteuerung verwenden, sie ersetzen aber keine serverseitige Prüfung. T
 Aufruf erneut Token, Scope, konkrete Agenten-Jobfreigabe, aktuelle Repository-Allowlist und den
 Queue-Zustand. Bereits geleaste, laufende oder terminale Jobs werden nicht über diesen Endpunkt
 abgebrochen.
+
+### Versioniertes Ergebnis-Receipt
+
+Unter `job_monitoring.result_receipt` nennt die Capability-Discovery Version, Schema-Pfad und
+Antwortfeld des öffentlichen Worker-Ergebnisses. Das vollständige JSON-Schema kann ein Client
+mit jedem gültigen Service-Agent-Token abrufen:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  "https://TANKAI_HOST/api/v1/job-result-schema"
+```
+
+Das Schema `urn:tankai:external-agent-result-receipt:v1` bindet Pflichtfelder, Worker-Zustände,
+Phasen, Ausführungsbackend, Commitformat sowie Anzahl und Länge geänderter Repository-Pfade.
+Sobald der Runner ein gültiges Ergebnis gespeichert hat, enthält der Jobstatus beispielsweise:
+
+```json
+{
+  "result_available": true,
+  "result_receipt": {
+    "version": 1,
+    "run_id": "RUN_ID",
+    "task_id": "TASK_ID",
+    "state": "ready_to_integrate",
+    "phase": "complete",
+    "branch": "tankai/agent/branch",
+    "base_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "execution_backend": "docker",
+    "changed_files": ["tankai/example.py"],
+    "implementation_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "started_at": "2026-09-14T06:00:00Z",
+    "finished_at": "2026-09-14T06:01:00Z"
+  }
+}
+```
+
+`result_receipt` ist ausdrücklich nullable: Ein noch nicht vorhandenes Ergebnis oder ein intern
+beschädigtes beziehungsweise nicht vertragskonformes Run-Objekt liefert `null`. TankAI gibt in
+diesem Fall keine ungeprüfte Teilmenge aus. Das separate `result_available` zeigt nur an, ob die
+Queue ein internes Ergebnis gespeichert hat. Workspace- und Hostpfade, Befehle, Testausgaben,
+Statusmeldungen, Worker-IDs, interne Fehlertexte und sonstige Rohdaten gehören nicht zum
+öffentlichen Receipt. Zugriff auf einen konkreten Status bleibt unabhängig vom Schema an
+`jobs:read`, die Agenten-Jobfreigabe und die aktuelle Repository-Allowlist gebunden.
 
 ### Strukturierte Validierungsfehler
 

@@ -36,8 +36,10 @@ from tankai.dev_orchestrator.job_queue import (
 )
 from tankai.dev_orchestrator.models import (
     ExternalAgentJobSubmission,
+    ExternalAgentResultReceipt,
     WorkerPipelineJob,
     external_agent_job_submission_schema,
+    external_agent_result_receipt_schema,
 )
 from tankai.web.auth import (
     AGENT_TOKEN_SCOPES,
@@ -580,26 +582,20 @@ class Handler(BaseHTTPRequestHandler):
         receipt: dict[str, Any] | None = None
         if isinstance(job.result, dict) and isinstance(job.result.get("run"), dict):
             run = job.result["run"]
-            receipt = {
-                key: run[key]
-                for key in (
-                    "run_id",
-                    "task_id",
-                    "state",
-                    "phase",
-                    "branch",
-                    "base_commit",
-                    "execution_backend",
-                    "changed_files",
-                    "implementation_commit",
-                    "rebased_from_commit",
-                    "rebased_commit",
-                    "integration_commit",
-                    "started_at",
-                    "finished_at",
-                )
-                if key in run
+            candidate = {
+                "version": 1,
+                **{
+                    key: run[key]
+                    for key in ExternalAgentResultReceipt.model_fields
+                    if key != "version" and key in run
+                },
             }
+            try:
+                receipt = ExternalAgentResultReceipt.model_validate(
+                    candidate
+                ).model_dump(mode="json", exclude_none=True)
+            except PydanticValidationError:
+                receipt = None
         payload["result_available"] = job.result is not None
         payload["result_receipt"] = receipt
         return payload
@@ -1202,6 +1198,12 @@ class Handler(BaseHTTPRequestHandler):
                             "default_limit": _EXTERNAL_JOB_LIST_DEFAULT_LIMIT,
                             "max_limit": _EXTERNAL_JOB_LIST_MAX_LIMIT,
                         },
+                        "result_receipt": {
+                            "version": 1,
+                            "schema_path": "/api/v1/job-result-schema",
+                            "response_field": "job.result_receipt",
+                            "nullable": True,
+                        },
                     },
                 }
             )
@@ -1226,6 +1228,23 @@ class Handler(BaseHTTPRequestHandler):
                         },
                     },
                     "schema": external_agent_job_submission_schema(),
+                }
+            )
+            return
+        if path == "/api/v1/job-result-schema":
+            if self._agent_context() is None:
+                return
+            self._json(
+                {
+                    "api_version": "v1",
+                    "schema_version": 1,
+                    "receipt": {
+                        "status_path_template": "/api/v1/jobs/{job_id}",
+                        "response_field": "job.result_receipt",
+                        "required_scope": "jobs:read",
+                        "nullable": True,
+                    },
+                    "schema": external_agent_result_receipt_schema(),
                 }
             )
             return

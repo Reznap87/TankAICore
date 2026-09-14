@@ -49,6 +49,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Jobliste | Stabile Cursor-Paginierung über alle eigenen, weiterhin freigegebenen Jobs mit höchstens 100 Einträgen pro Seite |
 | External-Agent-Conditional-Polling | `ETag`/`If-None-Match` für Jobstatus und -verlauf mit leerer `304`-Antwort bei unverändertem öffentlichen Zustand |
 | External-Agent-Jobzustandsvertrag | Maschinenlesbare Zustände, terminales Polling-Ende und zustands-/scopegebundene Abbruch-Discovery |
+| External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
 | Web-UI | CSP, Security-Header, sichere DOM-Erzeugung |
@@ -253,7 +254,10 @@ Ressourcenbudgets, Idempotenz, Container-Isolation, Leases und Prüf-Gates.
 Jeder Service-Agent sieht ausschließlich die von ihm selbst eingereichten Jobs.
 Der Capability-Receipt verweist auf `/api/v1/job-schema`; dort können Clients
 den versionierten JSON-Schema-Vertrag abrufen, den der Submit-Endpunkt selbst
-zur Validierung verwendet. Ungültige Aufträge liefern zusätzlich sichere,
+zur Validierung verwendet. Für erfolgreiche Ergebnisse verweist er außerdem auf
+`/api/v1/job-result-schema`. Das dort veröffentlichte Schema beschreibt exakt das
+begrenzte `job.result_receipt`; beschädigte oder unerwartete interne Ergebnisse
+werden nicht teilweise veröffentlicht. Ungültige Aufträge liefern zusätzlich sichere,
 maschinenlesbare Fehlerpfade und Codes, damit der Client den Payload gezielt
 korrigieren kann, ohne dass TankAI Eingabewerte oder interne Fehlermeldungen
 zurückgibt. Über `POST /api/v1/jobs/preflight` prüfen sie denselben Auftrag
