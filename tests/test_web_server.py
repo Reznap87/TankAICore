@@ -613,6 +613,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         status, _, unauthenticated_schema = client.get("/api/v1/job-schema")
         assert status == 401
         assert "Bearer" in unauthenticated_schema["error"]
+        status, _, unauthenticated_result_schema = client.get(
+            "/api/v1/job-result-schema"
+        )
+        assert status == 401
+        assert "Bearer" in unauthenticated_result_schema["error"]
 
         status, _, login = client.post(
             "/api/auth/login",
@@ -713,6 +718,12 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "default_limit": 100,
                 "max_limit": 100,
             },
+            "result_receipt": {
+                "version": 1,
+                "schema_path": "/api/v1/job-result-schema",
+                "response_field": "job.result_receipt",
+                "nullable": True,
+            },
         }
 
         status, _, job_schema = client.get(
@@ -748,6 +759,45 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert schema["$defs"]["WorkerIsolationSpec"]["properties"][
             "network_mode"
         ]["pattern"] == "^none$"
+
+        status, _, result_schema = client.get(
+            "/api/v1/job-result-schema", bearer=secret
+        )
+        assert status == 200
+        assert result_schema["api_version"] == "v1"
+        assert result_schema["schema_version"] == 1
+        assert result_schema["receipt"] == {
+            "status_path_template": "/api/v1/jobs/{job_id}",
+            "response_field": "job.result_receipt",
+            "required_scope": "jobs:read",
+            "nullable": True,
+        }
+        receipt_schema = result_schema["schema"]
+        assert (
+            receipt_schema["$schema"]
+            == "https://json-schema.org/draft/2020-12/schema"
+        )
+        assert (
+            receipt_schema["$id"]
+            == "urn:tankai:external-agent-result-receipt:v1"
+        )
+        assert receipt_schema["additionalProperties"] is False
+        assert set(receipt_schema["required"]) == {
+            "version",
+            "run_id",
+            "task_id",
+            "state",
+            "phase",
+            "branch",
+            "base_commit",
+            "execution_backend",
+            "changed_files",
+            "started_at",
+            "finished_at",
+        }
+        changed_files_schema = receipt_schema["properties"]["changed_files"]
+        assert changed_files_schema["maxItems"] == 500
+        assert changed_files_schema["items"]["maxLength"] == 500
 
         for invalid_envelope, expected_path, expected_code in (
             (
@@ -900,17 +950,40 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         stored_job.result = {
             "run": {
                 "run_id": "safe-run",
-                "state": "succeeded",
+                "task_id": "SAFE-001",
+                "state": "ready_to_integrate",
+                "phase": "complete",
+                "branch": "tankai/agent/safe",
+                "base_commit": "a" * 40,
+                "execution_backend": "docker",
                 "changed_files": ["tankai/safe.py"],
+                "implementation_commit": "b" * 40,
+                "started_at": "2026-09-14T06:00:00+00:00",
+                "finished_at": "2026-09-14T06:01:00+00:00",
                 "workspace_path": "/srv/private/worktrees/secret",
             },
             "workspace": {"path": "/srv/private/worktrees/secret"},
         }
         stored_job.error = "failed under /srv/private/worktrees/secret"
         safe_payload = web_server.Handler._external_job_payload(stored_job)
+        assert safe_payload["result_receipt"]["version"] == 1
         assert safe_payload["result_receipt"]["run_id"] == "safe-run"
+        assert safe_payload["result_receipt"]["changed_files"] == ["tankai/safe.py"]
         assert safe_payload["error"] == "Development job failed"
         assert "/srv/private" not in json.dumps(safe_payload)
+        for unsafe_files in (
+            ["/srv/private/worktrees/secret"],
+            ["../private/secret"],
+            [f"tankai/generated_{index}.py" for index in range(501)],
+        ):
+            stored_job.result["run"]["changed_files"] = unsafe_files
+            invalid_receipt_payload = web_server.Handler._external_job_payload(
+                stored_job
+            )
+            assert invalid_receipt_payload["result_available"] is True
+            assert invalid_receipt_payload["result_receipt"] is None
+            assert "/srv/private" not in json.dumps(invalid_receipt_payload)
+        stored_job.result["run"]["changed_files"] = ["tankai/safe.py"]
         for state in JobState:
             state_payload = web_server.Handler._external_job_payload(
                 stored_job.model_copy(update={"state": state})

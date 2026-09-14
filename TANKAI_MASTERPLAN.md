@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.13
+Version: 5.7.14
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 13. September 2026
+Statusdatum: 14. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 13. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 14. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.13-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.14-Inkrements:
 
-25cc18115a0fa508ec868da1fb40a82d131fb3ad
+4a8e84ae43ea2a76471d4da0297502deba10f9ad
 
 Zugehöriger Repository-Git-Tree:
 
-9e6c381d26177faadc887ac8fe272956938df143
+211ef370acafa93d7a6f5152406c8f7bef339a71
 
 Commit-Titel:
 
-feat: add conditional external job polling (#46)
+feat: publish external job state contract (#47)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Jobzustandsvertrags-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Ergebnis-Receipt-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 25cc18115a0fa508ec868da1fb40a82d131fb3ad mit Git-Tree
-9e6c381d26177faadc887ac8fe272956938df143,
+geschützter main-Ausgangsstand 4a8e84ae43ea2a76471d4da0297502deba10f9ad mit Git-Tree
+211ef370acafa93d7a6f5152406c8f7bef339a71,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Jobzustandsvertrags-Inkrement nicht wiederholt,
+External-Agent-Ergebnis-Receipt-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -271,6 +271,19 @@ gemergt,
 
 TankAI Core CI Run #83, Run 34677965690, auf dem gemergten main-Commit
 25cc18115a0fa508ec868da1fb40a82d131fb3ad: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+der maschinenlesbare External-Agent-Jobzustandsvertrag aus PR #47 mit vollständiger öffentlicher
+Zustandsmenge, terminalem Polling-Ende und discoverbarer Abbruchmethode,
+
+TankAI Core CI Run #84, Run 34742289695, auf dem PR-#47-Head
+952128aa58d3bf26cfae3a2cbac217162a068843: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Jobzustandsvertrag-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #47 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #85, Run 34742391071, auf dem gemergten main-Commit
+4a8e84ae43ea2a76471d4da0297502deba10f9ad: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -464,6 +477,12 @@ Jobdarstellung weisen alle öffentlichen Zustände, die terminalen Polling-Enden
 zustandsseitig zulässige Abbruchaktion maschinenlesbar aus. Methode, Pfadvorlage und benötigter
 Scope werden veröffentlicht, ohne die erneute Token-, Agenten-, Repository- und Queue-Prüfung zu
 ersetzen.
+
+development.external_agent_result_receipt.v1 -> IMPLEMENTED; Capability-Discovery und ein
+authentifizierter JSON-Schema-Endpunkt veröffentlichen den begrenzten öffentlichen
+Worker-Ergebnisvertrag. Dieselbe Pydantic-Struktur validiert jede Ausgabe; beschädigte oder
+nicht vertragskonforme interne Run-Daten liefern fail-closed keinen Teil-Receipt. Hostpfade,
+Befehle, Testausgaben, Statusmeldungen, Worker-IDs und interne Fehlerdetails bleiben privat.
 
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
@@ -667,6 +686,17 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.14, 14. September 2026:
+
+Geschützten main-Ausgangsstand auf 4a8e84ae43ea2a76471d4da0297502deba10f9ad / Tree
+211ef370acafa93d7a6f5152406c8f7bef339a71 gebunden; PR #47 sowie CI Runs #84 und #85 als
+erfolgreichen External-Agent-Jobzustandsvertrag-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; den bereits gefilterten
+Worker-Ergebnis-Receipt als strikt begrenzten, versionierten und maschinenlesbaren JSON-Schema-
+Vertrag veröffentlicht. Nicht vertragskonforme interne Run-Daten werden fail-closed nicht
+teilweise ausgegeben; Queue, Worker, Token, Provider, Host und Production-Runtime bleiben
+unverändert.
 
 5.7.13, 13. September 2026:
 

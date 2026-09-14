@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, ClassVar
-import re
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -440,6 +440,77 @@ def external_agent_job_submission_schema() -> dict[str, Any]:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "urn:tankai:external-agent-job-submission:v1",
         **ExternalAgentJobSubmission.model_json_schema(mode="validation"),
+    }
+
+
+ExternalResultIdentifier = Annotated[
+    str,
+    Field(min_length=1, max_length=160, pattern=r"^[^\x00-\x1f\x7f]+$"),
+]
+ExternalResultCommit = Annotated[
+    str,
+    Field(min_length=40, max_length=64, pattern=r"^[0-9a-f]{40,64}$"),
+]
+ExternalResultPath = Annotated[
+    str,
+    Field(min_length=1, max_length=500, pattern=r"^[^\x00-\x1f\x7f\\]+$"),
+]
+
+
+class ExternalAgentResultReceipt(OrchestratorModel):
+    """Bounded public subset of a successful external-agent worker result."""
+
+    version: Literal[1]
+    run_id: ExternalResultIdentifier
+    task_id: Annotated[str, Field(min_length=1, max_length=120)]
+    state: WorkerRunState
+    phase: WorkerPhase
+    branch: Annotated[str, Field(min_length=1, max_length=300)]
+    base_commit: ExternalResultCommit
+    execution_backend: WorkerExecutionBackend
+    changed_files: list[ExternalResultPath] = Field(max_length=500)
+    implementation_commit: ExternalResultCommit | None = None
+    rebased_from_commit: ExternalResultCommit | None = None
+    rebased_commit: ExternalResultCommit | None = None
+    integration_commit: ExternalResultCommit | None = None
+    started_at: datetime
+    finished_at: datetime
+
+    @field_validator("changed_files", mode="before")
+    @classmethod
+    def _require_json_path_array(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            raise ValueError("Result-Pfade müssen als JSON-Array vorliegen")
+        return value
+
+    @field_validator("changed_files")
+    @classmethod
+    def _validate_public_paths(cls, value: list[str]) -> list[str]:
+        for path in value:
+            parts = path.split("/")
+            if (
+                path.startswith("/")
+                or any(part in {"", ".", ".."} for part in parts)
+                or parts[0].endswith(":")
+            ):
+                raise ValueError("Result-Pfade müssen repositoryrelativ sein")
+        return value
+
+    @field_validator("started_at", "finished_at", mode="before")
+    @classmethod
+    def _require_json_datetime(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            raise ValueError("Result-Zeitstempel müssen ISO-8601-Text sein")
+        return value
+
+
+def external_agent_result_receipt_schema() -> dict[str, Any]:
+    """Return the stable JSON Schema for External Agent result receipts."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:tankai:external-agent-result-receipt:v1",
+        **ExternalAgentResultReceipt.model_json_schema(mode="validation"),
     }
 
 
