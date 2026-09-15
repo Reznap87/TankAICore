@@ -58,6 +58,25 @@ _EXTERNAL_VALIDATION_ERROR_LIMIT = 20
 _EXTERNAL_VALIDATION_PATH_DEPTH = 16
 _EXTERNAL_VALIDATION_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
 _EXTERNAL_VALIDATION_CODE_RE = re.compile(r"^[a-z0-9_.-]{1,80}$")
+_EXTERNAL_ERROR_CONTRACT_VERSION = 1
+_EXTERNAL_ERROR_CODES = (
+    "bearer_token_required",
+    "invalid_agent_token",
+    "missing_scope",
+    "development_queue_unavailable",
+    "invalid_request_body",
+    "invalid_job_submission",
+    "repository_not_allowed",
+    "job_submission_forbidden",
+    "job_submission_rejected",
+    "repository_list_forbidden",
+    "invalid_job_pagination",
+    "job_list_forbidden",
+    "job_not_found",
+    "job_state_conflict",
+    "job_cancel_conflict",
+    "endpoint_not_found",
+)
 _EXTERNAL_JOB_LIST_DEFAULT_LIMIT = 100
 _EXTERNAL_JOB_LIST_MAX_LIMIT = 100
 _EXTERNAL_JOB_STATES = tuple(state.value for state in JobState)
@@ -146,6 +165,8 @@ def _external_validation_error_payload(
             if top_level_extra
             else "Ungültiger Entwicklungsauftrag"
         ),
+        "error_code": "invalid_job_submission",
+        "error_contract_version": _EXTERNAL_ERROR_CONTRACT_VERSION,
         "validation": {
             "version": 1,
             "path_format": "json-pointer",
@@ -467,26 +488,59 @@ class Handler(BaseHTTPRequestHandler):
         traceback.print_exc()
         self._json({"error": f"Interner Serverfehler. Referenz: {request_id}"}, 500)
 
-    def _read_json(self, *, max_bytes: int = 200_000) -> dict[str, Any] | None:
+    def _agent_error(
+        self,
+        code: str,
+        message: str,
+        status: int,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        """Return a stable external error code while retaining the legacy message."""
+
+        if code not in _EXTERNAL_ERROR_CODES:
+            raise ValueError("Ungültiger externer Fehlercode")
+        self._json(
+            {
+                "error": message,
+                "error_code": code,
+                "error_contract_version": _EXTERNAL_ERROR_CONTRACT_VERSION,
+            },
+            status,
+            headers=headers,
+        )
+
+    def _read_json(
+        self,
+        *,
+        max_bytes: int = 200_000,
+        external_agent: bool = False,
+    ) -> dict[str, Any] | None:
+        def reject(message: str, status: int) -> None:
+            if external_agent:
+                self._agent_error("invalid_request_body", message, status)
+            else:
+                self._json({"error": message}, status)
+
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
-            self._json({"error": "Ungültige Content-Length"}, 400)
+            reject("Ungültige Content-Length", 400)
             return None
         if length <= 0:
-            self._json({"error": "Leerer Request"}, 400)
+            reject("Leerer Request", 400)
             return None
         if length > max_bytes:
-            self._json({"error": "Payload zu groß"}, 413)
+            reject("Payload zu groß", 413)
             return None
         try:
             raw = self.rfile.read(length)
             value = json.loads(raw.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
-            self._json({"error": "Ungültiges JSON"}, 400)
+            reject("Ungültiges JSON", 400)
             return None
         if not isinstance(value, dict):
-            self._json({"error": "JSON-Objekt erwartet"}, 400)
+            reject("JSON-Objekt erwartet", 400)
             return None
         return value
 
@@ -653,22 +707,24 @@ class Handler(BaseHTTPRequestHandler):
             or not token
             or token.strip() != token
         ):
-            self._json(
-                {"error": "Gültiger Bearer-Token erforderlich"},
+            self._agent_error(
+                "bearer_token_required",
+                "Gültiger Bearer-Token erforderlich",
                 401,
                 headers={"WWW-Authenticate": 'Bearer realm="TankAICore External Agent API"'},
             )
             return None
         context = self.app.auth.resolve_agent_token(token)
         if context is None:
-            self._json(
-                {"error": "Agenten-Token ist ungültig, abgelaufen oder widerrufen"},
+            self._agent_error(
+                "invalid_agent_token",
+                "Agenten-Token ist ungültig, abgelaufen oder widerrufen",
                 401,
                 headers={"WWW-Authenticate": 'Bearer realm="TankAICore External Agent API"'},
             )
             return None
         if scope is not None and not context.has_scope(scope):
-            self._json({"error": f"Agenten-Scope fehlt: {scope}"}, 403)
+            self._agent_error("missing_scope", f"Agenten-Scope fehlt: {scope}", 403)
             return None
         return context
 
@@ -704,9 +760,18 @@ class Handler(BaseHTTPRequestHandler):
             job_id=job_id,
         )
 
-    def _require_job_queue(self) -> DevelopmentJobQueue | None:
+    def _require_job_queue(
+        self, *, external_agent: bool = False
+    ) -> DevelopmentJobQueue | None:
         if self.app.job_queue is None:
-            self._json({"error": "Development-Queue ist deaktiviert"}, 404)
+            if external_agent:
+                self._agent_error(
+                    "development_queue_unavailable",
+                    "Development-Queue ist deaktiviert",
+                    404,
+                )
+            else:
+                self._json({"error": "Development-Queue ist deaktiviert"}, 404)
             return None
         return self.app.job_queue
 
@@ -1142,6 +1207,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(
                 {
                     "api_version": "v1",
+                    "error_contract": {
+                        "version": _EXTERNAL_ERROR_CONTRACT_VERSION,
+                        "code_field": "error_code",
+                        "message_field": "error",
+                        "version_field": "error_contract_version",
+                        "validation_field": "validation",
+                        "codes": list(_EXTERNAL_ERROR_CODES),
+                    },
                     "agent": {
                         "agent_id": context.agent_id,
                         "name": context.agent_name,
@@ -1252,7 +1325,7 @@ class Handler(BaseHTTPRequestHandler):
             context = self._agent_context(scope="repositories:read")
             if context is None:
                 return
-            queue = self._require_job_queue()
+            queue = self._require_job_queue(external_agent=True)
             if queue is None:
                 return
             try:
@@ -1280,13 +1353,13 @@ class Handler(BaseHTTPRequestHandler):
                     success=False,
                     details={"reason": "authorization"},
                 )
-                self._json({"error": str(exc)}, 403)
+                self._agent_error("repository_list_forbidden", str(exc), 403)
             return
         if path == "/api/v1/jobs":
             context = self._agent_context(scope="jobs:read")
             if context is None:
                 return
-            queue = self._require_job_queue()
+            queue = self._require_job_queue(external_agent=True)
             if queue is None:
                 return
             jobs = []
@@ -1343,9 +1416,13 @@ class Handler(BaseHTTPRequestHandler):
                     }
                 )
             except ValueError:
-                self._json({"error": "Ungültige Joblisten-Paginierung"}, 400)
+                self._agent_error(
+                    "invalid_job_pagination",
+                    "Ungültige Joblisten-Paginierung",
+                    400,
+                )
             except (PermissionError, QueueError) as exc:
-                self._json({"error": str(exc)}, 403)
+                self._agent_error("job_list_forbidden", str(exc), 403)
             return
         match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})/history", path)
         if match:
@@ -1368,9 +1445,9 @@ class Handler(BaseHTTPRequestHandler):
                     {"history": history.model_dump(mode="json")}
                 )
             except PermissionError as exc:
-                self._json({"error": str(exc)}, 404)
+                self._agent_error("job_not_found", str(exc), 404)
             except (QueueError, ValueError) as exc:
-                self._json({"error": str(exc)}, 409)
+                self._agent_error("job_state_conflict", str(exc), 409)
             return
         match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})", path)
         if match:
@@ -1386,11 +1463,11 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 self._conditional_json({"job": self._external_job_payload(job)})
             except PermissionError as exc:
-                self._json({"error": str(exc)}, 404)
+                self._agent_error("job_not_found", str(exc), 404)
             except (QueueError, ValueError) as exc:
-                self._json({"error": str(exc)}, 409)
+                self._agent_error("job_state_conflict", str(exc), 409)
             return
-        self._json({"error": "Nicht gefunden"}, 404)
+        self._agent_error("endpoint_not_found", "Nicht gefunden", 404)
 
     def _do_agent_post(self, path: str) -> None:
         if path in {"/api/v1/jobs", "/api/v1/jobs/preflight"}:
@@ -1399,10 +1476,10 @@ class Handler(BaseHTTPRequestHandler):
             context = self._agent_context(scope="jobs:submit")
             if context is None:
                 return
-            queue = self._require_job_queue()
+            queue = self._require_job_queue(external_agent=True)
             if queue is None:
                 return
-            data = self._read_json(max_bytes=1_050_000)
+            data = self._read_json(max_bytes=1_050_000, external_agent=True)
             if data is None:
                 return
             try:
@@ -1422,8 +1499,10 @@ class Handler(BaseHTTPRequestHandler):
                     success=False,
                     details={"reason": "repository_scope"},
                 )
-                self._json(
-                    {"error": "Repository ist für diesen KI-Agenten nicht freigegeben"}, 403
+                self._agent_error(
+                    "repository_not_allowed",
+                    "Repository ist für diesen KI-Agenten nicht freigegeben",
+                    403,
                 )
                 return
             try:
@@ -1474,7 +1553,7 @@ class Handler(BaseHTTPRequestHandler):
                     success=False,
                     details={"reason": "permission"},
                 )
-                self._json({"error": str(exc)}, 403)
+                self._agent_error("job_submission_forbidden", str(exc), 403)
             except PydanticValidationError as exc:
                 self._audit_agent(
                     context,
@@ -1490,14 +1569,14 @@ class Handler(BaseHTTPRequestHandler):
                     success=False,
                     details={"reason": "admission"},
                 )
-                self._json({"error": str(exc)}, 400)
+                self._agent_error("job_submission_rejected", str(exc), 400)
             return
         match = re.fullmatch(r"/api/v1/jobs/([0-9a-fA-F-]{36})/cancel", path)
         if match:
             context = self._agent_context(scope="jobs:cancel")
             if context is None:
                 return
-            queue = self._require_job_queue()
+            queue = self._require_job_queue(external_agent=True)
             if queue is None:
                 return
             try:
@@ -1520,11 +1599,11 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 self._json({"job": self._external_job_payload(job)})
             except PermissionError as exc:
-                self._json({"error": str(exc)}, 404)
+                self._agent_error("job_not_found", str(exc), 404)
             except (QueueError, ValueError) as exc:
-                self._json({"error": str(exc)}, 409)
+                self._agent_error("job_cancel_conflict", str(exc), 409)
             return
-        self._json({"error": "Nicht gefunden"}, 404)
+        self._agent_error("endpoint_not_found", "Nicht gefunden", 404)
 
     def _login(self) -> None:
         if self.app.auth_mode == "disabled":

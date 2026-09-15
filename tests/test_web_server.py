@@ -83,6 +83,34 @@ class Client:
         except HTTPError as exc:
             return exc.code, dict(exc.headers), json.load(exc)
 
+    def post_raw(
+        self,
+        path: str,
+        payload: bytes,
+        *,
+        bearer: str | None = None,
+    ):
+        headers = {"Content-Type": "application/json"}
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"
+        request = Request(
+            self.base + path,
+            data=payload,
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with self.opener.open(request, timeout=40) as response:
+                return response.status, dict(response.headers), json.load(response)
+        except HTTPError as exc:
+            return exc.code, dict(exc.headers), json.load(exc)
+
+
+def _assert_external_error(payload: dict, code: str) -> None:
+    assert payload["error_code"] == code
+    assert payload["error_contract_version"] == 1
+    assert isinstance(payload["error"], str) and payload["error"]
+
 
 def _configure(monkeypatch, tmp_path) -> AuthStore:
     monkeypatch.setenv("TANKAI_LLM", "mock")
@@ -610,14 +638,19 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         status, _, unauthenticated = client.get("/api/v1/capabilities")
         assert status == 401
         assert "Bearer" in unauthenticated["error"]
+        _assert_external_error(unauthenticated, "bearer_token_required")
         status, _, unauthenticated_schema = client.get("/api/v1/job-schema")
         assert status == 401
         assert "Bearer" in unauthenticated_schema["error"]
+        _assert_external_error(unauthenticated_schema, "bearer_token_required")
         status, _, unauthenticated_result_schema = client.get(
             "/api/v1/job-result-schema"
         )
         assert status == 401
         assert "Bearer" in unauthenticated_result_schema["error"]
+        _assert_external_error(
+            unauthenticated_result_schema, "bearer_token_required"
+        )
 
         status, _, login = client.post(
             "/api/auth/login",
@@ -668,6 +701,31 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 200
         assert capabilities["api_version"] == "v1"
+        assert capabilities["error_contract"] == {
+            "version": 1,
+            "code_field": "error_code",
+            "message_field": "error",
+            "version_field": "error_contract_version",
+            "validation_field": "validation",
+            "codes": [
+                "bearer_token_required",
+                "invalid_agent_token",
+                "missing_scope",
+                "development_queue_unavailable",
+                "invalid_request_body",
+                "invalid_job_submission",
+                "repository_not_allowed",
+                "job_submission_forbidden",
+                "job_submission_rejected",
+                "repository_list_forbidden",
+                "invalid_job_pagination",
+                "job_list_forbidden",
+                "job_not_found",
+                "job_state_conflict",
+                "job_cancel_conflict",
+                "endpoint_not_found",
+            ],
+        }
         assert capabilities["agent"]["agent_id"] == agent_id
         assert capabilities["repository_ids"] == [allowed.repository_id]
         assert capabilities["job_submission"] == {
@@ -799,6 +857,12 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert changed_files_schema["maxItems"] == 500
         assert changed_files_schema["items"]["maxLength"] == 500
 
+        status, _, malformed_body = client.post_raw(
+            "/api/v1/jobs", b"{", bearer=secret
+        )
+        assert status == 400
+        _assert_external_error(malformed_body, "invalid_request_body")
+
         for invalid_envelope, expected_path, expected_code in (
             (
                 {
@@ -825,6 +889,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             )
             assert status == 400
             assert rejected["error"] == "Ungültiger Entwicklungsauftrag"
+            _assert_external_error(rejected, "invalid_job_submission")
             assert rejected["validation"] == {
                 "version": 1,
                 "path_format": "json-pointer",
@@ -844,6 +909,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             bearer=secret,
         )
         assert status == 400
+        _assert_external_error(rejected_preflight, "invalid_job_submission")
         assert rejected_preflight["validation"]["errors"] == [
             {"path": "/priority", "code": "less_than_equal"}
         ]
@@ -862,6 +928,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 400
         assert rejected["error"] == "Unbekannte Felder im Entwicklungsauftrag"
+        _assert_external_error(rejected, "invalid_job_submission")
         assert rejected["validation"]["error_count"] == 26
         assert rejected["validation"]["truncated"] is True
         assert len(rejected["validation"]["errors"]) == 20
@@ -898,6 +965,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 403
         assert "nicht freigegeben" in scope_denied["error"]
+        _assert_external_error(scope_denied, "repository_not_allowed")
 
         job_payload = {
             "repository_id": allowed.repository_id,
@@ -1046,7 +1114,8 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 f"/api/v1/jobs?{invalid_query}", bearer=secret
             )
             assert status == 400
-            assert invalid_page == {"error": "Ungültige Joblisten-Paginierung"}
+            assert invalid_page["error"] == "Ungültige Joblisten-Paginierung"
+            _assert_external_error(invalid_page, "invalid_job_pagination")
         status, job_headers, job = client.get(
             f"/api/v1/jobs/{job_id}", bearer=secret
         )
@@ -1114,21 +1183,25 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 404
         assert "nicht gefunden" in hidden["error"]
+        _assert_external_error(hidden, "job_not_found")
         status, _, hidden_history = client.get(
             f"/api/v1/jobs/{job_id}/history", bearer=second_secret
         )
         assert status == 404
         assert "nicht gefunden" in hidden_history["error"]
+        _assert_external_error(hidden_history, "job_not_found")
         status, _, foreign_cursor = client.get(
             f"/api/v1/jobs?cursor={cursor}", bearer=second_secret
         )
         assert status == 400
-        assert foreign_cursor == {"error": "Ungültige Joblisten-Paginierung"}
+        assert foreign_cursor["error"] == "Ungültige Joblisten-Paginierung"
+        _assert_external_error(foreign_cursor, "invalid_job_pagination")
         status, _, submit_denied = client.post(
             "/api/v1/jobs", job_payload, bearer=second_secret
         )
         assert status == 403
         assert "jobs:submit" in submit_denied["error"]
+        _assert_external_error(submit_denied, "missing_scope")
 
         status, _, cancelled = client.post(
             f"/api/v1/jobs/{job_id}/cancel", {}, bearer=secret
@@ -1156,6 +1229,18 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             event["state"] for event in cancelled_history["history"]["events"]
         ] == ["queued", "cancelled"]
 
+        status, _, cancel_conflict = client.post(
+            f"/api/v1/jobs/{job_id}/cancel", {}, bearer=secret
+        )
+        assert status == 409
+        _assert_external_error(cancel_conflict, "job_cancel_conflict")
+
+        status, _, unknown_endpoint = client.get(
+            "/api/v1/not-an-endpoint", bearer=secret
+        )
+        assert status == 404
+        _assert_external_error(unknown_endpoint, "endpoint_not_found")
+
         status, _, revoked = client.post(
             f"/api/agents/{agent_id}/tokens/{token_id}/revoke", {}, csrf=csrf
         )
@@ -1163,6 +1248,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         status, _, invalid = client.get("/api/v1/capabilities", bearer=secret)
         assert status == 401
         assert "widerrufen" in invalid["error"]
+        _assert_external_error(invalid, "invalid_agent_token")
     finally:
         server.shutdown()
         server.server_close()

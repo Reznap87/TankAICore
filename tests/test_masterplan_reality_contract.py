@@ -10,10 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.14" in current
-    assert "Statusdatum: 14. September 2026" in current
-    assert "4a8e84ae43ea2a76471d4da0297502deba10f9ad" in current
-    assert "211ef370acafa93d7a6f5152406c8f7bef339a71" in current
+    assert "Version: 5.7.15" in current
+    assert "Statusdatum: 15. September 2026" in current
+    assert "2fbd1fe863cb234efff14d7501b99cee4915e894" in current
+    assert "417d4e64700bbab12da8e355429bb1b4eeafdd0e" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -31,9 +31,12 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #83" in current
     assert "TankAI Core CI Run #84" in current
     assert "TankAI Core CI Run #85" in current
+    assert "TankAI Core CI Run #86" in current
+    assert "TankAI Core CI Run #87" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
+    assert "PR #48" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -53,6 +56,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "development.external_agent_conditional_polling.v1 -> IMPLEMENTED" in current
     assert "development.external_agent_job_state_contract.v1 -> IMPLEMENTED" in current
     assert "development.external_agent_result_receipt.v1 -> IMPLEMENTED" in current
+    assert "development.external_agent_error_contract.v1 -> IMPLEMENTED" in current
     assert "ops.ci.node24_action_runtime -> IMPLEMENTED" in current
     assert "development.local_qwen25_coder_runtime -> IMPLEMENTED" in current
     assert "development.local_qwen25_coder_model_integrity -> IMPLEMENTED" in current
