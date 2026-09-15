@@ -178,6 +178,47 @@ Authorization: Bearer tkai_v1_REDACTED
 | `POST` | `/api/v1/jobs` | `jobs:submit` |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `jobs:cancel` |
 
+### Maschinenlesbarer Fehlervertrag
+
+Alle JSON-Fehlerantworten der oben aufgeführten, unterstützten `/api/v1/`-Routen behalten das
+bisherige menschenlesbare Feld `error` und ergänzen zwei stabile Maschinenfelder:
+
+```json
+{
+  "error": "Agenten-Scope fehlt: jobs:submit",
+  "error_code": "missing_scope",
+  "error_contract_version": 1
+}
+```
+
+Clients werten `error_code` aus und zeigen `error` nur als Diagnose an. Die Capability-Antwort
+beschreibt unter `error_contract`, welche Felder zum Vertrag gehören, und veröffentlicht die
+vollständige Code-Menge in `codes`. Strukturierte Envelope-Fehler verwenden zusätzlich weiterhin
+den begrenzten `validation`-Block mit JSON-Pointern. Die aktuelle v1-Code-Menge ist:
+
+| Code | HTTP-Status | Bedeutung |
+|---|---:|---|
+| `bearer_token_required` | 401 | Bearer-Header fehlt oder ist nicht wohlgeformt |
+| `invalid_agent_token` | 401 | Token ist ungültig, abgelaufen oder widerrufen |
+| `missing_scope` | 403 | Dem Token fehlt der benötigte Scope |
+| `development_queue_unavailable` | 404 | Development-Queue ist für diese Runtime nicht verfügbar |
+| `invalid_request_body` | 400/413 | JSON-Body fehlt, ist ungültig, kein Objekt oder zu groß |
+| `invalid_job_submission` | 400 | Das Job-Envelope verletzt den veröffentlichten Schema-Vertrag |
+| `repository_not_allowed` | 403 | Repository liegt außerhalb der Token-Allowlist |
+| `job_submission_forbidden` | 403 | Serverseitige Einreichungsberechtigung fehlt |
+| `job_submission_rejected` | 400 | Aktuelle Admission-Regeln lehnen die Einreichung ab |
+| `repository_list_forbidden` | 403 | Repository-Liste darf nicht gelesen werden |
+| `invalid_job_pagination` | 400 | Limit oder Cursor verletzt den Paginierungsvertrag |
+| `job_list_forbidden` | 403 | Jobliste darf nicht gelesen werden |
+| `job_not_found` | 404 | Job fehlt oder bleibt wegen Agenten-/Repository-Isolation verborgen |
+| `job_state_conflict` | 409 | Status oder Verlauf ist im aktuellen Queue-Zustand nicht verfügbar |
+| `job_cancel_conflict` | 409 | Job kann im aktuellen Zustand nicht abgebrochen werden |
+| `endpoint_not_found` | 404 | v1-Pfad ist unbekannt |
+
+HTTP-Status und `error`-Text bleiben für bestehende Integrationen erhalten. Fehlercodes enthalten
+keine Token, Payloadwerte, Hostpfade oder internen Ausnahmearten. Berechtigungen und die bewusst
+neutrale `404`-Antwort für fremde Jobs werden dadurch nicht gelockert.
+
 `GET /api/v1/capabilities` nennt unter `job_submission` den Submit- und
 Preflight-Pfad, die HTTP-Methode, Pfad und Version des zugehörigen Schemas sowie
 Version, Pfadformat und Obergrenze strukturierter Validierungsfehler. Ein Client kann danach den

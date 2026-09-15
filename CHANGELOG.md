@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### External-Agent-Fehlervertrag v1
+
+- Fehlerantworten der unterstützten `/api/v1/`-Routen ergänzen einen stabilen `error_code` und
+  `error_contract_version: 1`; die bisherigen HTTP-Status und menschenlesbaren Meldungen bleiben
+  kompatibel erhalten.
+- Capability-Discovery veröffentlicht Feldnamen, Vertragsversion und vollständige Code-Menge,
+  sodass KI-Clients auf Codes statt lokalisierter Texte reagieren können.
+- Authentifizierungs-, Body-, Schema-, Scope-, Repository-, Queue-, Paginierungs-, Jobstatus-,
+  Abbruch- und Routingfehler sind durch feste Codes unterscheidbar.
+- Fremde Jobs bleiben neutral als `job_not_found` verborgen; Fehlercodes spiegeln weder Tokens
+  noch Payloadwerte, Hostpfade oder interne Ausnahmearten.
+
 ### External-Agent-Ergebnis-Receipt v1
 
 - Authentifizierten JSON-Schema-Endpunkt `/api/v1/job-result-schema` für den öffentlichen
