@@ -1237,6 +1237,12 @@ class Handler(BaseHTTPRequestHandler):
                             "path_format": "json-pointer",
                             "max_errors": _EXTERNAL_VALIDATION_ERROR_LIMIT,
                         },
+                        "idempotency": {
+                            "version": 1,
+                            "request_field": "idempotency_key",
+                            "response_field": "idempotency",
+                            "replay_field": "replayed",
+                        },
                     },
                     "job_monitoring": {
                         "list_path": "/api/v1/jobs",
@@ -1526,7 +1532,7 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     self._json({"preflight": receipt.model_dump(mode="json")})
                     return
-                job = queue.enqueue(
+                outcome = queue.enqueue_with_outcome(
                     actor_user_id=context.owner_user_id,
                     workspace_id=context.workspace_id,
                     repository_id=repository_id,
@@ -1534,6 +1540,7 @@ class Handler(BaseHTTPRequestHandler):
                     idempotency_key=f"agent:{context.agent_id}:{clean_key}",
                     priority=submission.priority,
                 )
+                job = outcome.job
                 self.app.auth.grant_agent_job(
                     context=context,
                     job_id=job.job_id,
@@ -1543,9 +1550,22 @@ class Handler(BaseHTTPRequestHandler):
                     context,
                     audit_event,
                     success=True,
-                    details={"job_id": job.job_id, "repository_id": repository_id},
+                    details={
+                        "job_id": job.job_id,
+                        "repository_id": repository_id,
+                        "idempotent_replay": outcome.idempotent_replay,
+                    },
                 )
-                self._json({"job": self._external_job_payload(job)}, 202)
+                self._json(
+                    {
+                        "job": self._external_job_payload(job),
+                        "idempotency": {
+                            "version": 1,
+                            "replayed": outcome.idempotent_replay,
+                        },
+                    },
+                    202,
+                )
             except PermissionError as exc:
                 self._audit_agent(
                     context,
