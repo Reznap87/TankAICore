@@ -525,6 +525,26 @@ namensräumlich getrennt. Derselbe Agent erhält bei identischem Schlüssel und
 identischem Payload denselben Job. Ein abweichender Payload mit demselben
 Schlüssel wird abgewiesen.
 
+Jede erfolgreiche Submit-Antwort enthält zusätzlich den in den Capabilities
+beworbenen Idempotenz-Outcome:
+
+```json
+{
+  "job": {"job_id": "JOB_UUID"},
+  "idempotency": {
+    "version": 1,
+    "replayed": false
+  }
+}
+```
+
+`replayed=false` bedeutet, dass dieser Aufruf den Job neu eingereiht hat.
+`replayed=true` bedeutet, dass die Queue innerhalb derselben Transaktion einen
+bereits angenommenen identischen Auftrag gefunden und dessen Job zurückgegeben
+hat. Beide Fälle behalten HTTP 202 und dieselbe öffentliche Jobstruktur. Der
+Hinweis reserviert nichts zusätzlich, gibt den internen Schlüssel nicht aus und
+lockert weder Agenten-, Repository- noch Queue-Grenzen.
+
 Die im Payload übermittelten Worker-, Reviewer-, QA- und Security-Agenten-IDs
 werden nicht als globale Identitäten übernommen. Der Server ersetzt sie durch
 einen stabilen Namespace aus Service-Agent und Idempotenzschlüssel. Dadurch

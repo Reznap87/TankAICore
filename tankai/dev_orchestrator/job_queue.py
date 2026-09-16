@@ -245,6 +245,11 @@ class JobAdmissionPreflight(QueueModel):
     )
 
 
+class JobEnqueueOutcome(QueueModel):
+    job: QueuedDevelopmentJob
+    idempotent_replay: bool
+
+
 @dataclass(frozen=True)
 class DispatchResult:
     job_id: str
@@ -1197,6 +1202,25 @@ class DevelopmentJobQueue:
         idempotency_key: str,
         priority: int = 0,
     ) -> QueuedDevelopmentJob:
+        return self.enqueue_with_outcome(
+            actor_user_id=actor_user_id,
+            workspace_id=workspace_id,
+            repository_id=repository_id,
+            pipeline=pipeline,
+            idempotency_key=idempotency_key,
+            priority=priority,
+        ).job
+
+    def enqueue_with_outcome(
+        self,
+        *,
+        actor_user_id: str,
+        workspace_id: str,
+        repository_id: str,
+        pipeline: WorkerPipelineJob,
+        idempotency_key: str,
+        priority: int = 0,
+    ) -> JobEnqueueOutcome:
         plan = self._prepare_admission(
             actor_user_id=actor_user_id,
             workspace_id=workspace_id,
@@ -1228,7 +1252,10 @@ class DevelopmentJobQueue:
                     if existing["payload_sha256"] != payload_sha256 or existing["repository_id"] != repository_id:
                         raise AdmissionDenied("Idempotency-Key wurde bereits für einen anderen Auftrag verwendet")
                     conn.execute("COMMIT")
-                    return self._job_from_row(existing)
+                    return JobEnqueueOutcome(
+                        job=self._job_from_row(existing),
+                        idempotent_replay=True,
+                    )
                 queued = conn.execute(
                     "SELECT COUNT(*) AS n FROM development_jobs WHERE workspace_id=? AND state='queued'",
                     (workspace_id,),
@@ -1284,7 +1311,14 @@ class DevelopmentJobQueue:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
-        return self.get_job(actor_user_id=actor_user_id, workspace_id=workspace_id, job_id=job_id)
+        return JobEnqueueOutcome(
+            job=self.get_job(
+                actor_user_id=actor_user_id,
+                workspace_id=workspace_id,
+                job_id=job_id,
+            ),
+            idempotent_replay=False,
+        )
 
     def list_jobs(
         self,

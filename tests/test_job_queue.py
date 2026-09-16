@@ -201,8 +201,24 @@ def test_repository_paths_are_fail_closed(queue_env) -> None:
 
 def test_enqueue_is_tenant_bound_and_idempotent(queue_env) -> None:
     env = queue_env
-    first = enqueue(env, user=env["member"])
-    second = enqueue(env, user=env["member"])
+    first_outcome = env["queue"].enqueue_with_outcome(
+        actor_user_id=env["member"],
+        workspace_id=env["workspace"],
+        repository_id=env["binding"].repository_id,
+        pipeline=pipeline(),
+        idempotency_key="job-1",
+    )
+    second_outcome = env["queue"].enqueue_with_outcome(
+        actor_user_id=env["member"],
+        workspace_id=env["workspace"],
+        repository_id=env["binding"].repository_id,
+        pipeline=pipeline(),
+        idempotency_key="job-1",
+    )
+    first = first_outcome.job
+    second = second_outcome.job
+    assert first_outcome.idempotent_replay is False
+    assert second_outcome.idempotent_replay is True
     assert first.job_id == second.job_id
     assert first.user_id == env["member"]
     assert first.tenant_id == env["tenant"]

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Idempotenz-Outcome v1
+
+- Erfolgreiche Job-Submits liefern einen versionierten `idempotency`-Block mit
+  `replayed=false` für eine neue Einreihung und `replayed=true` für die atomare Wiedergabe eines
+  bereits angenommenen identischen Auftrags.
+- Die Queue ermittelt den Outcome in derselben Schreibtransaktion wie Idempotenzprüfung und
+  Einreihung; eine vorgelagerte, rennanfällige Existenzabfrage ist nicht erforderlich.
+- Capability-Discovery veröffentlicht Request-, Response- und Replay-Feld des Vertrags.
+- HTTP 202, öffentliche Jobstruktur, bestehende interne Queue-Aufrufer sowie Agenten-,
+  Repository-, Payload- und Admission-Grenzen bleiben kompatibel erhalten.
+
 ### External-Agent-Fehlervertrag v1
 
 - Fehlerantworten der unterstützten `/api/v1/`-Routen ergänzen einen stabilen `error_code` und

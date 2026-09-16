@@ -1,8 +1,31 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 15. September 2026
+**Statusdatum:** 16. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Idempotenz-Outcome v1 — Nachweis 16. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 217 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Queue- und External-Agent-Gateway-Tests: 2 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: erster Submit liefert `replayed=false`; identischer Agent, Schlüssel und Payload
+  liefern denselben Job mit `replayed=true`
+- geprüft: der Outcome entsteht atomar in der vorhandenen Queue-Schreibtransaktion; der bisherige
+  `enqueue()`-Rückgabevertrag bleibt für interne Aufrufer erhalten
+- geprüft: Capability-Discovery veröffentlicht Request-, Response- und Replay-Feld, ohne den
+  Idempotenzschlüssel oder interne Queue-Daten auszugeben
+- der vollständige Wrangler-Dry-Run erreichte den Container-Build und stoppte dort ausschließlich
+  wegen fehlender lokaler Docker-/Podman-Runtime; Compose-Vertrag, Produktions-Container-Build
+  und Container-Smoke bleiben deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Fehlervertrag v1 — Nachweis 15. September 2026
 

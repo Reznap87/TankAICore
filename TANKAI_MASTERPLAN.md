@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.15
+Version: 5.7.16
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 15. September 2026
+Statusdatum: 16. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 15. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 16. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.15-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.16-Inkrements:
 
-2fbd1fe863cb234efff14d7501b99cee4915e894
+dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf
 
 Zugehöriger Repository-Git-Tree:
 
-417d4e64700bbab12da8e355429bb1b4eeafdd0e
+eb061b0f3932a1e570c17ea7c4da65edc1874189
 
 Commit-Titel:
 
-feat: publish external result receipt contract (#48)
+feat: publish external agent error contract (#49)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Fehlervertrag-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Idempotenz-Outcome-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 2fbd1fe863cb234efff14d7501b99cee4915e894 mit Git-Tree
-417d4e64700bbab12da8e355429bb1b4eeafdd0e,
+geschützter main-Ausgangsstand dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf mit Git-Tree
+eb061b0f3932a1e570c17ea7c4da65edc1874189,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Fehlervertrag-Inkrement nicht wiederholt,
+External-Agent-Idempotenz-Outcome-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -298,6 +298,19 @@ gemergt,
 
 TankAI Core CI Run #87, Run 34816876465, auf dem gemergten main-Commit
 2fbd1fe863cb234efff14d7501b99cee4915e894: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+der stabile External-Agent-Fehlervertrag aus PR #49 mit versionierten Top-Level-Codes für alle
+unterstützten v1-Fehlerpfade bei unveränderten HTTP-Status und Meldungen,
+
+TankAI Core CI Run #88, Run 34941688554, auf dem PR-#49-Head
+3261331b68d5784a6d7111c12448f1ef42c07f26: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Fehlervertrag-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #49 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #89, Run 34941844696, auf dem gemergten main-Commit
+dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -506,6 +519,12 @@ Routingfehler sind ohne Textauswertung unterscheidbar. Fremde Jobs bleiben neutr
 `job_not_found` verborgen; Tokens, Eingabewerte, Hostpfade und interne Ausnahmearten werden
 nicht in Codes gespiegelt.
 
+development.external_agent_idempotency_outcome.v1 -> IMPLEMENTED; jeder erfolgreiche Submit
+kennzeichnet maschinenlesbar und versioniert, ob er einen Job neu eingereiht oder einen bereits
+angenommenen identischen Auftrag wiedergegeben hat. Die Queue entscheidet dies atomar in ihrer
+bestehenden Schreibtransaktion; HTTP 202, Jobdarstellung, Idempotenz-, Agenten-, Repository- und
+Admission-Grenzen bleiben unverändert.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -667,6 +686,8 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene Payloads anhand der begrenzten
    strukturierten Fehlercodes und kann erst dann einen lokal vorvalidierten, eng begrenzten
    v1-Job übergeben; der Submit validiert alle Gates erneut.
+   Seine versionierte Antwort unterscheidet mit `idempotency.replayed` eine neue Einreihung von
+   der atomaren Wiedergabe desselben bereits angenommenen Auftrags; beide Fälle bleiben HTTP 202.
    Den weiteren Ablauf liest der Agent über den in `job_monitoring` beworbenen, auf 100
    öffentliche Zustandswechsel begrenzten History-Pfad. Fremde Agenten-Jobs und interne
    Queue-Ereignisdetails bleiben verborgen.
@@ -708,6 +729,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.16, 16. September 2026:
+
+Geschützten main-Ausgangsstand auf dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf / Tree
+eb061b0f3932a1e570c17ea7c4da65edc1874189 gebunden; PR #49 sowie CI Runs #88 und #89 als
+erfolgreichen External-Agent-Fehlervertrag-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert; einen atomaren, versionierten
+Idempotenz-Outcome für erfolgreiche v1-Job-Submits ergänzt. Der vorhandene Queue-Vertrag und
+HTTP 202 bleiben kompatibel; Queue, Worker, Token, Provider, Host und Production-Runtime bleiben
+unverändert.
 
 5.7.15, 15. September 2026:
 

@@ -739,6 +739,12 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "path_format": "json-pointer",
                 "max_errors": 20,
             },
+            "idempotency": {
+                "version": 1,
+                "request_field": "idempotency_key",
+                "response_field": "idempotency",
+                "replay_field": "replayed",
+            },
         }
         assert capabilities["job_monitoring"] == {
             "list_path": "/api/v1/jobs",
@@ -1007,6 +1013,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "/api/v1/jobs", job_payload, bearer=secret
         )
         assert status == 202
+        assert created_job["idempotency"] == {
+            "version": 1,
+            "replayed": False,
+        }
         job_id = created_job["job"]["job_id"]
         stored_job = app.job_queue.get_job(
             actor_user_id=owner, workspace_id=workspace, job_id=job_id
@@ -1065,6 +1075,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 202
         assert duplicate_job["job"]["job_id"] == job_id
+        assert duplicate_job["idempotency"] == {
+            "version": 1,
+            "replayed": True,
+        }
 
         status, _, jobs = client.get("/api/v1/jobs", bearer=secret)
         assert status == 200
