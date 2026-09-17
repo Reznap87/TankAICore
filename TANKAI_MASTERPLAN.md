@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.16
+Version: 5.7.17
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 16. September 2026
+Statusdatum: 17. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 16. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 17. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.16-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.17-Inkrements:
 
-dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf
+6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9
 
 Zugehöriger Repository-Git-Tree:
 
-eb061b0f3932a1e570c17ea7c4da65edc1874189
+8c8b182e9913b7e78f72339c8633f7eaa78dde9e
 
 Commit-Titel:
 
-feat: publish external agent error contract (#49)
+feat: expose external submit replay outcome (#50)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Idempotenz-Outcome-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Admission-Policy-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf mit Git-Tree
-eb061b0f3932a1e570c17ea7c4da65edc1874189,
+geschützter main-Ausgangsstand 6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9 mit Git-Tree
+8c8b182e9913b7e78f72339c8633f7eaa78dde9e,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Idempotenz-Outcome-Inkrement nicht wiederholt,
+External-Agent-Admission-Policy-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -311,6 +311,19 @@ gemergt,
 
 TankAI Core CI Run #89, Run 34941844696, auf dem gemergten main-Commit
 dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+der atomare External-Agent-Idempotenz-Outcome aus PR #50, der neue Einreihung und Wiederholung
+eines identischen bereits angenommenen Auftrags bei kompatiblem HTTP 202 unterscheidet,
+
+TankAI Core CI Run #90, Run 35066093329, auf dem PR-#50-Head
+617275bc774d253120b8a632d62ff6a64ca13e5b: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Idempotenz-Outcome-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #50 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #91, Run 35066213713, auf dem gemergten main-Commit
+6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -525,6 +538,13 @@ angenommenen identischen Auftrag wiedergegeben hat. Die Queue entscheidet dies a
 bestehenden Schreibtransaktion; HTTP 202, Jobdarstellung, Idempotenz-, Agenten-, Repository- und
 Admission-Grenzen bleiben unverändert.
 
+development.external_agent_admission_policy.v1 -> IMPLEMENTED; Capability-Discovery
+veröffentlicht einen versionierten Snapshot der aktuell erlaubten Image-Digests sowie Ressourcen-,
+Laufzeit-, Queue-, Versuch- und Stundenlimits. `snapshot_only` und
+`final_submit_revalidates` weisen ausdrücklich aus, dass weder Kapazität noch Quote reserviert
+wird; Preflight und Submit erzwingen weiterhin die jeweils aktuelle Policy und alle
+Berechtigungsgrenzen.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -686,6 +706,8 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene Payloads anhand der begrenzten
    strukturierten Fehlercodes und kann erst dann einen lokal vorvalidierten, eng begrenzten
    v1-Job übergeben; der Submit validiert alle Gates erneut.
+   Vor dem Preflight wählt der Agent aus dem versionierten `queue_policy`-Snapshot ein tatsächlich
+   freigegebenes Image und begrenzt Ressourcen und Laufzeit; der Snapshot reserviert nichts.
    Seine versionierte Antwort unterscheidet mit `idempotency.replayed` eine neue Einreihung von
    der atomaren Wiedergabe desselben bereits angenommenen Auftrags; beide Fälle bleiben HTTP 202.
    Den weiteren Ablauf liest der Agent über den in `job_monitoring` beworbenen, auf 100
@@ -729,6 +751,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.17, 17. September 2026:
+
+Geschützten main-Ausgangsstand auf 6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9 / Tree
+8c8b182e9913b7e78f72339c8633f7eaa78dde9e gebunden; PR #50 sowie CI Runs #90 und #91 als
+erfolgreichen External-Agent-Idempotenz-Outcome-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert; einen versionierten, rein lesenden
+Admission-Policy-Snapshot mit erlaubten Image-Digests und Einreichungsgrenzen ergänzt. Der echte
+Submit prüft die aktuelle Policy weiterhin neu; Queue, Worker, Token, Provider, Host und
+Production-Runtime bleiben unverändert.
 
 5.7.16, 16. September 2026:
 

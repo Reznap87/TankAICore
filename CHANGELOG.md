@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### External-Agent-Admission-Policy v1
+
+- Capability-Discovery veröffentlicht einen versionierten Workspace-Policy-Snapshot mit den
+  aktuell freigegebenen, SHA-256-gepinnten Worker-Images.
+- Der Receipt ergänzt Ressourcen-, Laufzeit-, Queue-, Versuch- und Stundenlimits um
+  `snapshot_only` und `final_submit_revalidates`; Clients können passende Payloads planen, ohne
+  den Snapshot mit einer Reservierung oder Annahmegarantie zu verwechseln.
+- Fehlende Policies bleiben als `null` sichtbar. Preflight und echter Submit lesen und erzwingen
+  weiterhin die jeweils aktuelle Policy sowie alle Token-, Repository- und Admission-Grenzen.
+
 ### External-Agent-Idempotenz-Outcome v1
 
 - Erfolgreiche Job-Submits liefern einen versionierten `idempotency`-Block mit
