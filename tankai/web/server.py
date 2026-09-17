@@ -1195,6 +1195,9 @@ class Handler(BaseHTTPRequestHandler):
                 policy = self.app.job_queue.get_policy(context.workspace_id)
                 if policy is not None:
                     policy_payload = {
+                        "version": 1,
+                        "snapshot_only": True,
+                        "final_submit_revalidates": True,
                         "enabled": policy.enabled,
                         "max_queued": policy.max_queued,
                         "max_running": policy.max_running,
@@ -1203,6 +1206,8 @@ class Handler(BaseHTTPRequestHandler):
                         "max_pids": policy.max_pids,
                         "max_runtime_seconds": policy.max_runtime_seconds,
                         "max_attempts": policy.max_attempts,
+                        "max_jobs_per_user_hour": policy.max_jobs_per_user_hour,
+                        "allowed_images": sorted(policy.allowed_images),
                     }
             self._json(
                 {

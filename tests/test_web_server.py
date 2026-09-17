@@ -728,6 +728,21 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         }
         assert capabilities["agent"]["agent_id"] == agent_id
         assert capabilities["repository_ids"] == [allowed.repository_id]
+        assert capabilities["queue_policy"] == {
+            "version": 1,
+            "snapshot_only": True,
+            "final_submit_revalidates": True,
+            "enabled": True,
+            "max_queued": 10,
+            "max_running": 1,
+            "max_memory_mb": 512,
+            "max_cpus": 2.0,
+            "max_pids": 128,
+            "max_runtime_seconds": 120,
+            "max_attempts": 3,
+            "max_jobs_per_user_hour": 20,
+            "allowed_images": [image],
+        }
         assert capabilities["job_submission"] == {
             "method": "POST",
             "path": "/api/v1/jobs",

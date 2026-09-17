@@ -239,6 +239,43 @@ weder Token-Scopes noch Repository-Allowlist, Workspace-Policy, freigegebene
 Image-Digests oder Ressourcenbudgets; diese Laufzeit-Gates werden bei jeder
 Einreichung erneut geprüft.
 
+### Versionierter Admission-Policy-Snapshot
+
+`GET /api/v1/capabilities` liefert bei konfigurierter Development-Queue unter
+`queue_policy` einen versionierten Snapshot der aktuell für den Workspace
+geltenden Einreichungsgrenzen. Dazu gehören insbesondere die unveränderlich per
+SHA-256 gepinnten Worker-Images, Ressourcen- und Laufzeitbudgets, Queue-Grenzen,
+maximale Versuche und das stündliche Nutzerlimit:
+
+```json
+{
+  "queue_policy": {
+    "version": 1,
+    "snapshot_only": true,
+    "final_submit_revalidates": true,
+    "enabled": true,
+    "max_queued": 10,
+    "max_running": 1,
+    "max_memory_mb": 512,
+    "max_cpus": 2.0,
+    "max_pids": 128,
+    "max_runtime_seconds": 120,
+    "max_attempts": 3,
+    "max_jobs_per_user_hour": 20,
+    "allowed_images": [
+      "tankai-worker@sha256:APPROVED_DIGEST"
+    ]
+  }
+}
+```
+
+Ein KI-Client kann damit vor dem Preflight ein tatsächlich freigegebenes Image
+auswählen und seine Ressourcenanforderungen begrenzen. Der Receipt ist
+ausdrücklich nur eine Momentaufnahme: Er reserviert weder Kapazität noch Quote
+und ersetzt keine Berechtigung. Preflight und echter Submit lesen die aktuelle
+Policy erneut; nur deren jeweilige Antwort ist für diesen Aufruf maßgeblich. Ist
+keine Policy konfiguriert, bleibt `queue_policy` wie bisher `null`.
+
 ### Admission-Preflight ohne Einreihung
 
 Ein Client kann denselben Auftrag vor dem Submit gegen die aktuell stabilen
