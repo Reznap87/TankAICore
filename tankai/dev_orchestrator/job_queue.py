@@ -250,6 +250,11 @@ class JobEnqueueOutcome(QueueModel):
     idempotent_replay: bool
 
 
+class JobCancellationOutcome(QueueModel):
+    job: QueuedDevelopmentJob
+    idempotent_replay: bool
+
+
 @dataclass(frozen=True)
 class DispatchResult:
     job_id: str
@@ -1445,30 +1450,61 @@ class DevelopmentJobQueue:
         workspace_id: str,
         job_id: str,
     ) -> QueuedDevelopmentJob:
+        outcome = self.cancel_job_with_outcome(
+            actor_user_id=actor_user_id,
+            workspace_id=workspace_id,
+            job_id=job_id,
+        )
+        if outcome.idempotent_replay:
+            raise QueueError("Nur noch nicht geleaste Aufträge können abgebrochen werden")
+        return outcome.job
+
+    def cancel_job_with_outcome(
+        self,
+        *,
+        actor_user_id: str,
+        workspace_id: str,
+        job_id: str,
+    ) -> JobCancellationOutcome:
         access = self._access(actor_user_id, workspace_id)
         now = _iso(_utcnow())
         with self._lock, self._connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute(
-                "SELECT * FROM development_jobs WHERE id=? AND tenant_id=? AND workspace_id=?",
-                (job_id, access.tenant_id, workspace_id),
-            ).fetchone()
-            if row is None:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute(
+                    "SELECT * FROM development_jobs WHERE id=? AND tenant_id=? AND workspace_id=?",
+                    (job_id, access.tenant_id, workspace_id),
+                ).fetchone()
+                if row is None:
+                    raise PermissionError("Auftrag nicht gefunden oder nicht zugreifbar")
+                if row["user_id"] != actor_user_id and access.role not in {"owner", "admin"}:
+                    raise PermissionError("Nur der Ersteller oder ein Admin darf den Auftrag abbrechen")
+                if row["state"] == JobState.CANCELLED.value:
+                    outcome = JobCancellationOutcome(
+                        job=self._job_from_row(row),
+                        idempotent_replay=True,
+                    )
+                    conn.execute("COMMIT")
+                    return outcome
+                if row["state"] != JobState.QUEUED.value:
+                    raise QueueError("Nur noch nicht geleaste Aufträge können abgebrochen werden")
+                conn.execute(
+                    "UPDATE development_jobs SET state='cancelled',finished_at=? WHERE id=?",
+                    (now, job_id),
+                )
+                self._event(conn, job_id, "job_cancelled", actor_user_id, {})
+                conn.execute("COMMIT")
+            except Exception:
                 conn.execute("ROLLBACK")
-                raise PermissionError("Auftrag nicht gefunden oder nicht zugreifbar")
-            if row["user_id"] != actor_user_id and access.role not in {"owner", "admin"}:
-                conn.execute("ROLLBACK")
-                raise PermissionError("Nur der Ersteller oder ein Admin darf den Auftrag abbrechen")
-            if row["state"] != JobState.QUEUED.value:
-                conn.execute("ROLLBACK")
-                raise QueueError("Nur noch nicht geleaste Aufträge können abgebrochen werden")
-            conn.execute(
-                "UPDATE development_jobs SET state='cancelled',finished_at=? WHERE id=?",
-                (now, job_id),
-            )
-            self._event(conn, job_id, "job_cancelled", actor_user_id, {})
-            conn.execute("COMMIT")
-        return self.get_job(actor_user_id=actor_user_id, workspace_id=workspace_id, job_id=job_id)
+                raise
+        return JobCancellationOutcome(
+            job=self.get_job(
+                actor_user_id=actor_user_id,
+                workspace_id=workspace_id,
+                job_id=job_id,
+            ),
+            idempotent_replay=False,
+        )
 
     def claim_next(self, *, worker_id: str, lease_seconds: int = 300) -> JobLease | None:
         worker = worker_id.strip()

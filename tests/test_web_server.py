@@ -782,6 +782,9 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                     "path_template": "/api/v1/jobs/{job_id}/cancel",
                     "required_scope": "jobs:cancel",
                     "allowed_states": ["queued"],
+                    "idempotent_replay_states": ["cancelled"],
+                    "response_field": "cancellation",
+                    "replay_field": "replayed",
                 },
             },
             "conditional_get": {
@@ -1238,6 +1241,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert status == 200
         assert cancelled["job"]["state"] == "cancelled"
         assert cancelled["job"]["terminal"] is True
+        assert cancelled["cancellation"] == {
+            "version": 1,
+            "replayed": False,
+        }
         status, changed_headers, changed_job = client.get(
             f"/api/v1/jobs/{job_id}",
             bearer=secret,
@@ -1258,8 +1265,23 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             event["state"] for event in cancelled_history["history"]["events"]
         ] == ["queued", "cancelled"]
 
-        status, _, cancel_conflict = client.post(
+        status, _, replayed_cancel = client.post(
             f"/api/v1/jobs/{job_id}/cancel", {}, bearer=secret
+        )
+        assert status == 200
+        assert replayed_cancel["job"]["state"] == "cancelled"
+        assert replayed_cancel["cancellation"] == {
+            "version": 1,
+            "replayed": True,
+        }
+
+        lease = app.job_queue.claim_next(
+            worker_id="external-cancel-conflict", lease_seconds=60
+        )
+        assert lease is not None
+        assert lease.job.job_id == second_job_id
+        status, _, cancel_conflict = client.post(
+            f"/api/v1/jobs/{second_job_id}/cancel", {}, bearer=secret
         )
         assert status == 409
         _assert_external_error(cancel_conflict, "job_cancel_conflict")

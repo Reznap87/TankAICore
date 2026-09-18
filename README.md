@@ -48,6 +48,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Validierungsfehler | Begrenzte, versionierte JSON-Pointer und Fehlercodes ohne Spiegelung von Eingabewerten oder internen Meldungen |
 | External-Agent-Fehlervertrag | Fehler unterstützter v1-Routen liefern eine stabile Vertragsversion und maschinenlesbare Top-Level-Fehlercodes zusätzlich zur bisherigen Meldung |
 | External-Agent-Idempotenz-Outcome | Jeder erfolgreiche Submit kennzeichnet versioniert, ob ein Job neu eingereiht oder atomar aus einem identischen Idempotenzschlüssel wiedergegeben wurde |
+| External-Agent-Abbruch-Idempotenz | Wiederholbare Job-Abbrüche mit atomarem Replay-Outcome ohne doppelte Zustandsereignisse |
 | External-Agent-Jobverlauf | Auf 100 Einträge begrenzter Zustandsverlauf eigener Jobs ohne interne Ereignis-, Akteur- oder Worker-Daten |
 | External-Agent-Jobliste | Stabile Cursor-Paginierung über alle eigenen, weiterhin freigegebenen Jobs mit höchstens 100 Einträgen pro Seite |
 | External-Agent-Conditional-Polling | `ETag`/`If-None-Match` für Jobstatus und -verlauf mit leerer `304`-Antwort bei unverändertem öffentlichen Zustand |

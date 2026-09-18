@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Abbruch-Idempotenz v1
+
+- Erfolgreiche Job-Abbrüche liefern einen versionierten `cancellation`-Block mit
+  `replayed=false` für den ersten Zustandswechsel und `replayed=true` für die sichere
+  Wiederholung eines bereits abgebrochenen Jobs.
+- Die Queue entscheidet den Outcome unter derselben Schreibsperre wie den Zustandswechsel. Ein
+  Retry erzeugt weder einen zweiten Zustandswechsel noch ein zweites `job_cancelled`-Ereignis.
+- Capability-Discovery veröffentlicht Antwort-, Replay- und Wiederholungszustand des Vertrags.
+- Geleaste, laufende, erfolgreiche oder fehlgeschlagene Jobs bleiben unverändert ein
+  `job_cancel_conflict`; Agenten-, Repository-, Scope- und Queue-Isolation bleiben erhalten.
+
 ### External-Agent-Admission-Policy v1
 
 - Capability-Discovery veröffentlicht einen versionierten Workspace-Policy-Snapshot mit den

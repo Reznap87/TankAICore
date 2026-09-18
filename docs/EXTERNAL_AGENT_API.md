@@ -437,8 +437,37 @@ Der Vertrag bewirbt außerdem den Abbruch als `POST /api/v1/jobs/{job_id}/cancel
 Scope `jobs:cancel` und `queued` als einzigen zulässigen Zustand. Der Client kann diese Angaben
 zur Ablaufsteuerung verwenden, sie ersetzen aber keine serverseitige Prüfung. TankAI prüft beim
 Aufruf erneut Token, Scope, konkrete Agenten-Jobfreigabe, aktuelle Repository-Allowlist und den
-Queue-Zustand. Bereits geleaste, laufende oder terminale Jobs werden nicht über diesen Endpunkt
-abgebrochen.
+Queue-Zustand. Bereits geleaste, laufende, erfolgreiche oder fehlgeschlagene Jobs werden nicht
+über diesen Endpunkt abgebrochen.
+
+### Idempotenter Abbruch-Outcome
+
+Ein erfolgreicher Abbruch liefert neben dem terminalen Job einen versionierten Outcome:
+
+```json
+{
+  "job": {
+    "job_id": "JOB_UUID",
+    "state": "cancelled",
+    "terminal": true
+  },
+  "cancellation": {
+    "version": 1,
+    "replayed": false
+  }
+}
+```
+
+Geht diese Antwort beim Client verloren, kann er denselben Abbruch gefahrlos wiederholen. Ist
+der Job bereits `cancelled`, antwortet TankAI erneut mit HTTP 200 und `replayed=true`, ohne einen
+zweiten Zustandswechsel oder ein zweites öffentliches Abbruchereignis anzulegen. Die Entscheidung
+erfolgt unter derselben Queue-Schreibsperre wie der erste Abbruch. Andere nicht abbrechbare
+Zustände liefern weiterhin `job_cancel_conflict` mit HTTP 409.
+
+Der `cancel`-Block der Capability-Discovery nennt `cancellation` als `response_field`,
+`replayed` als `replay_field` und `cancelled` unter `idempotent_replay_states`. Ein Replay
+umgeht keine Zugriffskontrolle: Token, Scope, Agenten-Jobfreigabe, Repository-Allowlist und
+Workspace-Zuordnung werden auch bei jeder Wiederholung erneut geprüft.
 
 ### Versioniertes Ergebnis-Receipt
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -458,10 +459,32 @@ def test_expired_queue_and_external_fence_are_recovered_with_new_epoch(queue_env
 def test_cancel_is_scoped_to_creator_or_workspace_admin(queue_env) -> None:
     env = queue_env
     job = enqueue(env, user=env["member"])
-    cancelled = env["queue"].cancel_job(
+
+    def cancel():
+        return env["queue"].cancel_job_with_outcome(
+            actor_user_id=env["owner"],
+            workspace_id=env["workspace"],
+            job_id=job.job_id,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(cancel) for _ in range(2)]
+        outcomes = [future.result() for future in futures]
+    assert all(outcome.job.state == JobState.CANCELLED for outcome in outcomes)
+    assert sorted(outcome.idempotent_replay for outcome in outcomes) == [False, True]
+    history = env["queue"].job_state_history(
         actor_user_id=env["owner"], workspace_id=env["workspace"], job_id=job.job_id
     )
-    assert cancelled.state == JobState.CANCELLED
+    assert [event.state for event in history.events] == [
+        JobState.QUEUED,
+        JobState.CANCELLED,
+    ]
+    with pytest.raises(QueueError, match="nicht geleaste"):
+        env["queue"].cancel_job(
+            actor_user_id=env["owner"],
+            workspace_id=env["workspace"],
+            job_id=job.job_id,
+        )
     with pytest.raises(PermissionError):
         env["queue"].get_job(
             actor_user_id=env["foreign"],
