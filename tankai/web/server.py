@@ -1267,6 +1267,11 @@ class Handler(BaseHTTPRequestHandler):
                                 "allowed_states": list(
                                     _EXTERNAL_JOB_CANCELABLE_STATES
                                 ),
+                                "idempotent_replay_states": [
+                                    JobState.CANCELLED.value
+                                ],
+                                "response_field": "cancellation",
+                                "replay_field": "replayed",
                             },
                         },
                         "conditional_get": {
@@ -1611,18 +1616,30 @@ class Handler(BaseHTTPRequestHandler):
                     raise PermissionError(
                         "Repository ist für diesen KI-Agenten nicht freigegeben"
                     )
-                job = queue.cancel_job(
+                outcome = queue.cancel_job_with_outcome(
                     actor_user_id=context.owner_user_id,
                     workspace_id=context.workspace_id,
                     job_id=match.group(1),
                 )
+                job = outcome.job
                 self._audit_agent(
                     context,
                     "agent_job_cancel",
                     success=True,
-                    details={"job_id": job.job_id},
+                    details={
+                        "job_id": job.job_id,
+                        "idempotent_replay": outcome.idempotent_replay,
+                    },
                 )
-                self._json({"job": self._external_job_payload(job)})
+                self._json(
+                    {
+                        "job": self._external_job_payload(job),
+                        "cancellation": {
+                            "version": 1,
+                            "replayed": outcome.idempotent_replay,
+                        },
+                    }
+                )
             except PermissionError as exc:
                 self._agent_error("job_not_found", str(exc), 404)
             except (QueueError, ValueError) as exc:

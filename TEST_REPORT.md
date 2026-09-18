@@ -1,8 +1,32 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 17. September 2026
+**Statusdatum:** 18. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Abbruch-Idempotenz v1 — Nachweis 18. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 217 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Queue- und External-Agent-Gateway-Tests: 2 PASS
+- vollständige Queue-/Webserver-Regression: 49 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: zwei parallele Abbruchversuche liefern atomar genau einmal `replayed=false` und einmal
+  denselben terminalen Job mit `replayed=true`
+- geprüft: der Retry erzeugt kein zweites öffentliches Zustandsereignis; geleaste Jobs liefern
+  weiterhin den stabilen Fehlercode `job_cancel_conflict`
+- geprüft: der bestehende interne `cancel_job()`-Vertrag bleibt strikt und weist einen zweiten
+  Abbruch weiterhin als Queue-Konflikt ab
+- der vollständige Wrangler-Dry-Run erreichte den Container-Build und stoppte dort ausschließlich
+  wegen fehlender lokaler Docker-/Podman-Runtime; Compose-Vertrag, Produktions-Container-Build
+  und Container-Smoke bleiben deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Admission-Policy v1 — Nachweis 17. September 2026
 

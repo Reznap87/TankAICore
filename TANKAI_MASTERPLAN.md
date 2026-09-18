@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.17
+Version: 5.7.18
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 17. September 2026
+Statusdatum: 18. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 17. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 18. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.17-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.18-Inkrements:
 
-6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9
+fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb
 
 Zugehöriger Repository-Git-Tree:
 
-8c8b182e9913b7e78f72339c8633f7eaa78dde9e
+edebb40adde2d07ce9cc1b92d358a4a870da52ef
 
 Commit-Titel:
 
-feat: expose external submit replay outcome (#50)
+feat: publish external admission policy (#51)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Admission-Policy-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Abbruch-Idempotenz-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9 mit Git-Tree
-8c8b182e9913b7e78f72339c8633f7eaa78dde9e,
+geschützter main-Ausgangsstand fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb mit Git-Tree
+edebb40adde2d07ce9cc1b92d358a4a870da52ef,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Admission-Policy-Inkrement nicht wiederholt,
+External-Agent-Abbruch-Idempotenz-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -324,6 +324,19 @@ gemergt,
 
 TankAI Core CI Run #91, Run 35066213713, auf dem gemergten main-Commit
 6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+der read-only External-Agent-Admission-Policy-Snapshot aus PR #51 mit freigegebenen
+Image-Digests und den aktuellen Ressourcen-, Laufzeit-, Queue-, Versuch- und Stundenlimits,
+
+TankAI Core CI Run #92, Run 35192325009, auf dem PR-#51-Head
+7a32dbb7965ea85dedf15a6e55497ba3f0ea4438: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Admission-Policy-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #51 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #93, Run 35192461544, auf dem gemergten main-Commit
+fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
@@ -545,6 +558,12 @@ Laufzeit-, Queue-, Versuch- und Stundenlimits. `snapshot_only` und
 wird; Preflight und Submit erzwingen weiterhin die jeweils aktuelle Policy und alle
 Berechtigungsgrenzen.
 
+development.external_agent_cancel_idempotency.v1 -> IMPLEMENTED; ein erster erfolgreicher
+Abbruch kennzeichnet den atomaren Zustandswechsel mit `cancellation.replayed=false`. Die sichere
+Wiederholung desselben bereits abgebrochenen Jobs liefert bei unveränderten Zugriffskontrollen
+`replayed=true`, ohne ein weiteres Queue- oder Verlaufsevent anzulegen. Geleaste, laufende,
+erfolgreiche und fehlgeschlagene Jobs bleiben echte Abbruchkonflikte.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -720,7 +739,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    mitgesendeten Validator nicht geändert hat.
    Das Polling endet ausschließlich bei `terminal=true`; einen Abbruch versucht der Agent nur
    bei vorhandenem `jobs:cancel`-Scope und dem im Zustandsvertrag ausgewiesenen Zustand
-   `queued`. Der Server validiert alle Grenzen trotzdem erneut.
+   `queued`. Geht die erfolgreiche Abbruchantwort verloren, wiederholt er denselben Aufruf und
+   unterscheidet über `cancellation.replayed`, ob der Zustandswechsel bereits erfolgt war. Der
+   Server validiert alle Grenzen trotzdem bei jedem Versuch erneut.
 
 5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
    Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
@@ -751,6 +772,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.18, 18. September 2026:
+
+Geschützten main-Ausgangsstand auf fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb / Tree
+edebb40adde2d07ce9cc1b92d358a4a870da52ef gebunden; PR #51 sowie CI Runs #92 und #93 als
+erfolgreichen External-Agent-Admission-Policy-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert; atomare, maschinenlesbar markierte
+Wiederholungen bereits erfolgreicher Job-Abbrüche ergänzt. Queue-Ereignisverlauf, Agenten-,
+Repository- und Scope-Isolation bleiben erhalten; Worker, Provider, Host und Production-Runtime
+bleiben unverändert.
 
 5.7.17, 17. September 2026:
 
