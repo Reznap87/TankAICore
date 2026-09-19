@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Retry-Vertrag v1
+
+- Alle unterstützten `/api/v1/`-Fehlerantworten kennzeichnen maschinenlesbar, ob ein unveränderter
+  Request später sinnvoll wiederholt werden kann.
+- Temporäre Queue-Kapazitäts- und Stundenlimit-Ablehnungen liefern `retryable=true`; dauerhafte
+  Schema-, Berechtigungs-, Repository-, Zustands- und Admission-Fehler liefern `false`.
+- Für das Stundenlimit nennt `retry_after_seconds` einen begrenzten, transaktionsnah berechneten
+  Zeitpunkt und derselbe Wert wird als `Retry-After`-Header gesendet. Kapazitätsengpässe bleiben
+  ohne erfundene Wartezeit bei `null`.
+- Bestehende Fehlercodes, HTTP-Status, Meldungen und Sicherheitsgrenzen bleiben unverändert.
+
 ### External-Agent-Abbruch-Idempotenz v1
 
 - Erfolgreiche Job-Abbrüche liefern einen versionierten `cancellation`-Block mit

@@ -20,6 +20,7 @@ from tankai.dev_orchestrator.job_queue import (
     JobState,
     LeaseError,
     QueueError,
+    RetryableAdmissionDenied,
     QueuedWorkerDispatcher,
     WorkspaceQueuePolicy,
 )
@@ -246,6 +247,39 @@ def test_admission_blocks_image_resource_and_runtime_overruns(queue_env) -> None
         enqueue(env, key="bad-cpu", job=pipeline(cpus=3))
     with pytest.raises(AdmissionDenied, match="Laufzeit"):
         enqueue(env, key="bad-runtime", job=pipeline(timeout=40))
+
+
+def test_transient_admission_rejections_publish_bounded_retry_metadata(
+    queue_env,
+) -> None:
+    env = queue_env
+    policy = env["queue"].get_policy(env["workspace"])
+    assert policy is not None
+    env["queue"].set_policy(
+        actor_user_id=env["owner"],
+        workspace_id=env["workspace"],
+        policy=policy.model_copy(update={"max_queued": 1}),
+    )
+    enqueue(env, key="capacity-1")
+    with pytest.raises(
+        RetryableAdmissionDenied, match="Queue-Limit"
+    ) as capacity:
+        enqueue(env, key="capacity-2")
+    assert capacity.value.retry_after_seconds is None
+
+    env["queue"].set_policy(
+        actor_user_id=env["owner"],
+        workspace_id=env["workspace"],
+        policy=policy.model_copy(
+            update={"max_queued": 3, "max_jobs_per_user_hour": 1}
+        ),
+    )
+    with pytest.raises(
+        RetryableAdmissionDenied, match="Stündliches Nutzerlimit"
+    ) as hourly:
+        enqueue(env, key="hourly-limit")
+    assert hourly.value.retry_after_seconds is not None
+    assert 1 <= hourly.value.retry_after_seconds <= 3600
 
 
 def test_preflight_uses_admission_gates_without_reserving_a_job(queue_env) -> None:

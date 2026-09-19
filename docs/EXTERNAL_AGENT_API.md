@@ -187,7 +187,9 @@ bisherige menschenlesbare Feld `error` und ergänzen zwei stabile Maschinenfelde
 {
   "error": "Agenten-Scope fehlt: jobs:submit",
   "error_code": "missing_scope",
-  "error_contract_version": 1
+  "error_contract_version": 1,
+  "retryable": false,
+  "retry_after_seconds": null
 }
 ```
 
@@ -218,6 +220,19 @@ den begrenzten `validation`-Block mit JSON-Pointern. Die aktuelle v1-Code-Menge 
 HTTP-Status und `error`-Text bleiben für bestehende Integrationen erhalten. Fehlercodes enthalten
 keine Token, Payloadwerte, Hostpfade oder internen Ausnahmearten. Berechtigungen und die bewusst
 neutrale `404`-Antwort für fremde Jobs werden dadurch nicht gelockert.
+
+Jede unterstützte Fehlerantwort enthält außerdem den versionierten Retry-Vertrag.
+`retryable=false` bedeutet, dass derselbe unveränderte Request nicht automatisch wiederholt
+werden soll. Nur vorübergehende Queue-Kapazitäts- und Stundenlimit-Ablehnungen eines ansonsten
+gültigen Submits liefern `retryable=true`. Beim Stundenlimit nennt `retry_after_seconds` die
+begrenzte Wartezeit und der HTTP-Header `Retry-After` denselben Wert. Bei voller Queue bleibt die
+Wartezeit `null`, weil TankAI keinen seriösen Zeitpunkt für frei werdende Kapazität vorhersagen
+kann. Der Client wartet in diesem Fall auf eine Zustandsänderung und verwendet Backoff statt
+einer engen Retry-Schleife.
+
+Capability-Discovery veröffentlicht unter `error_contract.retry` Version, Feldnamen und
+Headernamen. Die Retry-Metadaten ändern weder vorhandene Fehlercodes noch HTTP-Status und umgehen
+keine erneute Token-, Scope-, Repository-, Policy- oder Queue-Prüfung.
 
 `GET /api/v1/capabilities` nennt unter `job_submission` den Submit- und
 Preflight-Pfad, die HTTP-Methode, Pfad und Version des zugehörigen Schemas sowie

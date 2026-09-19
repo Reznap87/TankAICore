@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.18
+Version: 5.7.19
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 18. September 2026
+Statusdatum: 19. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 18. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 19. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.18-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.19-Inkrements:
 
-fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb
+2a6281b9eb6bccd7e339a8df431f900210633cbd
 
 Zugehöriger Repository-Git-Tree:
 
-edebb40adde2d07ce9cc1b92d358a4a870da52ef
+c08c9f1c20382ecfe56627573a52ad4e73820316
 
 Commit-Titel:
 
-feat: publish external admission policy (#51)
+feat: make external job cancellation idempotent (#52)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Abbruch-Idempotenz-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Retry-Vertrag-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb mit Git-Tree
-edebb40adde2d07ce9cc1b92d358a4a870da52ef,
+geschützter main-Ausgangsstand 2a6281b9eb6bccd7e339a8df431f900210633cbd mit Git-Tree
+c08c9f1c20382ecfe56627573a52ad4e73820316,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Abbruch-Idempotenz-Inkrement nicht wiederholt,
+External-Agent-Retry-Vertrag-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -339,6 +339,19 @@ TankAI Core CI Run #93, Run 35192461544, auf dem gemergten main-Commit
 fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+die atomare External-Agent-Abbruch-Idempotenz aus PR #52 mit einem eindeutigen Replay-Outcome
+ohne doppelte Queue- oder Verlaufsereignisse,
+
+TankAI Core CI Run #94, Run 35315885336, auf dem PR-#52-Head
+0efd489d10292a9479f5ad4b45db0a678531147f: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Abbruch-Race-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #52 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #95, Run 35316004004, auf dem gemergten main-Commit
+2a6281b9eb6bccd7e339a8df431f900210633cbd: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -564,6 +577,12 @@ Wiederholung desselben bereits abgebrochenen Jobs liefert bei unveränderten Zug
 `replayed=true`, ohne ein weiteres Queue- oder Verlaufsevent anzulegen. Geleaste, laufende,
 erfolgreiche und fehlgeschlagene Jobs bleiben echte Abbruchkonflikte.
 
+development.external_agent_retry_contract.v1 -> IMPLEMENTED; alle unterstützten externen
+Fehlerantworten unterscheiden maschinenlesbar dauerhafte von vorübergehenden Ablehnungen. Volle
+Queue und Stundenlimit sind retryable; nur das deterministisch berechenbare Stundenlimit liefert
+eine begrenzte Wartezeit samt `Retry-After`. Fehlercodes, HTTP-Status, Meldungen und sämtliche
+Zugriffskontrollen bleiben unverändert.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -729,6 +748,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    freigegebenes Image und begrenzt Ressourcen und Laufzeit; der Snapshot reserviert nichts.
    Seine versionierte Antwort unterscheidet mit `idempotency.replayed` eine neue Einreihung von
    der atomaren Wiedergabe desselben bereits angenommenen Auftrags; beide Fälle bleiben HTTP 202.
+   Bei einer Ablehnung wertet der Agent `retryable` aus. Eine veröffentlichte
+   `retry_after_seconds`-Wartezeit wird eingehalten; bei `null` verwendet er begrenzten Backoff
+   und beobachtet Queue-Zustände. Dauerhafte Fehler werden korrigiert statt unverändert wiederholt.
    Den weiteren Ablauf liest der Agent über den in `job_monitoring` beworbenen, auf 100
    öffentliche Zustandswechsel begrenzten History-Pfad. Fremde Agenten-Jobs und interne
    Queue-Ereignisdetails bleiben verborgen.
@@ -772,6 +794,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.19, 19. September 2026:
+
+Geschützten main-Ausgangsstand auf 2a6281b9eb6bccd7e339a8df431f900210633cbd / Tree
+c08c9f1c20382ecfe56627573a52ad4e73820316 gebunden; PR #52 sowie CI Runs #94 und #95 als
+erfolgreichen External-Agent-Abbruch-Idempotenz-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert; einen versionierten Retry-Vertrag für
+alle externen Fehler und präzise temporäre Queue-/Stundenlimit-Ablehnungen ergänzt. Bestehende
+HTTP- und Fehlercodes sowie Queue, Worker, Provider, Host und Production-Runtime bleiben
+unverändert.
 
 5.7.18, 18. September 2026:
 
