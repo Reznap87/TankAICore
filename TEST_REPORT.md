@@ -1,8 +1,32 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 18. September 2026
+**Statusdatum:** 19. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Retry-Vertrag v1 — Nachweis 19. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 218 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielte Retry-Queue- und External-Agent-Gateway-Tests: 2 PASS
+- vollständige Queue-/Webserver-Regression: 50 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: alle unterstützten externen Fehler liefern `retryable` und
+  `retry_after_seconds`; dauerhafte Fehler bleiben bei `false` beziehungsweise `null`
+- geprüft: Queue-Kapazität ist ohne erfundene Wartezeit wiederholbar; das Stundenlimit liefert
+  einen auf 1 bis 3600 Sekunden begrenzten Wert und denselben `Retry-After`-Header
+- geprüft: Fehlervertragsversion, bestehende Fehlercodes, HTTP-Status, Meldungen sowie Agenten-,
+  Repository- und Scope-Isolation bleiben erhalten
+- der vollständige Wrangler-Dry-Run erreichte den Container-Build und stoppte dort ausschließlich
+  wegen fehlender lokaler Docker-/Podman-Runtime; Compose-Vertrag, Produktions-Container-Build
+  und Container-Smoke bleiben deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Abbruch-Idempotenz v1 — Nachweis 18. September 2026
 

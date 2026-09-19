@@ -33,6 +33,7 @@ from tankai.dev_orchestrator.job_queue import (
     DevelopmentJobQueue,
     JobState,
     QueueError,
+    RetryableAdmissionDenied,
 )
 from tankai.dev_orchestrator.models import (
     ExternalAgentJobSubmission,
@@ -167,6 +168,8 @@ def _external_validation_error_payload(
         ),
         "error_code": "invalid_job_submission",
         "error_contract_version": _EXTERNAL_ERROR_CONTRACT_VERSION,
+        "retryable": False,
+        "retry_after_seconds": None,
         "validation": {
             "version": 1,
             "path_format": "json-pointer",
@@ -495,19 +498,31 @@ class Handler(BaseHTTPRequestHandler):
         status: int,
         *,
         headers: dict[str, str] | None = None,
+        retryable: bool = False,
+        retry_after_seconds: int | None = None,
     ) -> None:
         """Return a stable external error code while retaining the legacy message."""
 
         if code not in _EXTERNAL_ERROR_CODES:
             raise ValueError("Ungültiger externer Fehlercode")
+        retry_after = (
+            None
+            if retry_after_seconds is None
+            else max(1, min(int(retry_after_seconds), 86400))
+        )
+        response_headers = dict(headers or {})
+        if retry_after is not None:
+            response_headers["Retry-After"] = str(retry_after)
         self._json(
             {
                 "error": message,
                 "error_code": code,
                 "error_contract_version": _EXTERNAL_ERROR_CONTRACT_VERSION,
+                "retryable": bool(retryable),
+                "retry_after_seconds": retry_after,
             },
             status,
-            headers=headers,
+            headers=response_headers,
         )
 
     def _read_json(
@@ -1218,6 +1233,12 @@ class Handler(BaseHTTPRequestHandler):
                         "message_field": "error",
                         "version_field": "error_contract_version",
                         "validation_field": "validation",
+                        "retry": {
+                            "version": 1,
+                            "retryable_field": "retryable",
+                            "retry_after_field": "retry_after_seconds",
+                            "retry_after_header": "Retry-After",
+                        },
                         "codes": list(_EXTERNAL_ERROR_CODES),
                     },
                     "agent": {
@@ -1592,6 +1613,27 @@ class Handler(BaseHTTPRequestHandler):
                     details={"reason": "validation"},
                 )
                 self._json(_external_validation_error_payload(exc), 400)
+            except RetryableAdmissionDenied as exc:
+                retry_details: dict[str, Any] = {
+                    "reason": "retryable_admission"
+                }
+                if exc.retry_after_seconds is not None:
+                    retry_details["retry_after_seconds"] = (
+                        exc.retry_after_seconds
+                    )
+                self._audit_agent(
+                    context,
+                    audit_event,
+                    success=False,
+                    details=retry_details,
+                )
+                self._agent_error(
+                    "job_submission_rejected",
+                    str(exc),
+                    400,
+                    retryable=True,
+                    retry_after_seconds=exc.retry_after_seconds,
+                )
             except (QueueError, ValueError) as exc:
                 self._audit_agent(
                     context,

@@ -95,6 +95,21 @@ class AdmissionDenied(QueueError):
     pass
 
 
+class RetryableAdmissionDenied(AdmissionDenied):
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = (
+            None
+            if retry_after_seconds is None
+            else max(1, min(int(retry_after_seconds), 86400))
+        )
+
+
 class LeaseError(QueueError):
     pass
 
@@ -1266,14 +1281,42 @@ class DevelopmentJobQueue:
                     (workspace_id,),
                 ).fetchone()["n"]
                 if int(queued) >= policy.max_queued:
-                    raise AdmissionDenied("Queue-Limit des Workspaces ist erreicht")
+                    raise RetryableAdmissionDenied(
+                        "Queue-Limit des Workspaces ist erreicht"
+                    )
                 cutoff = _iso(now - timedelta(hours=1))
                 recent = conn.execute(
-                    "SELECT COUNT(*) AS n FROM development_jobs WHERE user_id=? AND created_at>=?",
+                    """
+                    SELECT created_at FROM development_jobs
+                    WHERE user_id=? AND created_at>=?
+                    ORDER BY created_at ASC
+                    """,
                     (actor_user_id, cutoff),
-                ).fetchone()["n"]
-                if int(recent) >= policy.max_jobs_per_user_hour:
-                    raise AdmissionDenied("Stündliches Nutzerlimit ist erreicht")
+                ).fetchall()
+                if len(recent) >= policy.max_jobs_per_user_hour:
+                    blocking = recent[
+                        len(recent) - policy.max_jobs_per_user_hour
+                    ]
+                    blocking_created = _parse_time(blocking["created_at"])
+                    retry_after_seconds = 1
+                    if blocking_created is not None:
+                        retry_after_seconds = min(
+                            3600,
+                            max(
+                                1,
+                                math.ceil(
+                                    (
+                                        blocking_created
+                                        + timedelta(hours=1)
+                                        - now
+                                    ).total_seconds()
+                                ),
+                            ),
+                        )
+                    raise RetryableAdmissionDenied(
+                        "Stündliches Nutzerlimit ist erreicht",
+                        retry_after_seconds=retry_after_seconds,
+                    )
                 conn.execute(
                     """
                     INSERT INTO development_jobs(

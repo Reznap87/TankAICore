@@ -106,10 +106,18 @@ class Client:
             return exc.code, dict(exc.headers), json.load(exc)
 
 
-def _assert_external_error(payload: dict, code: str) -> None:
+def _assert_external_error(
+    payload: dict,
+    code: str,
+    *,
+    retryable: bool = False,
+    retry_after_seconds: int | None = None,
+) -> None:
     assert payload["error_code"] == code
     assert payload["error_contract_version"] == 1
     assert isinstance(payload["error"], str) and payload["error"]
+    assert payload["retryable"] is retryable
+    assert payload["retry_after_seconds"] == retry_after_seconds
 
 
 def _configure(monkeypatch, tmp_path) -> AuthStore:
@@ -707,6 +715,12 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "message_field": "error",
             "version_field": "error_contract_version",
             "validation_field": "validation",
+            "retry": {
+                "version": 1,
+                "retryable_field": "retryable",
+                "retry_after_field": "retry_after_seconds",
+                "retry_after_header": "Retry-After",
+            },
             "codes": [
                 "bearer_token_required",
                 "invalid_agent_token",
@@ -1117,6 +1131,54 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 202
         second_job_id = second_job["job"]["job_id"]
+
+        policy = app.job_queue.get_policy(workspace)
+        assert policy is not None
+        app.job_queue.set_policy(
+            actor_user_id=owner,
+            workspace_id=workspace,
+            policy=policy.model_copy(update={"max_queued": 2}),
+        )
+        transient_payload = {
+            **job_payload,
+            "idempotency_key": "agent-job-transient",
+        }
+        status, capacity_headers, capacity = client.post(
+            "/api/v1/jobs", transient_payload, bearer=secret
+        )
+        assert status == 400
+        _assert_external_error(
+            capacity,
+            "job_submission_rejected",
+            retryable=True,
+        )
+        assert "Retry-After" not in capacity_headers
+
+        app.job_queue.set_policy(
+            actor_user_id=owner,
+            workspace_id=workspace,
+            policy=policy.model_copy(update={"max_jobs_per_user_hour": 2}),
+        )
+        status, hourly_headers, hourly = client.post(
+            "/api/v1/jobs", transient_payload, bearer=secret
+        )
+        assert status == 400
+        retry_after_seconds = hourly["retry_after_seconds"]
+        assert isinstance(retry_after_seconds, int)
+        assert 1 <= retry_after_seconds <= 3600
+        _assert_external_error(
+            hourly,
+            "job_submission_rejected",
+            retryable=True,
+            retry_after_seconds=retry_after_seconds,
+        )
+        assert hourly_headers["Retry-After"] == str(retry_after_seconds)
+        app.job_queue.set_policy(
+            actor_user_id=owner,
+            workspace_id=workspace,
+            policy=policy,
+        )
+
         status, _, first_page = client.get(
             "/api/v1/jobs?limit=1", bearer=secret
         )
