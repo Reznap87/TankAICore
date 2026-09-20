@@ -415,11 +415,12 @@ auch bei gemeinsamem Owner und Repository mit `404` verborgen. Veröffentlicht
 werden nur Zustand und UTC-Zeit; interne Eventtypen, Details, Fehlertexte,
 Akteur-/Worker-IDs, Fence-Epochen und die globale Queue-Sequenz bleiben privat.
 
-### Bedingtes Status-Polling
+### Bedingtes Joblisten- und Status-Polling
 
-Der Einzelstatus und der Zustandsverlauf liefern bei einer erfolgreichen `200`-Antwort jeweils
-einen starken `ETag` über genau ihre bereits gefilterte öffentliche JSON-Darstellung. Der Client
-kann diesen Wert beim nächsten Poll unverändert mitsenden:
+Die paginierte Jobliste, der Einzelstatus und der Zustandsverlauf liefern bei einer erfolgreichen
+`200`-Antwort jeweils einen starken `ETag` über genau ihre bereits gefilterte öffentliche
+JSON-Darstellung. Der Client kann diesen Wert beim nächsten Poll derselben URL unverändert
+mitsenden:
 
 ```bash
 curl --silent --show-error --include \
@@ -429,16 +430,17 @@ curl --silent --show-error --include \
 ```
 
 Ist die öffentliche Darstellung unverändert, folgt `304 Not Modified` mit demselben `ETag` und
-ohne JSON-Body. Nach einem Zustandswechsel antwortet die Route wieder mit `200`, der aktuellen
-Darstellung und einem neuen `ETag`. Dasselbe Verfahren gilt für den `/history`-Pfad. Jede
-Anfrage muss weiterhin authentifiziert sein; Scope, konkrete Agenten-Jobfreigabe und aktuelle
+ohne JSON-Body. Ein neuer freigegebener Job, ein Zustandswechsel oder eine andere paginierte
+Listenseite verändert die Darstellung und liefert wieder `200` mit neuem `ETag`. Jede Anfrage
+muss weiterhin authentifiziert sein; Scope, konkrete Agenten-Jobfreigabe und aktuelle
 Repository-Allowlist werden vor dem Vergleich geprüft. Ein fremder Job bleibt daher auch mit
 einem bekannten Validator als `404` verborgen. Überlange oder nicht passende Header werden
 ignoriert und lösen eine normale `200`-Antwort aus. `Cache-Control: no-store` bleibt erhalten;
-der maschinelle Client verwaltet den Validator ausdrücklich selbst.
+der maschinelle Client verwaltet den Validator ausdrücklich pro angefragter URL selbst.
 
 Der versionierte `conditional_get`-Block unter `job_monitoring` nennt Request-Header,
-Response-Header und den Statuscode für unveränderte Antworten maschinenlesbar.
+Response-Header, unterstützte Pfade und den Statuscode für unveränderte Antworten
+maschinenlesbar.
 
 ### Maschinenlesbarer Zustands- und Abbruchvertrag
 

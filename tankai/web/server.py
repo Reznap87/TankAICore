@@ -1300,6 +1300,11 @@ class Handler(BaseHTTPRequestHandler):
                             "request_header": "If-None-Match",
                             "response_header": "ETag",
                             "not_modified_status": 304,
+                            "paths": [
+                                "/api/v1/jobs",
+                                "/api/v1/jobs/{job_id}",
+                                "/api/v1/jobs/{job_id}/history",
+                            ],
                         },
                         "pagination": {
                             "version": 1,
@@ -1442,7 +1447,7 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     if job.repository_id in context.repository_ids:
                         jobs.append(self._external_job_payload(job))
-                self._json(
+                self._conditional_json(
                     {
                         "jobs": jobs,
                         "pagination": {

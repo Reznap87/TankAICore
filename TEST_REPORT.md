@@ -1,8 +1,32 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 19. September 2026
+**Statusdatum:** 20. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Joblisten-Conditional-Polling v1 — Nachweis 20. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 218 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielter External-Agent-Gateway- und Reality-Contract-Test: 2 PASS
+- vollständige Queue-/Webserver-Regression: 50 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: jede Seite der paginierten eigenen Jobliste liefert einen starken, ausschließlich aus
+  ihrer öffentlichen JSON-Darstellung gebildeten `ETag`
+- geprüft: ein passendes schwaches oder starkes `If-None-Match` liefert `304` ohne Body; ein neuer
+  Job ändert den Validator und liefert wieder die vollständige angeforderte Seite
+- geprüft: Authentifizierung, Scope, Service-Agent, Repository-Allowlist und Paginierung werden vor
+  dem Validatorvergleich geprüft; ein bekannter `ETag` kann keine Zugriffsprüfung umgehen
+- der vollständige Wrangler-Dry-Run erreichte den Container-Build und stoppte dort ausschließlich
+  wegen fehlender lokaler Docker-/Podman-Runtime; Compose-Vertrag, Produktions-Container-Build
+  und Container-Smoke bleiben deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: External-Agent-Retry-Vertrag v1 — Nachweis 19. September 2026
 
