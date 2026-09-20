@@ -806,6 +806,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "request_header": "If-None-Match",
                 "response_header": "ETag",
                 "not_modified_status": 304,
+                "paths": [
+                    "/api/v1/jobs",
+                    "/api/v1/jobs/{job_id}",
+                    "/api/v1/jobs/{job_id}/history",
+                ],
             },
             "pagination": {
                 "version": 1,
@@ -1112,7 +1117,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "replayed": True,
         }
 
-        status, _, jobs = client.get("/api/v1/jobs", bearer=secret)
+        status, list_headers, jobs = client.get("/api/v1/jobs", bearer=secret)
         assert status == 200
         assert [item["job_id"] for item in jobs["jobs"]] == [job_id]
         assert jobs["pagination"] == {
@@ -1121,6 +1126,24 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "next_cursor": None,
         }
         assert "pipeline" not in jobs["jobs"][0]
+        list_etag = list_headers["ETag"]
+        assert re.fullmatch(r'"[0-9a-f]{64}"', list_etag)
+        status, unchanged_list_headers, unchanged_list = client.get(
+            "/api/v1/jobs",
+            bearer=secret,
+            headers={"If-None-Match": f"W/{list_etag}"},
+        )
+        assert status == 304
+        assert unchanged_list_headers["ETag"] == list_etag
+        assert unchanged_list is None
+        status, _, unauthenticated_list = client.get(
+            "/api/v1/jobs",
+            headers={"If-None-Match": list_etag},
+        )
+        assert status == 401
+        _assert_external_error(
+            unauthenticated_list, "bearer_token_required"
+        )
 
         second_payload = {
             **job_payload,
@@ -1131,6 +1154,17 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 202
         second_job_id = second_job["job"]["job_id"]
+        status, changed_list_headers, changed_list = client.get(
+            "/api/v1/jobs",
+            bearer=secret,
+            headers={"If-None-Match": list_etag},
+        )
+        assert status == 200
+        assert changed_list_headers["ETag"] != list_etag
+        assert [item["job_id"] for item in changed_list["jobs"]] == [
+            second_job_id,
+            job_id,
+        ]
 
         policy = app.job_queue.get_policy(workspace)
         assert policy is not None

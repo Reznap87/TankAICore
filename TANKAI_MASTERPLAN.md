@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.19
+Version: 5.7.20
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 19. September 2026
+Statusdatum: 20. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 19. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 20. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.19-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.20-Inkrements:
 
-2a6281b9eb6bccd7e339a8df431f900210633cbd
+69561830016fba710daffd9298877641d6cb55a5
 
 Zugehöriger Repository-Git-Tree:
 
-c08c9f1c20382ecfe56627573a52ad4e73820316
+5dca13317a3db0ac2dc50ec8339441b7f9723181
 
 Commit-Titel:
 
-feat: make external job cancellation idempotent (#52)
+feat: publish external retry contract (#53)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Retry-Vertrag-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Conditional-Polling-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 2a6281b9eb6bccd7e339a8df431f900210633cbd mit Git-Tree
-c08c9f1c20382ecfe56627573a52ad4e73820316,
+geschützter main-Ausgangsstand 69561830016fba710daffd9298877641d6cb55a5 mit Git-Tree
+5dca13317a3db0ac2dc50ec8339441b7f9723181,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Retry-Vertrag-Inkrement nicht wiederholt,
+External-Agent-Joblisten-Conditional-Polling-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -352,6 +352,19 @@ TankAI Core CI Run #95, Run 35316004004, auf dem gemergten main-Commit
 2a6281b9eb6bccd7e339a8df431f900210633cbd: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+der versionierte External-Agent-Retry-Vertrag aus PR #53 mit maschinenlesbarer
+Wiederholbarkeit und begrenzter Wartezeit für temporäre Ablehnungen,
+
+TankAI Core CI Run #96, Run 35428360449, auf dem PR-#53-Head
+a7b539974be73d52f62cbacea4a1c34a32209146: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Retry-Vertrag-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #53 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #97, Run 35428433211, auf dem gemergten main-Commit
+69561830016fba710daffd9298877641d6cb55a5: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -537,6 +550,13 @@ Zustandsverlauf liefern einen starken Validator über ihre bereits gefilterte ö
 JSON-Darstellung. Ein passendes `If-None-Match` erhält nach vollständiger Authentifizierung,
 Scope-, Agenten-Job- und Repository-Prüfung eine leere `304`-Antwort. Fremde Jobs bleiben
 unabhängig von bekannten Validatoren verborgen; `Cache-Control: no-store` bleibt bestehen.
+
+development.external_agent_job_list_conditional_polling.v1 -> IMPLEMENTED; auch jede Seite der
+paginierten eigenen Jobliste liefert einen starken Validator über ihre gefilterte öffentliche
+JSON-Darstellung. Ein passendes `If-None-Match` erhält erst nach Authentifizierung, Scope-,
+Repository- und Paginierungsprüfung eine leere `304`-Antwort. Neue oder geänderte Jobs und eine
+andere Seite erzeugen den zugehörigen Seiten-Validator neu; `Cache-Control: no-store` bleibt
+bestehen.
 
 development.external_agent_job_state_contract.v1 -> IMPLEMENTED; Capability-Discovery und
 Jobdarstellung weisen alle öffentlichen Zustände, die terminalen Polling-Enden und die einzige
@@ -794,6 +814,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.20, 20. September 2026:
+
+Geschützten main-Ausgangsstand auf 69561830016fba710daffd9298877641d6cb55a5 / Tree
+5dca13317a3db0ac2dc50ec8339441b7f9723181 gebunden; PR #53 sowie CI Runs #96 und #97 als
+erfolgreichen External-Agent-Retry-Vertrag-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert; starkes bedingtes Lesen auch für Seiten der
+paginierten eigenen Jobliste ergänzt. Authentifizierung, Scope-, Repository- und
+Paginierungsprüfung erfolgen weiterhin vor dem Validatorvergleich; Queue, Worker, Provider,
+Host und Production-Runtime bleiben unverändert.
 
 5.7.19, 19. September 2026:
 

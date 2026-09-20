@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Joblisten-Conditional-Polling v1
+
+- Paginierte Joblisten liefern jetzt einen starken `ETag` über ihre bereits gefilterte
+  öffentliche Darstellung.
+- Ein passendes `If-None-Match` ergibt `304 Not Modified` ohne JSON-Body; neue Jobs,
+  Zustandswechsel oder eine andere Listenseite erzeugen einen neuen Validator.
+- Capability-Discovery veröffentlicht alle drei unterstützten Conditional-GET-Pfade für Liste,
+  Einzelstatus und Verlauf.
+- Token-, Scope-, Agenten-, Repository- und Paginierungsprüfung laufen weiterhin vor dem
+  Validatorvergleich; `Cache-Control: no-store` bleibt erhalten.
+
 ### External-Agent-Retry-Vertrag v1
 
 - Alle unterstützten `/api/v1/`-Fehlerantworten kennzeichnen maschinenlesbar, ob ein unveränderter
