@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.20
+Version: 5.7.21
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 20. September 2026
+Statusdatum: 21. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 20. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 21. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.20-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.21-Inkrements:
 
-69561830016fba710daffd9298877641d6cb55a5
+2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f
 
 Zugehöriger Repository-Git-Tree:
 
-5dca13317a3db0ac2dc50ec8339441b7f9723181
+612308c6ec890819a888b7d3311c3595fdd08a73
 
 Commit-Titel:
 
-feat: publish external retry contract (#53)
+feat: add conditional polling for job lists (#54)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Conditional-Polling-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Repository-Filter-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 69561830016fba710daffd9298877641d6cb55a5 mit Git-Tree
-5dca13317a3db0ac2dc50ec8339441b7f9723181,
+geschützter main-Ausgangsstand 2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f mit Git-Tree
+612308c6ec890819a888b7d3311c3595fdd08a73,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Joblisten-Conditional-Polling-Inkrement nicht wiederholt,
+External-Agent-Joblisten-Repository-Filter-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -365,6 +365,19 @@ TankAI Core CI Run #97, Run 35428433211, auf dem gemergten main-Commit
 69561830016fba710daffd9298877641d6cb55a5: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+das External-Agent-Joblisten-Conditional-Polling aus PR #54 mit starken Validatoren für jede
+bereits gefilterte öffentliche Listenseite,
+
+TankAI Core CI Run #98, Run 35495663214, auf dem PR-#54-Head
+bc4513f7c439cb457736393f0b68e169745b254d: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Joblisten-Conditional-GET-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #54 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #99, Run 35495758846, auf dem gemergten main-Commit
+2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -557,6 +570,12 @@ JSON-Darstellung. Ein passendes `If-None-Match` erhält erst nach Authentifizier
 Repository- und Paginierungsprüfung eine leere `304`-Antwort. Neue oder geänderte Jobs und eine
 andere Seite erzeugen den zugehörigen Seiten-Validator neu; `Cache-Control: no-store` bleibt
 bestehen.
+
+development.external_agent_job_list_repository_filter.v1 -> IMPLEMENTED; externe KI-Clients
+können die paginierte Liste auf genau ein in ihrem Token freigegebenes Repository begrenzen.
+Capability-Discovery und Antwort weisen Parameter, zulässige Wertequelle und wirksamen Filter
+maschinenlesbar aus. Fremde IDs werden ohne Spiegelung abgewiesen; Cursor, Paginierung und
+Validator bleiben an Agent, aktuelle Allowlist und gewählten Repository-Filter gebunden.
 
 development.external_agent_job_state_contract.v1 -> IMPLEMENTED; Capability-Discovery und
 Jobdarstellung weisen alle öffentlichen Zustände, die terminalen Polling-Enden und die einzige
@@ -775,7 +794,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    öffentliche Zustandswechsel begrenzten History-Pfad. Fremde Agenten-Jobs und interne
    Queue-Ereignisdetails bleiben verborgen.
    Die dort ebenfalls beworbene Jobliste wird bei mehr als 100 eigenen Aufträgen über den
-   begrenzten `next_cursor` vollständig seitenweise gelesen.
+   begrenzten `next_cursor` vollständig seitenweise gelesen. Bei mehreren freigegebenen
+   Repositories kann sie mit einer ID aus `repository_ids` eingeschränkt werden; derselbe Filter
+   bleibt über alle Cursor-Seiten erhalten.
    Einzelstatus und Verlauf werden danach mit dem beworbenen `ETag` bedingt gepollt; eine leere
    `304`-Antwort bedeutet ausschließlich, dass sich die öffentliche Darstellung seit dem
    mitgesendeten Validator nicht geändert hat.
@@ -814,6 +835,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.21, 21. September 2026:
+
+Geschützten main-Ausgangsstand auf 2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f / Tree
+612308c6ec890819a888b7d3311c3595fdd08a73 gebunden; PR #54 sowie CI Runs #98 und #99 als
+erfolgreichen Joblisten-Conditional-Polling-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert; einen maschinenlesbar beworbenen,
+repository-genauen Filter für paginierte eigene Joblisten ergänzt. Fremde IDs werden neutral
+abgewiesen; Agenten-, Allowlist-, Cursor- und Validatorgrenzen bleiben erhalten, während Queue,
+Worker, Provider, Host und Production-Runtime unverändert bleiben.
 
 5.7.20, 20. September 2026:
 

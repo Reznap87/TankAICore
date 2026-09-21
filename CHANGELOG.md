@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Joblisten-Repository-Filter v1
+
+- Paginierte Joblisten können jetzt mit `repository_id` auf genau ein für den Service-Agenten
+  freigegebenes Repository begrenzt werden.
+- Capability-Discovery veröffentlicht Parameter und zulässige Wertequelle; jede Antwort nennt
+  den wirksamen Filter ausdrücklich.
+- Fremde Repository-IDs werden ohne Spiegelung abgewiesen, und Cursor bleiben an Agent,
+  aktuelle Allowlist und gewählten Repository-Filter gebunden.
+- Filter, Paginierung und Autorisierung laufen vor dem `ETag`-Vergleich; Queue, Worker und
+  Submit-Vertrag bleiben unverändert.
+
 ### External-Agent-Joblisten-Conditional-Polling v1
 
 - Paginierte Joblisten liefern jetzt einen starken `ETag` über ihre bereits gefilterte

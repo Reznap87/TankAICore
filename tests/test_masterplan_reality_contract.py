@@ -10,10 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.20" in current
-    assert "Statusdatum: 20. September 2026" in current
-    assert "69561830016fba710daffd9298877641d6cb55a5" in current
-    assert "5dca13317a3db0ac2dc50ec8339441b7f9723181" in current
+    assert "Version: 5.7.21" in current
+    assert "Statusdatum: 21. September 2026" in current
+    assert "2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f" in current
+    assert "612308c6ec890819a888b7d3311c3595fdd08a73" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -43,6 +43,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #95" in current
     assert "TankAI Core CI Run #96" in current
     assert "TankAI Core CI Run #97" in current
+    assert "TankAI Core CI Run #98" in current
+    assert "TankAI Core CI Run #99" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -52,6 +54,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #51" in current
     assert "PR #52" in current
     assert "PR #53" in current
+    assert "PR #54" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -71,6 +74,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "development.external_agent_conditional_polling.v1 -> IMPLEMENTED" in current
     assert (
         "development.external_agent_job_list_conditional_polling.v1 -> IMPLEMENTED"
+        in current
+    )
+    assert (
+        "development.external_agent_job_list_repository_filter.v1 -> IMPLEMENTED"
         in current
     )
     assert "development.external_agent_job_state_contract.v1 -> IMPLEMENTED" in current
