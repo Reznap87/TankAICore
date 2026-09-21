@@ -52,6 +52,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Abbruch-Idempotenz | Wiederholbare Job-Abbrüche mit atomarem Replay-Outcome ohne doppelte Zustandsereignisse |
 | External-Agent-Jobverlauf | Auf 100 Einträge begrenzter Zustandsverlauf eigener Jobs ohne interne Ereignis-, Akteur- oder Worker-Daten |
 | External-Agent-Jobliste | Stabile Cursor-Paginierung über alle eigenen, weiterhin freigegebenen Jobs mit höchstens 100 Einträgen pro Seite |
+| External-Agent-Joblistenfilter | Repository-genaue Joblisten über ausschließlich im Token freigegebene IDs mit filtergebundenen Cursorn |
 | External-Agent-Conditional-Polling | `ETag`/`If-None-Match` für paginierte Joblisten, Einzelstatus und Verlauf mit leerer `304`-Antwort bei unverändertem öffentlichen Zustand |
 | External-Agent-Jobzustandsvertrag | Maschinenlesbare Zustände, terminales Polling-Ende und zustands-/scopegebundene Abbruch-Discovery |
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |

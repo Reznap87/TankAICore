@@ -733,6 +733,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "job_submission_rejected",
                 "repository_list_forbidden",
                 "invalid_job_pagination",
+                "invalid_job_filter",
                 "job_list_forbidden",
                 "job_not_found",
                 "job_state_conflict",
@@ -818,6 +819,11 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "limit_parameter": "limit",
                 "default_limit": 100,
                 "max_limit": 100,
+            },
+            "filters": {
+                "version": 1,
+                "repository_parameter": "repository_id",
+                "allowed_values_source": "repository_ids",
             },
             "result_receipt": {
                 "version": 1,
@@ -1120,6 +1126,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         status, list_headers, jobs = client.get("/api/v1/jobs", bearer=secret)
         assert status == 200
         assert [item["job_id"] for item in jobs["jobs"]] == [job_id]
+        assert jobs["filters"] == {
+            "version": 1,
+            "repository_id": None,
+        }
         assert jobs["pagination"] == {
             "version": 1,
             "limit": 100,
@@ -1144,6 +1154,34 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         _assert_external_error(
             unauthenticated_list, "bearer_token_required"
         )
+        status, filtered_headers, filtered_jobs = client.get(
+            f"/api/v1/jobs?repository_id={allowed.repository_id}",
+            bearer=secret,
+        )
+        assert status == 200
+        assert [item["job_id"] for item in filtered_jobs["jobs"]] == [job_id]
+        assert filtered_jobs["filters"] == {
+            "version": 1,
+            "repository_id": allowed.repository_id,
+        }
+        assert filtered_headers["ETag"] != list_etag
+        status, _, invalid_filter = client.get(
+            "/api/v1/jobs?repository_id=DO_NOT_REFLECT_THIS_VALUE",
+            bearer=secret,
+            headers={"If-None-Match": filtered_headers["ETag"]},
+        )
+        assert status == 400
+        assert invalid_filter["error"] == "Ungültiger Joblisten-Filter"
+        _assert_external_error(invalid_filter, "invalid_job_filter")
+        assert "DO_NOT_REFLECT_THIS_VALUE" not in json.dumps(invalid_filter)
+        status, _, forbidden_filter = client.get(
+            f"/api/v1/jobs?repository_id={blocked.repository_id}",
+            bearer=secret,
+            headers={"If-None-Match": filtered_headers["ETag"]},
+        )
+        assert status == 403
+        _assert_external_error(forbidden_filter, "repository_not_allowed")
+        assert blocked.repository_id not in json.dumps(forbidden_filter)
 
         second_payload = {
             **job_payload,
@@ -1214,7 +1252,8 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
 
         status, _, first_page = client.get(
-            "/api/v1/jobs?limit=1", bearer=secret
+            f"/api/v1/jobs?limit=1&repository_id={allowed.repository_id}",
+            bearer=secret,
         )
         assert status == 200
         assert [item["job_id"] for item in first_page["jobs"]] == [second_job_id]
@@ -1222,7 +1261,9 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         cursor = first_page["pagination"]["next_cursor"]
         assert cursor == second_job_id
         status, _, second_page = client.get(
-            f"/api/v1/jobs?limit=1&cursor={cursor}", bearer=secret
+            f"/api/v1/jobs?limit=1&cursor={cursor}"
+            f"&repository_id={allowed.repository_id}",
+            bearer=secret,
         )
         assert status == 200
         assert [item["job_id"] for item in second_page["jobs"]] == [job_id]
@@ -1230,6 +1271,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "version": 1,
             "limit": 1,
             "next_cursor": None,
+        }
+        assert second_page["filters"] == {
+            "version": 1,
+            "repository_id": allowed.repository_id,
         }
         for invalid_query in (
             "limit=0",

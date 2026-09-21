@@ -211,6 +211,7 @@ den begrenzten `validation`-Block mit JSON-Pointern. Die aktuelle v1-Code-Menge 
 | `job_submission_rejected` | 400 | Aktuelle Admission-Regeln lehnen die Einreichung ab |
 | `repository_list_forbidden` | 403 | Repository-Liste darf nicht gelesen werden |
 | `invalid_job_pagination` | 400 | Limit oder Cursor verletzt den Paginierungsvertrag |
+| `invalid_job_filter` | 400 | Repository-Filter verletzt den Joblistenvertrag |
 | `job_list_forbidden` | 403 | Jobliste darf nicht gelesen werden |
 | `job_not_found` | 404 | Job fehlt oder bleibt wegen Agenten-/Repository-Isolation verborgen |
 | `job_state_conflict` | 409 | Status oder Verlauf ist im aktuellen Queue-Zustand nicht verfügbar |
@@ -346,9 +347,9 @@ Preflight ist folglich keine Annahmegarantie.
 ### Begrenzte Joblisten-Paginierung
 
 `GET /api/v1/capabilities` bewirbt unter `job_monitoring` den Listenpfad und den
-versionierten Pagination-Vertrag. Ohne Query-Parameter liefert `GET /api/v1/jobs`
-wie bisher die bis zu 100 neuesten eigenen Jobs. Kleinere Seiten können mit
-`limit` zwischen 1 und 100 angefordert werden:
+versionierten Pagination- und Filtervertrag. Ohne Query-Parameter liefert
+`GET /api/v1/jobs` wie bisher die bis zu 100 neuesten eigenen Jobs. Kleinere Seiten können
+mit `limit` zwischen 1 und 100 angefordert werden:
 
 ```bash
 curl --fail --silent --show-error \
@@ -362,6 +363,10 @@ Cursor für die nächste Seite:
 ```json
 {
   "jobs": [],
+  "filters": {
+    "version": 1,
+    "repository_id": null
+  },
   "pagination": {
     "version": 1,
     "limit": 25,
@@ -376,6 +381,24 @@ auch Jobs jenseits der ersten 100 Einträge. Der Cursor ist an denselben
 Service-Agenten und die aktuelle Repository-Allowlist gebunden. Ungültige,
 fremde, mehrfach angegebene oder unbekannte Pagination-Parameter liefern eine
 neutrale HTTP-400-Antwort, ohne den übermittelten Wert zu spiegeln.
+
+Besitzt ein Token Freigaben für mehrere Repositories, kann der Client dieselbe Liste mit der
+maschinenlesbar beworbenen `repository_id` auf genau eine ID aus
+`GET /api/v1/capabilities.repository_ids` begrenzen:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  "https://TANKAI_HOST/api/v1/jobs?repository_id=REPOSITORY_UUID&limit=25"
+```
+
+Die Antwort wiederholt ausschließlich die kanonische, freigegebene ID unter `filters`. Ein
+Cursor darf nur mit demselben Repository-Filter weiterverwendet werden; ein Cursor aus einem
+anderen Repository wird neutral als ungültige Paginierung abgewiesen. Syntaktisch ungültige
+Filter liefern `invalid_job_filter`, nicht freigegebene gültige IDs
+`repository_not_allowed`. Weder Antwort noch Fehler spiegeln fremde Eingabewerte. Der Filter
+wird vor dem `ETag`-Vergleich geprüft und kann deshalb keine Authentifizierungs-, Scope- oder
+Repository-Grenze umgehen.
 
 ### Begrenzter Job-Zustandsverlauf
 

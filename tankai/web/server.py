@@ -72,6 +72,7 @@ _EXTERNAL_ERROR_CODES = (
     "job_submission_rejected",
     "repository_list_forbidden",
     "invalid_job_pagination",
+    "invalid_job_filter",
     "job_list_forbidden",
     "job_not_found",
     "job_state_conflict",
@@ -1313,6 +1314,11 @@ class Handler(BaseHTTPRequestHandler):
                             "default_limit": _EXTERNAL_JOB_LIST_DEFAULT_LIMIT,
                             "max_limit": _EXTERNAL_JOB_LIST_MAX_LIMIT,
                         },
+                        "filters": {
+                            "version": 1,
+                            "repository_parameter": "repository_id",
+                            "allowed_values_source": "repository_ids",
+                        },
                         "result_receipt": {
                             "version": 1,
                             "schema_path": "/api/v1/job-result-schema",
@@ -1410,9 +1416,9 @@ class Handler(BaseHTTPRequestHandler):
                     urlsplit(self.path).query,
                     keep_blank_values=True,
                     strict_parsing=True,
-                    max_num_fields=2,
+                    max_num_fields=3,
                 )
-                if set(query) - {"cursor", "limit"} or any(
+                if set(query) - {"cursor", "limit", "repository_id"} or any(
                     len(values) != 1 for values in query.values()
                 ):
                     raise ValueError("Ungültige Joblisten-Paginierung")
@@ -1430,9 +1436,29 @@ class Handler(BaseHTTPRequestHandler):
                         UUID(cursor)
                     except ValueError as exc:
                         raise ValueError("Ungültige Joblisten-Paginierung") from exc
+                repository_id = query.get("repository_id", [None])[0]
+                repository_ids = context.repository_ids
+                if repository_id is not None:
+                    try:
+                        repository_id = str(UUID(repository_id))
+                    except ValueError:
+                        self._agent_error(
+                            "invalid_job_filter",
+                            "Ungültiger Joblisten-Filter",
+                            400,
+                        )
+                        return
+                    if repository_id not in context.repository_ids:
+                        self._agent_error(
+                            "repository_not_allowed",
+                            "Repository ist für diesen KI-Agenten nicht freigegeben",
+                            403,
+                        )
+                        return
+                    repository_ids = frozenset({repository_id})
                 page = self.app.auth.agent_job_page(
                     agent_id=context.agent_id,
-                    repository_ids=context.repository_ids,
+                    repository_ids=repository_ids,
                     limit=limit,
                     cursor=cursor,
                 )
@@ -1445,11 +1471,15 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     except (PermissionError, QueueError, ValueError):
                         continue
-                    if job.repository_id in context.repository_ids:
+                    if job.repository_id in repository_ids:
                         jobs.append(self._external_job_payload(job))
                 self._conditional_json(
                     {
                         "jobs": jobs,
+                        "filters": {
+                            "version": 1,
+                            "repository_id": repository_id,
+                        },
                         "pagination": {
                             "version": 1,
                             "limit": limit,
