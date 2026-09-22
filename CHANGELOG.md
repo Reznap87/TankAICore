@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Repository-gefilterte Joblisten: Datenbankindex v1
+
+- Der bestehende Repository-Filter nutzt jetzt einen deckenden SQLite-Index für Agent,
+  Repository und stabile Cursor-Reihenfolge. Große Listen müssen nicht mehr über die
+  Einträge aller Repositories desselben Agenten sortiert werden.
+- Bereits vorhandene Auth-Datenbanken erhalten den Index beim nächsten Öffnen, ohne Grants,
+  API-Antworten, Cursor oder Berechtigungen zu ändern.
+
 ### External-Agent-Joblisten-Repository-Filter v1
 
 - Paginierte Joblisten können jetzt mit `repository_id` auf genau ein für den Service-Agenten

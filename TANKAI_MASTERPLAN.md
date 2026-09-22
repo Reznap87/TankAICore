@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.21
+Version: 5.7.22
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 21. September 2026
+Statusdatum: 22. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 21. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 22. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.21-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.22-Inkrements:
 
-2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f
+acbcd6ed47a740d1d8663472056c2dd7b6333781
 
 Zugehöriger Repository-Git-Tree:
 
-612308c6ec890819a888b7d3311c3595fdd08a73
+3156b7d522a9921bf4dfd28965438bf09cf054b1
 
 Commit-Titel:
 
-feat: add conditional polling for job lists (#54)
+feat: filter external job lists by repository (#55)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Repository-Filter-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des Repository-Joblistenindex-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f mit Git-Tree
-612308c6ec890819a888b7d3311c3595fdd08a73,
+geschützter main-Ausgangsstand acbcd6ed47a740d1d8663472056c2dd7b6333781 mit Git-Tree
+3156b7d522a9921bf4dfd28965438bf09cf054b1,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Joblisten-Repository-Filter-Inkrement nicht wiederholt,
+Repository-Joblistenindex-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -378,6 +378,19 @@ TankAI Core CI Run #99, Run 35495758846, auf dem gemergten main-Commit
 2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+der External-Agent-Joblisten-Repository-Filter aus PR #55 mit Allowlist-, Cursor- und
+Validatorgrenzen für auf genau ein Repository eingeschränkte Joblisten,
+
+TankAI Core CI Run #100, Run 35568541450, auf dem PR-#55-Head
+e2f040e285950fdd12584c3b125df8e59358b6ac: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Repository-Filter-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #55 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #101, Run 35568688344, auf dem gemergten main-Commit
+acbcd6ed47a740d1d8663472056c2dd7b6333781: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -576,6 +589,11 @@ können die paginierte Liste auf genau ein in ihrem Token freigegebenes Reposito
 Capability-Discovery und Antwort weisen Parameter, zulässige Wertequelle und wirksamen Filter
 maschinenlesbar aus. Fremde IDs werden ohne Spiegelung abgewiesen; Cursor, Paginierung und
 Validator bleiben an Agent, aktuelle Allowlist und gewählten Repository-Filter gebunden.
+
+development.external_agent_job_list_repository_index.v1 -> IMPLEMENTED; ein deckender SQLite-
+Index über Agent, Repository, Erstellungszeit und Job-ID stützt die repository-gefilterte
+Keyset-Paginierung. Bestehende Auth-Datenbanken erhalten den Index beim Öffnen; Grants, Cursor,
+API-Antworten und Berechtigungsgrenzen bleiben unverändert.
 
 development.external_agent_job_state_contract.v1 -> IMPLEMENTED; Capability-Discovery und
 Jobdarstellung weisen alle öffentlichen Zustände, die terminalen Polling-Enden und die einzige
@@ -835,6 +853,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.22, 22. September 2026:
+
+Geschützten main-Ausgangsstand auf acbcd6ed47a740d1d8663472056c2dd7b6333781 / Tree
+3156b7d522a9921bf4dfd28965438bf09cf054b1 gebunden; PR #55 sowie CI Runs #100 und #101 als
+erfolgreichen Repository-Filter-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen
+extern blockierten Vorgang verifiziert. Einen deckenden Index für repository-gefilterte
+Agenten-Joblisten ergänzt; vorhandene Datenbanken werden ohne Änderung der Daten, Cursor oder
+API-Antworten beim Öffnen ergänzt. Provider, Host und Production-Runtime bleiben unverändert.
 
 5.7.21, 21. September 2026:
 
