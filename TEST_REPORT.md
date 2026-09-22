@@ -1,8 +1,22 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 21. September 2026
+**Statusdatum:** 22. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Repository-Joblistenindex v1 — Nachweis 22. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 218 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- Queue-/Webserver-Regressionen: 50 PASS; gezielter Index-/Migrations-Test: PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- geprüft: Repository-Seiten werden per deckendem Index abgefragt, ohne temporäre Sortierung
+- geprüft: eine vorhandene Auth-Datenbank ohne Index erhält ihn beim Öffnen; Grants und
+  Cursor-Reihenfolge bleiben erhalten, ohne Schema- oder API-Vertragsänderung
+- keine Secrets, Provider, Berechtigungen oder produktiven Datenbanken geändert; kein Deployment
 
 ## Unreleased: External-Agent-Joblisten-Repository-Filter v1 — Nachweis 21. September 2026
 

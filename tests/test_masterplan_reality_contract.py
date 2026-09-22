@@ -10,10 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.21" in current
-    assert "Statusdatum: 21. September 2026" in current
-    assert "2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f" in current
-    assert "612308c6ec890819a888b7d3311c3595fdd08a73" in current
+    assert "Version: 5.7.22" in current
+    assert "Statusdatum: 22. September 2026" in current
+    assert "acbcd6ed47a740d1d8663472056c2dd7b6333781" in current
+    assert "3156b7d522a9921bf4dfd28965438bf09cf054b1" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -45,6 +45,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #97" in current
     assert "TankAI Core CI Run #98" in current
     assert "TankAI Core CI Run #99" in current
+    assert "TankAI Core CI Run #100" in current
+    assert "TankAI Core CI Run #101" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -55,6 +57,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #52" in current
     assert "PR #53" in current
     assert "PR #54" in current
+    assert "PR #55" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -78,6 +81,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     )
     assert (
         "development.external_agent_job_list_repository_filter.v1 -> IMPLEMENTED"
+        in current
+    )
+    assert (
+        "development.external_agent_job_list_repository_index.v1 -> IMPLEMENTED"
         in current
     )
     assert "development.external_agent_job_state_contract.v1 -> IMPLEMENTED" in current

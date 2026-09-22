@@ -226,6 +226,34 @@ def test_agent_job_pagination_reaches_past_first_hundred_and_scopes_cursor(
             cursor=foreign_repository_job,
         )
 
+    # A pre-index database is upgraded without losing grants or changing cursor order.
+    with sqlite3.connect(store.path) as conn:
+        conn.execute("DROP INDEX idx_agent_job_grants_repository_recent")
+    reopened = AuthStore(store.path)
+    with sqlite3.connect(reopened.path) as conn:
+        plan = conn.execute(
+            "EXPLAIN QUERY PLAN SELECT job_id FROM agent_job_grants "
+            "WHERE agent_id=? AND repository_id IN (?) "
+            "ORDER BY created_at DESC,job_id LIMIT ?",
+            (agent.agent_id, repository_id, 101),
+        ).fetchall()
+    assert any(
+        "USING COVERING INDEX idx_agent_job_grants_repository_recent" in step[3]
+        for step in plan
+    )
+    assert not any("USE TEMP B-TREE" in step[3] for step in plan)
+    assert reopened.agent_job_page(
+        agent_id=agent.agent_id,
+        repository_ids=[repository_id],
+        limit=100,
+    ) == first
+    assert reopened.agent_job_page(
+        agent_id=agent.agent_id,
+        repository_ids=[repository_id],
+        limit=100,
+        cursor=first.next_cursor,
+    ) == second
+
 
 def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
     store = _configure(monkeypatch, tmp_path)

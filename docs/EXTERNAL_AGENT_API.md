@@ -400,6 +400,10 @@ Filter liefern `invalid_job_filter`, nicht freigegebene gültige IDs
 wird vor dem `ETag`-Vergleich geprüft und kann deshalb keine Authentifizierungs-, Scope- oder
 Repository-Grenze umgehen.
 
+Die repository-gefilterte Cursor-Abfrage verwendet einen deckenden Index über Agent,
+Repository und stabile Sortierung. Vorhandene Auth-Datenbanken legen ihn beim nächsten
+Öffnen automatisch an; API-Vertrag, gespeicherte Job-Freigaben und Cursor bleiben unverändert.
+
 ### Begrenzter Job-Zustandsverlauf
 
 Nach dem Submit bewirbt `GET /api/v1/capabilities` unter `job_monitoring` den

@@ -339,6 +339,8 @@ class AuthStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_agent_job_grants_recent
                     ON agent_job_grants(agent_id, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_agent_job_grants_repository_recent
+                    ON agent_job_grants(agent_id, repository_id, created_at DESC, job_id);
                 INSERT OR REPLACE INTO auth_meta(key,value) VALUES('schema_version','3');
                 COMMIT;
                 """
