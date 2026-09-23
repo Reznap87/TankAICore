@@ -178,6 +178,27 @@ Authorization: Bearer tkai_v1_REDACTED
 | `POST` | `/api/v1/jobs` | `jobs:submit` |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `jobs:cancel` |
 
+### Bedingtes Lesen der Discovery-Endpunkte
+
+Die vier read-only Discovery-Endpunkte `/api/v1/capabilities`, `/api/v1/repositories`,
+`/api/v1/job-schema` und `/api/v1/job-result-schema` liefern bei `200` einen starken `ETag` über
+ihre öffentliche JSON-Darstellung. Der Client kann ihn bei derselben URL wiederverwenden:
+
+```bash
+curl --silent --show-error --include \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  -H 'If-None-Match: "ZUVOR_GELIEFERTER_ETAG"' \
+  "https://TANKAI_HOST/api/v1/capabilities"
+```
+
+Ist die Darstellung unverändert, antwortet TankAI mit `304 Not Modified`, demselben `ETag` und
+leerem Body. Authentifizierung und der für die Repository-Liste erforderliche
+`repositories:read`-Scope werden bei jedem Aufruf vor dem Vergleich geprüft. Die
+Repository-Liste bleibt zusätzlich an Queue-Zugriff und aktuelle Token-Allowlist gebunden; ein
+bekannter Validator umgeht keine dieser Grenzen. `Cache-Control: no-store` bleibt erhalten.
+Unter `discovery.conditional_get` nennt die Capability-Antwort Vertragsversion, Header,
+Statuscode und unterstützte Pfade maschinenlesbar.
+
 ### Maschinenlesbarer Fehlervertrag
 
 Alle JSON-Fehlerantworten der oben aufgeführten, unterstützten `/api/v1/`-Routen behalten das

@@ -55,6 +55,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Joblistenfilter | Repository-genaue Joblisten über ausschließlich im Token freigegebene IDs mit filtergebundenen Cursorn |
 | Repository-Joblistenindex | Deckender SQLite-Index für schnelle repository-gefilterte Cursor-Seiten; bestehende Datenbanken werden beim Öffnen ergänzt |
 | External-Agent-Conditional-Polling | `ETag`/`If-None-Match` für paginierte Joblisten, Einzelstatus und Verlauf mit leerer `304`-Antwort bei unverändertem öffentlichen Zustand |
+| External-Agent-Discovery-Conditional-GET | `ETag`/`If-None-Match` für Capability-, Repository- und Schema-Discovery nach vollständiger Zugriffsprüfung |
 | External-Agent-Jobzustandsvertrag | Maschinenlesbare Zustände, terminales Polling-Ende und zustands-/scopegebundene Abbruch-Discovery |
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |

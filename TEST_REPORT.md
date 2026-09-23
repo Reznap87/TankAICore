@@ -1,8 +1,31 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 22. September 2026
+**Statusdatum:** 23. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Discovery-Conditional-GET v1 — Nachweis 23. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 218 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- gezielter External-Agent-Gateway-/Reality-Contract-Test: 2 PASS; vollständige Queue-/
+  Webserver-Regression: 50 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- `git diff --check` und Secret-Pattern-Scan des Inkrements: PASS
+- geprüft: Capability-, Repository-, Job-Schema- und Ergebnis-Schema-Antworten liefern starke
+  Validatoren; passende starke, schwache oder gelistete `If-None-Match`-Werte ergeben `304`
+  ohne JSON-Body
+- geprüft: Authentifizierung, Scope, Queue und Repository-Allowlist werden vor dem
+  Validatorvergleich geprüft; Capability-Discovery bewirbt alle vier Pfade maschinenlesbar
+- der vollständige Wrangler-Dry-Run erreichte lokal den Container-Build und stoppte dort
+  ausschließlich wegen fehlender Docker-/Podman-Runtime; Produktions-Container-Build und
+  Container-Smoke bleiben deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets gelesen oder verändert, kein
+  Provideraufruf und kein Deployment
 
 ## Unreleased: Repository-Joblistenindex v1 — Nachweis 22. September 2026
 

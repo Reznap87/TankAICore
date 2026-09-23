@@ -1225,9 +1225,23 @@ class Handler(BaseHTTPRequestHandler):
                         "max_jobs_per_user_hour": policy.max_jobs_per_user_hour,
                         "allowed_images": sorted(policy.allowed_images),
                     }
-            self._json(
+            self._conditional_json(
                 {
                     "api_version": "v1",
+                    "discovery": {
+                        "conditional_get": {
+                            "version": 1,
+                            "request_header": "If-None-Match",
+                            "response_header": "ETag",
+                            "not_modified_status": 304,
+                            "paths": [
+                                "/api/v1/capabilities",
+                                "/api/v1/repositories",
+                                "/api/v1/job-schema",
+                                "/api/v1/job-result-schema",
+                            ],
+                        }
+                    },
                     "error_contract": {
                         "version": _EXTERNAL_ERROR_CONTRACT_VERSION,
                         "code_field": "error_code",
@@ -1332,7 +1346,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/job-schema":
             if self._agent_context() is None:
                 return
-            self._json(
+            self._conditional_json(
                 {
                     "api_version": "v1",
                     "schema_version": 1,
@@ -1355,7 +1369,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/job-result-schema":
             if self._agent_context() is None:
                 return
-            self._json(
+            self._conditional_json(
                 {
                     "api_version": "v1",
                     "schema_version": 1,
@@ -1381,7 +1395,7 @@ class Handler(BaseHTTPRequestHandler):
                     actor_user_id=context.owner_user_id,
                     workspace_id=context.workspace_id,
                 )
-                self._json(
+                self._conditional_json(
                     {
                         "repositories": [
                             {

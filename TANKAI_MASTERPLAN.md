@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.22
+Version: 5.7.23
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 22. September 2026
+Statusdatum: 23. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 22. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 23. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.22-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.23-Inkrements:
 
-acbcd6ed47a740d1d8663472056c2dd7b6333781
+6db746aee15fef425326394be18e93d283e6f967
 
 Zugehöriger Repository-Git-Tree:
 
-3156b7d522a9921bf4dfd28965438bf09cf054b1
+aa2928c561527447320f5f743516142fbd6c7864
 
 Commit-Titel:
 
-feat: filter external job lists by repository (#55)
+perf: index repository-filtered agent job pages (#56)
 
-Dieser Stand ist der Ausgangsstand des Repository-Joblistenindex-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Discovery-Conditional-GET-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand acbcd6ed47a740d1d8663472056c2dd7b6333781 mit Git-Tree
-3156b7d522a9921bf4dfd28965438bf09cf054b1,
+geschützter main-Ausgangsstand 6db746aee15fef425326394be18e93d283e6f967 mit Git-Tree
+aa2928c561527447320f5f743516142fbd6c7864,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Repository-Joblistenindex-Inkrement nicht wiederholt,
+External-Agent-Discovery-Conditional-GET-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -391,6 +391,19 @@ TankAI Core CI Run #101, Run 35568688344, auf dem gemergten main-Commit
 acbcd6ed47a740d1d8663472056c2dd7b6333781: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+der deckende SQLite-Index aus PR #56 für repository-gefilterte Agenten-Jobseiten, den bestehende
+Auth-Datenbanken beim Öffnen ohne Daten- oder Vertragsänderung erhalten,
+
+TankAI Core CI Run #102, Run 35696739719, auf dem PR-#56-Head
+8a16834e752582106d9191d8d5eb2466e00afb76: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Index-/Migrations-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #56 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #103, Run 35696859845, auf dem gemergten main-Commit
+6db746aee15fef425326394be18e93d283e6f967: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -594,6 +607,13 @@ development.external_agent_job_list_repository_index.v1 -> IMPLEMENTED; ein deck
 Index über Agent, Repository, Erstellungszeit und Job-ID stützt die repository-gefilterte
 Keyset-Paginierung. Bestehende Auth-Datenbanken erhalten den Index beim Öffnen; Grants, Cursor,
 API-Antworten und Berechtigungsgrenzen bleiben unverändert.
+
+development.external_agent_discovery_conditional_get.v1 -> IMPLEMENTED; Capability-,
+Repository-, Job-Schema- und Ergebnis-Schema-Discovery liefern starke Validatoren über ihre
+bereits autorisierte öffentliche JSON-Darstellung. Ein passendes `If-None-Match` erhält erst
+nach Token-, Scope-, Queue- und Repository-Prüfung eine leere `304`-Antwort; Capability-
+Discovery bewirbt den Vertrag und alle vier Pfade maschinenlesbar. `Cache-Control: no-store`
+bleibt bestehen.
 
 development.external_agent_job_state_contract.v1 -> IMPLEMENTED; Capability-Discovery und
 Jobdarstellung weisen alle öffentlichen Zustände, die terminalen Polling-Enden und die einzige
@@ -815,6 +835,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    begrenzten `next_cursor` vollständig seitenweise gelesen. Bei mehreren freigegebenen
    Repositories kann sie mit einer ID aus `repository_ids` eingeschränkt werden; derselbe Filter
    bleibt über alle Cursor-Seiten erhalten.
+   Capability-, Repository- und beide Schema-Discovery-Antworten werden mit dem unter
+   `discovery.conditional_get` beworbenen Validator bedingt gelesen; eine `304`-Antwort folgt
+   ausschließlich nach erneuter Zugriffsprüfung.
    Einzelstatus und Verlauf werden danach mit dem beworbenen `ETag` bedingt gepollt; eine leere
    `304`-Antwort bedeutet ausschließlich, dass sich die öffentliche Darstellung seit dem
    mitgesendeten Validator nicht geändert hat.
@@ -853,6 +876,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.23, 23. September 2026:
+
+Geschützten main-Ausgangsstand auf 6db746aee15fef425326394be18e93d283e6f967 / Tree
+aa2928c561527447320f5f743516142fbd6c7864 gebunden; PR #56 sowie CI Runs #102 und #103 als
+erfolgreichen Repository-Joblistenindex-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert. Starkes bedingtes Lesen für Capability-,
+Repository-, Job-Schema- und Ergebnis-Schema-Discovery ergänzt. Authentifizierung, Scope,
+Queue-Zugriff und Allowlist-Prüfung bleiben vor dem Validatorvergleich; Provider, Host und
+Production-Runtime bleiben unverändert.
 
 5.7.22, 22. September 2026:
 

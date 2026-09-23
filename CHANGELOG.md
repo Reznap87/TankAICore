@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### External-Agent-Discovery-Conditional-GET v1
+
+- Capability-, Repository-, Job-Schema- und Ergebnis-Schema-Discovery liefern jetzt einen
+  starken `ETag` über ihre bereits autorisierte öffentliche JSON-Darstellung.
+- Ein passendes `If-None-Match` ergibt `304 Not Modified` ohne JSON-Body; Capability-Discovery
+  veröffentlicht Header, Statuscode und alle vier unterstützten Pfade maschinenlesbar.
+- Token-, Scope-, Queue- und Repository-Prüfung laufen vor dem Validatorvergleich;
+  `Cache-Control: no-store` bleibt erhalten.
+
 ### Repository-gefilterte Joblisten: Datenbankindex v1
 
 - Der bestehende Repository-Filter nutzt jetzt einen deckenden SQLite-Index für Agent,
