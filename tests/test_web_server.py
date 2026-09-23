@@ -732,11 +732,43 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert token_list["tokens"][0]["token_id"] == token_id
         assert "secret" not in token_list["tokens"][0]
 
-        status, _, capabilities = client.get(
+        status, capability_headers, capabilities = client.get(
             "/api/v1/capabilities", bearer=secret
         )
         assert status == 200
+        capability_etag = capability_headers["ETag"]
+        assert re.fullmatch(r'"[0-9a-f]{64}"', capability_etag)
         assert capabilities["api_version"] == "v1"
+        assert capabilities["discovery"] == {
+            "conditional_get": {
+                "version": 1,
+                "request_header": "If-None-Match",
+                "response_header": "ETag",
+                "not_modified_status": 304,
+                "paths": [
+                    "/api/v1/capabilities",
+                    "/api/v1/repositories",
+                    "/api/v1/job-schema",
+                    "/api/v1/job-result-schema",
+                ],
+            }
+        }
+        status, unchanged_headers, unchanged = client.get(
+            "/api/v1/capabilities",
+            bearer=secret,
+            headers={"If-None-Match": f"W/{capability_etag}"},
+        )
+        assert status == 304
+        assert unchanged_headers["ETag"] == capability_etag
+        assert unchanged is None
+        status, _, unauthenticated_conditional = client.get(
+            "/api/v1/capabilities",
+            headers={"If-None-Match": capability_etag},
+        )
+        assert status == 401
+        _assert_external_error(
+            unauthenticated_conditional, "bearer_token_required"
+        )
         assert capabilities["error_contract"] == {
             "version": 1,
             "code_field": "error_code",
@@ -861,10 +893,19 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             },
         }
 
-        status, _, job_schema = client.get(
+        status, schema_headers, job_schema = client.get(
             "/api/v1/job-schema", bearer=secret
         )
         assert status == 200
+        schema_etag = schema_headers["ETag"]
+        status, unchanged_schema_headers, unchanged_schema = client.get(
+            "/api/v1/job-schema",
+            bearer=secret,
+            headers={"If-None-Match": schema_etag},
+        )
+        assert status == 304
+        assert unchanged_schema_headers["ETag"] == schema_etag
+        assert unchanged_schema is None
         assert job_schema["api_version"] == "v1"
         assert job_schema["schema_version"] == 1
         assert job_schema["submission"] == {
@@ -895,10 +936,18 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "network_mode"
         ]["pattern"] == "^none$"
 
-        status, _, result_schema = client.get(
+        status, result_schema_headers, result_schema = client.get(
             "/api/v1/job-result-schema", bearer=secret
         )
         assert status == 200
+        result_schema_etag = result_schema_headers["ETag"]
+        status, _, unchanged_result_schema = client.get(
+            "/api/v1/job-result-schema",
+            bearer=secret,
+            headers={"If-None-Match": f'"different", W/{result_schema_etag}'},
+        )
+        assert status == 304
+        assert unchanged_result_schema is None
         assert result_schema["api_version"] == "v1"
         assert result_schema["schema_version"] == 1
         assert result_schema["receipt"] == {
@@ -1017,7 +1066,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert "DO_NOT_REFLECT_THIS_VALUE" not in serialized_rejection
         assert "secret\\nfield" not in serialized_rejection
 
-        status, _, repositories = client.get(
+        status, repository_headers, repositories = client.get(
             "/api/v1/repositories", bearer=secret
         )
         assert status == 200
@@ -1030,6 +1079,15 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 }
             ]
         }
+        repository_etag = repository_headers["ETag"]
+        status, unchanged_repository_headers, unchanged_repositories = client.get(
+            "/api/v1/repositories",
+            bearer=secret,
+            headers={"If-None-Match": repository_etag},
+        )
+        assert status == 304
+        assert unchanged_repository_headers["ETag"] == repository_etag
+        assert unchanged_repositories is None
 
         status, _, scope_denied = client.post(
             "/api/v1/jobs/preflight",
@@ -1377,6 +1435,13 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 201
         second_secret = second_token["token"]["secret"]
+        status, _, repository_scope_denied = client.get(
+            "/api/v1/repositories",
+            bearer=second_secret,
+            headers={"If-None-Match": repository_etag},
+        )
+        assert status == 403
+        _assert_external_error(repository_scope_denied, "missing_scope")
         status, _, hidden = client.get(
             f"/api/v1/jobs/{job_id}",
             bearer=second_secret,
