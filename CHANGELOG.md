@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### External-Agent-Joblisten-Zustandsfilter v1
+
+- Paginierte Joblisten können zusätzlich mit `state` auf genau einen der sechs öffentlichen
+  Jobzustände begrenzt werden; Capability-Discovery veröffentlicht Parameter und erlaubte Werte.
+- Zustand und optionaler Repository-Filter werden in jeder Antwort wiederholt. Die
+  Keyset-Paginierung überspringt nicht passende Grants, ohne Treffer jenseits der ersten
+  Auth-Seite zu verlieren.
+- Cursor werden vor der Fortsetzung gegen Agent, aktuelle Allowlist, Repository und aktuellen
+  Zustand geprüft. Ungültige Filter werden ohne Spiegelung abgewiesen; Authentifizierung,
+  Scope, Filter und Paginierung laufen vor dem `ETag`-Vergleich.
+
 ### External-Agent-Discovery-Conditional-GET v1
 
 - Capability-, Repository-, Job-Schema- und Ergebnis-Schema-Discovery liefern jetzt einen
