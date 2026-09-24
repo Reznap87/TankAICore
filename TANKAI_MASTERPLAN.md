@@ -411,8 +411,11 @@ TankAI Core CI Run #104, Run 35829295561, auf dem PR-#57-Head
 64ee5020fc344238ac196a4f32d46747ff2dbe87: completed/success; die Jobs test und cloudflare
 bestanden einschließlich Discovery-Conditional-GET-Regressionen, TypeScript-/Wrangler-Prüfung,
 Produktions-Container-Build und Container-Smoke; PR #57 wurde anschließend konfliktfrei in
-dfa3d536544bdffedb19c02b3f99d70012401340 gemergt. Für diesen Merge-Commit war zum
-Prüfzeitpunkt kein zusätzlicher `main`-Workflow-Lauf registriert,
+dfa3d536544bdffedb19c02b3f99d70012401340 gemergt,
+
+TankAI Core CI Run #105, Run 35829471884, auf dem gemergten main-Commit
+dfa3d536544bdffedb19c02b3f99d70012401340: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -899,12 +902,12 @@ implementiert oder produktiv betrieben wird.
 5.7.24, 24. September 2026:
 
 Geschützten main-Ausgangsstand auf dfa3d536544bdffedb19c02b3f99d70012401340 / Tree
-aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6 gebunden; PR #57 und CI Run #104 als erfolgreichen
-Discovery-Conditional-GET-Nachweis aufgenommen und den fehlenden separaten `main`-Lauf für den
-Merge-Commit ausdrücklich festgehalten; keinen offenen PR und Issue #25 als einzigen extern
-blockierten Vorgang verifiziert. Einen maschinenlesbar beworbenen Zustandsfilter für paginierte
-Agenten-Joblisten ergänzt. Agenten-, Allowlist-, Repository-, Cursor- und Validatorgrenzen
-bleiben erhalten; Provider, Host und Production-Runtime bleiben unverändert.
+aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6 gebunden; PR #57 sowie CI Runs #104 und #105 als
+erfolgreichen Discovery-Conditional-GET-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert. Einen maschinenlesbar beworbenen
+Zustandsfilter für paginierte Agenten-Joblisten ergänzt. Agenten-, Allowlist-, Repository-,
+Cursor- und Validatorgrenzen bleiben erhalten; Provider, Host und Production-Runtime bleiben
+unverändert.
 
 5.7.23, 23. September 2026:
 

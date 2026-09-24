@@ -50,6 +50,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #102" in current
     assert "TankAI Core CI Run #103" in current
     assert "TankAI Core CI Run #104" in current
+    assert "TankAI Core CI Run #105" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
