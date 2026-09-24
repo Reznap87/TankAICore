@@ -1329,9 +1329,11 @@ class Handler(BaseHTTPRequestHandler):
                             "max_limit": _EXTERNAL_JOB_LIST_MAX_LIMIT,
                         },
                         "filters": {
-                            "version": 1,
+                            "version": 2,
                             "repository_parameter": "repository_id",
                             "allowed_values_source": "repository_ids",
+                            "state_parameter": "state",
+                            "allowed_states": list(_EXTERNAL_JOB_STATES),
                         },
                         "result_receipt": {
                             "version": 1,
@@ -1430,9 +1432,22 @@ class Handler(BaseHTTPRequestHandler):
                     urlsplit(self.path).query,
                     keep_blank_values=True,
                     strict_parsing=True,
-                    max_num_fields=3,
+                    max_num_fields=4,
                 )
-                if set(query) - {"cursor", "limit", "repository_id"} or any(
+                if "state" in query and len(query["state"]) != 1:
+                    self._agent_error(
+                        "invalid_job_filter",
+                        "Ungültiger Joblisten-Filter",
+                        400,
+                    )
+                    return
+                allowed_query_fields = {
+                    "cursor",
+                    "limit",
+                    "repository_id",
+                    "state",
+                }
+                if set(query) - allowed_query_fields or any(
                     len(values) != 1 for values in query.values()
                 ):
                     raise ValueError("Ungültige Joblisten-Paginierung")
@@ -1470,34 +1485,104 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         return
                     repository_ids = frozenset({repository_id})
-                page = self.app.auth.agent_job_page(
-                    agent_id=context.agent_id,
-                    repository_ids=repository_ids,
-                    limit=limit,
-                    cursor=cursor,
-                )
-                for job_id in page.job_ids:
-                    try:
-                        job = queue.get_job(
-                            actor_user_id=context.owner_user_id,
-                            workspace_id=context.workspace_id,
-                            job_id=job_id,
+                state_filter = query.get("state", [None])[0]
+                if (
+                    state_filter is not None
+                    and state_filter not in _EXTERNAL_JOB_STATES
+                ):
+                    self._agent_error(
+                        "invalid_job_filter",
+                        "Ungültiger Joblisten-Filter",
+                        400,
+                    )
+                    return
+
+                next_cursor = None
+                if state_filter is None:
+                    page = self.app.auth.agent_job_page(
+                        agent_id=context.agent_id,
+                        repository_ids=repository_ids,
+                        limit=limit,
+                        cursor=cursor,
+                    )
+                    for job_id in page.job_ids:
+                        try:
+                            job = queue.get_job(
+                                actor_user_id=context.owner_user_id,
+                                workspace_id=context.workspace_id,
+                                job_id=job_id,
+                            )
+                        except (PermissionError, QueueError, ValueError):
+                            continue
+                        if job.repository_id in repository_ids:
+                            jobs.append(self._external_job_payload(job))
+                    next_cursor = page.next_cursor
+                else:
+                    scan_cursor = cursor
+                    if cursor is not None:
+                        self.app.auth.agent_job_page(
+                            agent_id=context.agent_id,
+                            repository_ids=repository_ids,
+                            limit=1,
+                            cursor=cursor,
                         )
-                    except (PermissionError, QueueError, ValueError):
-                        continue
-                    if job.repository_id in repository_ids:
-                        jobs.append(self._external_job_payload(job))
+                        try:
+                            cursor_job = queue.get_job(
+                                actor_user_id=context.owner_user_id,
+                                workspace_id=context.workspace_id,
+                                job_id=cursor,
+                            )
+                        except (PermissionError, QueueError, ValueError) as exc:
+                            raise ValueError(
+                                "Ungültige Joblisten-Paginierung"
+                            ) from exc
+                        if (
+                            cursor_job.repository_id not in repository_ids
+                            or cursor_job.state.value != state_filter
+                        ):
+                            raise ValueError("Ungültige Joblisten-Paginierung")
+
+                    while len(jobs) <= limit:
+                        scan_page = self.app.auth.agent_job_page(
+                            agent_id=context.agent_id,
+                            repository_ids=repository_ids,
+                            limit=_EXTERNAL_JOB_LIST_MAX_LIMIT,
+                            cursor=scan_cursor,
+                        )
+                        for job_id in scan_page.job_ids:
+                            try:
+                                job = queue.get_job(
+                                    actor_user_id=context.owner_user_id,
+                                    workspace_id=context.workspace_id,
+                                    job_id=job_id,
+                                )
+                            except (PermissionError, QueueError, ValueError):
+                                continue
+                            if (
+                                job.repository_id in repository_ids
+                                and job.state.value == state_filter
+                            ):
+                                jobs.append(self._external_job_payload(job))
+                                if len(jobs) > limit:
+                                    break
+                        if len(jobs) > limit or scan_page.next_cursor is None:
+                            break
+                        scan_cursor = scan_page.next_cursor
+                    if len(jobs) > limit:
+                        jobs = jobs[:limit]
+                        next_cursor = jobs[-1]["job_id"]
                 self._conditional_json(
                     {
                         "jobs": jobs,
                         "filters": {
-                            "version": 1,
+                            "version": 2,
                             "repository_id": repository_id,
+                            "state": state_filter,
                         },
                         "pagination": {
                             "version": 1,
                             "limit": limit,
-                            "next_cursor": page.next_cursor,
+                            "next_cursor": next_cursor,
                         },
                     }
                 )

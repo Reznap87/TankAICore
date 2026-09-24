@@ -10,10 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.23" in current
-    assert "Statusdatum: 23. September 2026" in current
-    assert "6db746aee15fef425326394be18e93d283e6f967" in current
-    assert "aa2928c561527447320f5f743516142fbd6c7864" in current
+    assert "Version: 5.7.24" in current
+    assert "Statusdatum: 24. September 2026" in current
+    assert "dfa3d536544bdffedb19c02b3f99d70012401340" in current
+    assert "aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -49,6 +49,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #101" in current
     assert "TankAI Core CI Run #102" in current
     assert "TankAI Core CI Run #103" in current
+    assert "TankAI Core CI Run #104" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -61,6 +62,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #54" in current
     assert "PR #55" in current
     assert "PR #56" in current
+    assert "PR #57" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -92,6 +94,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     )
     assert (
         "development.external_agent_discovery_conditional_get.v1 -> IMPLEMENTED"
+        in current
+    )
+    assert (
+        "development.external_agent_job_list_state_filter.v1 -> IMPLEMENTED"
         in current
     )
     assert "development.external_agent_job_state_contract.v1 -> IMPLEMENTED" in current

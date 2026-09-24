@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.23
+Version: 5.7.24
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 23. September 2026
+Statusdatum: 24. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 23. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 24. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.23-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.24-Inkrements:
 
-6db746aee15fef425326394be18e93d283e6f967
+dfa3d536544bdffedb19c02b3f99d70012401340
 
 Zugehöriger Repository-Git-Tree:
 
-aa2928c561527447320f5f743516142fbd6c7864
+aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6
 
 Commit-Titel:
 
-perf: index repository-filtered agent job pages (#56)
+feat: add conditional agent discovery reads (#57)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Discovery-Conditional-GET-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Zustandsfilter-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 6db746aee15fef425326394be18e93d283e6f967 mit Git-Tree
-aa2928c561527447320f5f743516142fbd6c7864,
+geschützter main-Ausgangsstand dfa3d536544bdffedb19c02b3f99d70012401340 mit Git-Tree
+aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Discovery-Conditional-GET-Inkrement nicht wiederholt,
+External-Agent-Joblisten-Zustandsfilter-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -404,6 +404,16 @@ TankAI Core CI Run #103, Run 35696859845, auf dem gemergten main-Commit
 6db746aee15fef425326394be18e93d283e6f967: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+das External-Agent-Discovery-Conditional-GET aus PR #57 mit starken Validatoren für
+Capability-, Repository- und beide Schema-Antworten nach vollständiger Zugriffsprüfung,
+
+TankAI Core CI Run #104, Run 35829295561, auf dem PR-#57-Head
+64ee5020fc344238ac196a4f32d46747ff2dbe87: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Discovery-Conditional-GET-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #57 wurde anschließend konfliktfrei in
+dfa3d536544bdffedb19c02b3f99d70012401340 gemergt. Für diesen Merge-Commit war zum
+Prüfzeitpunkt kein zusätzlicher `main`-Workflow-Lauf registriert,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -607,6 +617,13 @@ development.external_agent_job_list_repository_index.v1 -> IMPLEMENTED; ein deck
 Index über Agent, Repository, Erstellungszeit und Job-ID stützt die repository-gefilterte
 Keyset-Paginierung. Bestehende Auth-Datenbanken erhalten den Index beim Öffnen; Grants, Cursor,
 API-Antworten und Berechtigungsgrenzen bleiben unverändert.
+
+development.external_agent_job_list_state_filter.v1 -> IMPLEMENTED; externe KI-Clients können
+die paginierte Liste zusätzlich auf genau einen der sechs öffentlichen Jobzustände begrenzen.
+Capability-Discovery und Antwort veröffentlichen Parameter, zulässige Werte und wirksamen
+Filter maschinenlesbar. Die stabile Grant-Reihenfolge wird über interne Seiten fortgesetzt;
+Cursor bleiben an Agent, aktuelle Allowlist, Repository und aktuellen Cursor-Jobzustand
+gebunden. Ungültige Werte werden ohne Spiegelung vor dem Validatorvergleich abgewiesen.
 
 development.external_agent_discovery_conditional_get.v1 -> IMPLEMENTED; Capability-,
 Repository-, Job-Schema- und Ergebnis-Schema-Discovery liefern starke Validatoren über ihre
@@ -834,7 +851,9 @@ markieren, solange ein sicherer ausführbarer Task existiert.
    Die dort ebenfalls beworbene Jobliste wird bei mehr als 100 eigenen Aufträgen über den
    begrenzten `next_cursor` vollständig seitenweise gelesen. Bei mehreren freigegebenen
    Repositories kann sie mit einer ID aus `repository_ids` eingeschränkt werden; derselbe Filter
-   bleibt über alle Cursor-Seiten erhalten.
+   bleibt über alle Cursor-Seiten erhalten. Für gezieltes Polling begrenzt der Agent dieselbe
+   Liste optional mit einem unter `job_monitoring.filters.allowed_states` beworbenen `state`;
+   nach einem Zustandswechsel und dadurch ungültigem Cursor beginnt er ohne Cursor neu.
    Capability-, Repository- und beide Schema-Discovery-Antworten werden mit dem unter
    `discovery.conditional_get` beworbenen Validator bedingt gelesen; eine `304`-Antwort folgt
    ausschließlich nach erneuter Zugriffsprüfung.
@@ -876,6 +895,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.24, 24. September 2026:
+
+Geschützten main-Ausgangsstand auf dfa3d536544bdffedb19c02b3f99d70012401340 / Tree
+aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6 gebunden; PR #57 und CI Run #104 als erfolgreichen
+Discovery-Conditional-GET-Nachweis aufgenommen und den fehlenden separaten `main`-Lauf für den
+Merge-Commit ausdrücklich festgehalten; keinen offenen PR und Issue #25 als einzigen extern
+blockierten Vorgang verifiziert. Einen maschinenlesbar beworbenen Zustandsfilter für paginierte
+Agenten-Joblisten ergänzt. Agenten-, Allowlist-, Repository-, Cursor- und Validatorgrenzen
+bleiben erhalten; Provider, Host und Production-Runtime bleiben unverändert.
 
 5.7.23, 23. September 2026:
 

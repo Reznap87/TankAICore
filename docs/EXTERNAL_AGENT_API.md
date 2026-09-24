@@ -232,7 +232,7 @@ den begrenzten `validation`-Block mit JSON-Pointern. Die aktuelle v1-Code-Menge 
 | `job_submission_rejected` | 400 | Aktuelle Admission-Regeln lehnen die Einreichung ab |
 | `repository_list_forbidden` | 403 | Repository-Liste darf nicht gelesen werden |
 | `invalid_job_pagination` | 400 | Limit oder Cursor verletzt den Paginierungsvertrag |
-| `invalid_job_filter` | 400 | Repository-Filter verletzt den Joblistenvertrag |
+| `invalid_job_filter` | 400 | Repository- oder Zustandsfilter verletzt den Joblistenvertrag |
 | `job_list_forbidden` | 403 | Jobliste darf nicht gelesen werden |
 | `job_not_found` | 404 | Job fehlt oder bleibt wegen Agenten-/Repository-Isolation verborgen |
 | `job_state_conflict` | 409 | Status oder Verlauf ist im aktuellen Queue-Zustand nicht verfügbar |
@@ -385,8 +385,9 @@ Cursor für die nächste Seite:
 {
   "jobs": [],
   "filters": {
-    "version": 1,
-    "repository_id": null
+    "version": 2,
+    "repository_id": null,
+    "state": null
   },
   "pagination": {
     "version": 1,
@@ -424,6 +425,28 @@ Repository-Grenze umgehen.
 Die repository-gefilterte Cursor-Abfrage verwendet einen deckenden Index über Agent,
 Repository und stabile Sortierung. Vorhandene Auth-Datenbanken legen ihn beim nächsten
 Öffnen automatisch an; API-Vertrag, gespeicherte Job-Freigaben und Cursor bleiben unverändert.
+
+Zusätzlich kann die Liste mit `state` auf genau einen der unter
+`job_monitoring.filters.allowed_states` beworbenen öffentlichen Zustände begrenzt werden:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  "https://TANKAI_HOST/api/v1/jobs?state=running&repository_id=REPOSITORY_UUID&limit=25"
+```
+
+Der Antwortblock `filters` verwendet Vertragsversion 2 und wiederholt ausschließlich den
+kanonischen Zustandswert sowie die optionale kanonische Repository-ID. Die Suche setzt die
+stabile Grant-Reihenfolge über mehrere interne Seiten fort, bis die angeforderte Zahl passender
+Jobs oder das Listenende erreicht ist. Ein `next_cursor` bezeichnet weiterhin den letzten
+zurückgegebenen Job, nicht einen übersprungenen Grant.
+
+Ein Cursor ist an Agent, aktuelle Repository-Allowlist, gewählten Repository-Filter und den
+aktuellen Zustand seines Cursor-Jobs gebunden. Nach einem Zustandswechsel kann er deshalb
+neutral mit `invalid_job_pagination` abgewiesen werden; der Client beginnt dann ohne Cursor eine
+neue Momentaufnahme. Unbekannte oder mehrfach angegebene Zustände liefern
+`invalid_job_filter`. Eingabewerte werden nicht gespiegelt. Alle Prüfungen finden vor einem
+`If-None-Match`-Vergleich statt.
 
 ### Begrenzter Job-Zustandsverlauf
 
