@@ -1505,15 +1505,12 @@ class Handler(BaseHTTPRequestHandler):
                         limit=limit,
                         cursor=cursor,
                     )
-                    for job_id in page.job_ids:
-                        try:
-                            job = queue.get_job(
-                                actor_user_id=context.owner_user_id,
-                                workspace_id=context.workspace_id,
-                                job_id=job_id,
-                            )
-                        except (PermissionError, QueueError, ValueError):
-                            continue
+                    page_jobs = queue.get_jobs_by_ids(
+                        actor_user_id=context.owner_user_id,
+                        workspace_id=context.workspace_id,
+                        job_ids=page.job_ids,
+                    )
+                    for job in page_jobs:
                         if job.repository_id in repository_ids:
                             jobs.append(self._external_job_payload(job))
                     next_cursor = page.next_cursor
@@ -1549,15 +1546,12 @@ class Handler(BaseHTTPRequestHandler):
                             limit=_EXTERNAL_JOB_LIST_MAX_LIMIT,
                             cursor=scan_cursor,
                         )
-                        for job_id in scan_page.job_ids:
-                            try:
-                                job = queue.get_job(
-                                    actor_user_id=context.owner_user_id,
-                                    workspace_id=context.workspace_id,
-                                    job_id=job_id,
-                                )
-                            except (PermissionError, QueueError, ValueError):
-                                continue
+                        scan_jobs = queue.get_jobs_by_ids(
+                            actor_user_id=context.owner_user_id,
+                            workspace_id=context.workspace_id,
+                            job_ids=scan_page.job_ids,
+                        )
+                        for job in scan_jobs:
                             if (
                                 job.repository_id in repository_ids
                                 and job.state.value == state_filter

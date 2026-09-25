@@ -1610,6 +1610,26 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 job_id=str(uuid4()),
                 repository_id=allowed.repository_id,
             )
+        individual_lookups = 0
+        batch_sizes: list[int] = []
+        original_get_job = app.job_queue.get_job
+        original_get_jobs_by_ids = app.job_queue.get_jobs_by_ids
+
+        def tracked_get_job(**kwargs):
+            nonlocal individual_lookups
+            individual_lookups += 1
+            return original_get_job(**kwargs)
+
+        def tracked_get_jobs_by_ids(**kwargs):
+            batch_sizes.append(len(kwargs["job_ids"]))
+            return original_get_jobs_by_ids(**kwargs)
+
+        monkeypatch.setattr(app.job_queue, "get_job", tracked_get_job)
+        monkeypatch.setattr(
+            app.job_queue,
+            "get_jobs_by_ids",
+            tracked_get_jobs_by_ids,
+        )
         status, _, deep_filtered_page = client.get(
             "/api/v1/jobs?limit=1&state=cancelled", bearer=secret
         )
@@ -1618,6 +1638,8 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             job_id
         ]
         assert deep_filtered_page["pagination"]["next_cursor"] is None
+        assert individual_lookups == 0
+        assert batch_sizes == [100, 3]
 
         status, _, unknown_endpoint = client.get(
             "/api/v1/not-an-endpoint", bearer=secret

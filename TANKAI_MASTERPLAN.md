@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.24
+Version: 5.7.25
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 24. September 2026
+Statusdatum: 25. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 24. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 25. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.24-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.25-Inkrements:
 
-dfa3d536544bdffedb19c02b3f99d70012401340
+1d058f10231963ba0c004881b12d7627885628e2
 
 Zugehöriger Repository-Git-Tree:
 
-aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6
+4b417e0add4228702c42ebc1665c99a2a445c004
 
 Commit-Titel:
 
-feat: add conditional agent discovery reads (#57)
+docs: record delayed main CI receipt (#59)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Zustandsfilter-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Batch-Lookup-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,8 +99,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand dfa3d536544bdffedb19c02b3f99d70012401340 mit Git-Tree
-aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6,
+geschützter main-Ausgangsstand 1d058f10231963ba0c004881b12d7627885628e2 mit Git-Tree
+4b417e0add4228702c42ebc1665c99a2a445c004,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
@@ -417,6 +417,31 @@ TankAI Core CI Run #105, Run 35829471884, auf dem gemergten main-Commit
 dfa3d536544bdffedb19c02b3f99d70012401340: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+der External-Agent-Joblisten-Zustandsfilter aus PR #58 mit maschinenlesbar beworbenen,
+allowlist-, cursor- und validatorgebundenen Filtern für alle sechs öffentlichen Jobzustände,
+
+TankAI Core CI Run #106, Run 35964587830, auf dem PR-#58-Head
+2a57e0a26bcd12aa7db90cec93eccb05174d6264: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Zustandsfilter-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #58 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #107, Run 35964698047, auf dem gemergten main-Commit
+1fe1b6c09f8de1103bf8cf0d147181a482cbe52f: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
+die Reality-Contract-Korrektur aus PR #59, die den verzögert registrierten erfolgreichen
+main-CI-Run #105 nachgetragen hat,
+
+TankAI Core CI Run #108, Run 35964883214, auf dem PR-#59-Head
+a3c91db5e52306ca47b09ffb54be9c3cc6e84efa: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Produktions-Container-Build und Container-Smoke; PR #59 wurde
+anschließend konfliktfrei gemergt,
+
+TankAI Core CI Run #109, Run 35965000812, auf dem gemergten main-Commit
+1d058f10231963ba0c004881b12d7627885628e2: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -627,6 +652,12 @@ Capability-Discovery und Antwort veröffentlichen Parameter, zulässige Werte un
 Filter maschinenlesbar. Die stabile Grant-Reihenfolge wird über interne Seiten fortgesetzt;
 Cursor bleiben an Agent, aktuelle Allowlist, Repository und aktuellen Cursor-Jobzustand
 gebunden. Ungültige Werte werden ohne Spiegelung vor dem Validatorvergleich abgewiesen.
+
+development.external_agent_job_list_batch_lookup.v1 -> IMPLEMENTED; jede interne Grant-Seite
+lädt ihre zugänglichen Queue-Jobs mit einer einzigen begrenzten, mandanten- und
+workspacegebundenen Batch-Abfrage statt mit bis zu 100 Einzelabfragen. Fehlende oder nicht
+zugängliche Jobs bleiben wie zuvor unsichtbar; Grant-Reihenfolge, Zustands- und
+Repository-Filter, Cursor, öffentliche Antworten und Validatoren bleiben unverändert.
 
 development.external_agent_discovery_conditional_get.v1 -> IMPLEMENTED; Capability-,
 Repository-, Job-Schema- und Ergebnis-Schema-Discovery liefern starke Validatoren über ihre
@@ -898,6 +929,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.25, 25. September 2026:
+
+Geschützten main-Ausgangsstand auf 1d058f10231963ba0c004881b12d7627885628e2 / Tree
+4b417e0add4228702c42ebc1665c99a2a445c004 gebunden; PRs #58 und #59 sowie CI Runs #106 bis
+#109 als erfolgreichen Zustandsfilter- und Reality-Korrektur-Nachweis aufgenommen; keinen
+offenen PR und Issue #25 als einzigen extern blockierten Vorgang verifiziert. Den Queue-Zugriff
+für Agenten-Joblisten auf begrenzte Batch-Abfragen umgestellt, ohne Mandanten-, Workspace-,
+Agenten-, Allowlist-, Filter-, Cursor- oder Validatorgrenzen und ohne den öffentlichen
+API-Vertrag zu verändern. Provider, Host und Production-Runtime bleiben unverändert.
 
 5.7.24, 24. September 2026:
 

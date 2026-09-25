@@ -280,7 +280,9 @@ Die Jobliste lässt sich mit `limit` und dem zurückgegebenen `next_cursor` stab
 seiteweise abrufen, sodass auch mehr als 100 eigene Aufträge erreichbar bleiben. Optional
 begrenzt `repository_id` auf ein im Token freigegebenes Repository und `state` auf genau einen
 der sechs öffentlich beworbenen Jobzustände. Beide Filter bleiben in Antwort, Cursor-Prüfung
-und `ETag` gebunden.
+und `ETag` gebunden. Jede dafür gelesene Grant-Seite wird intern mit einer einzigen begrenzten,
+mandanten- und workspacegebundenen Queue-Abfrage aufgelöst; dadurch entstehen auch bei
+Zustandsfiltern nicht mehr bis zu 100 einzelne Queue-Lookups pro Scan-Seite.
 
 Die Verwaltungs- und M2M-Verträge einschließlich Beispielpayload stehen in
 [`docs/EXTERNAL_AGENT_API.md`](docs/EXTERNAL_AGENT_API.md). Version 1 ist bewusst

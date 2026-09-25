@@ -448,6 +448,12 @@ neue Momentaufnahme. Unbekannte oder mehrfach angegebene Zustände liefern
 `invalid_job_filter`. Eingabewerte werden nicht gespiegelt. Alle Prüfungen finden vor einem
 `If-None-Match`-Vergleich statt.
 
+Intern wird jede bis zu 100 Grants große Scan-Seite mit genau einer begrenzten Queue-Abfrage
+aufgelöst. Diese Abfrage erzwingt weiterhin Mandant, Workspace und Nutzerzugriff, behält die
+Grant-Reihenfolge bei und lässt fehlende oder unzugängliche Jobs aus. Damit benötigt auch ein
+Zustandsfilter über mehrere Grant-Seiten nicht mehr eine Queue-Abfrage pro Grant. API-Antwort,
+Filter, Cursor und `ETag` ändern sich dadurch nicht.
+
 ### Begrenzter Job-Zustandsverlauf
 
 Nach dem Submit bewirbt `GET /api/v1/capabilities` unter `job_monitoring` den

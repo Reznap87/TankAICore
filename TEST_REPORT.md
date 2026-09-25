@@ -1,8 +1,30 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 24. September 2026
+**Statusdatum:** 25. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Joblisten-Batch-Lookup v1 — Nachweis 25. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 218 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- Queue-/Webserver-/Reality-Contract-Regressionen: 51 PASS; gezielte Batch- und
+  External-Agent-Gateway-Tests: 2 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- `git diff --check` und Credential-Pattern-Scan der geänderten Zeilen: PASS
+- geprüft: bis zu 100 Grant-IDs werden in einer Queue-Abfrage geladen; tiefe Zustandsfilter
+  verwenden keine einzelnen Queue-Lookups mehr und finden Treffer hinter der ersten Grant-Seite
+- geprüft: Reihenfolge und Auslassung fehlender Jobs bleiben erhalten; Member-, Workspace- und
+  Mandantengrenzen gelten auch für Batch-Abfragen unverändert
+- der vollständige Wrangler-Dry-Run benötigt lokal weiterhin eine nicht vorhandene
+  Docker-/Podman-CLI; Produktions-Container-Build und Container-Smoke bleiben deshalb
+  verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets, Provider, Berechtigungen,
+  Produktion oder Deployments verändert
 
 ## Unreleased: External-Agent-Joblisten-Zustandsfilter v1 — Nachweis 24. September 2026
 
