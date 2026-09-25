@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### External-Agent-Joblisten-Batch-Lookup v1
+
+- Jede interne Grant-Seite lädt bis zu 100 zugängliche Queue-Jobs jetzt mit einer einzigen
+  mandanten- und workspacegebundenen Batch-Abfrage statt mit bis zu 100 Einzelabfragen.
+- Die Queue liefert Treffer weiterhin in der autorisierten Grant-Reihenfolge und lässt fehlende
+  oder für den aufrufenden Nutzer unzugängliche IDs unverändert aus.
+- Öffentliche Antworten, Filter, Cursor, `ETag`, Scopes und Repository-Allowlist bleiben
+  unverändert; das Inkrement aktiviert weder Queue noch Worker.
+
 ### External-Agent-Joblisten-Zustandsfilter v1
 
 - Paginierte Joblisten können zusätzlich mit `state` auf genau einen der sechs öffentlichen

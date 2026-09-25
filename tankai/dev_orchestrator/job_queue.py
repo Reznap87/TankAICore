@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -1423,6 +1423,48 @@ class DevelopmentJobQueue:
         if row is None:
             raise PermissionError("Auftrag nicht gefunden oder nicht zugreifbar")
         return self._job_from_row(row)
+
+    def get_jobs_by_ids(
+        self,
+        *,
+        actor_user_id: str,
+        workspace_id: str,
+        job_ids: Sequence[str],
+    ) -> list[QueuedDevelopmentJob]:
+        """Load a bounded set of accessible jobs in caller-supplied order.
+
+        Missing or inaccessible jobs are omitted so callers can safely combine a
+        separately authorized grant list with the queue snapshot.  The explicit
+        bound keeps the SQLite placeholder count predictable.
+        """
+        if isinstance(job_ids, (str, bytes)):
+            raise ValueError("Job-ID-Liste muss eine Sequenz sein")
+        ordered_ids = list(dict.fromkeys(job_ids))
+        if len(ordered_ids) > 100:
+            raise ValueError("Job-ID-Liste darf höchstens 100 Einträge enthalten")
+        if not ordered_ids:
+            return []
+
+        access = self._access(actor_user_id, workspace_id)
+        placeholders = ",".join("?" for _ in ordered_ids)
+        parameters: list[object] = [*ordered_ids, access.tenant_id, workspace_id]
+        user_clause = ""
+        if access.role not in {"owner", "admin"}:
+            user_clause = " AND user_id=?"
+            parameters.append(actor_user_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM development_jobs "
+                f"WHERE id IN ({placeholders}) AND tenant_id=? AND workspace_id=?"
+                f"{user_clause}",
+                parameters,
+            ).fetchall()
+        rows_by_id = {str(row["id"]): row for row in rows}
+        return [
+            self._job_from_row(rows_by_id[job_id])
+            for job_id in ordered_ids
+            if job_id in rows_by_id
+        ]
 
     def job_state_history(
         self,

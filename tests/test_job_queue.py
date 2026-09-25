@@ -663,6 +663,33 @@ def test_member_lists_only_own_jobs(queue_env) -> None:
         actor_user_id=env["member"], workspace_id=env["workspace"]
     )
     assert [item.job_id for item in member_jobs] == [member_job.job_id]
+    missing_job_id = "00000000-0000-4000-8000-000000000001"
+    owner_batch = env["queue"].get_jobs_by_ids(
+        actor_user_id=env["owner"],
+        workspace_id=env["workspace"],
+        job_ids=[member_job.job_id, missing_job_id, owner_job.job_id],
+    )
+    assert [item.job_id for item in owner_batch] == [
+        member_job.job_id,
+        owner_job.job_id,
+    ]
+    member_batch = env["queue"].get_jobs_by_ids(
+        actor_user_id=env["member"],
+        workspace_id=env["workspace"],
+        job_ids=[owner_job.job_id, member_job.job_id],
+    )
+    assert [item.job_id for item in member_batch] == [member_job.job_id]
+    assert env["queue"].get_jobs_by_ids(
+        actor_user_id=env["owner"],
+        workspace_id=env["workspace"],
+        job_ids=[],
+    ) == []
+    with pytest.raises(ValueError, match="höchstens 100"):
+        env["queue"].get_jobs_by_ids(
+            actor_user_id=env["owner"],
+            workspace_id=env["workspace"],
+            job_ids=[str(index) for index in range(101)],
+        )
     with pytest.raises(PermissionError):
         env["queue"].get_job(
             actor_user_id=env["member"],
