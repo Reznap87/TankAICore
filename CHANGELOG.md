@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### External-Agent-Joblisten-Terminalfilter v1
+
+- Paginierte Joblisten können mit `terminal=true` auf abgeschlossene oder mit
+  `terminal=false` auf noch aktive eigene Jobs begrenzt werden.
+- Capability-Discovery veröffentlicht Parameter, kanonische Query-Werte und die bewusste
+  gegenseitige Ausschließlichkeit mit dem exakten `state`-Filter.
+- Cursor, Repository-Allowlist, Batch-Lookups und `ETag` bleiben an den wirksamen Filter
+  gebunden; ungültige Kombinationen werden ohne Wertespiegelung abgewiesen.
+
 ### External-Agent-Joblisten-Batch-Lookup v1
 
 - Jede interne Grant-Seite lädt bis zu 100 zugängliche Queue-Jobs jetzt mit einer einzigen

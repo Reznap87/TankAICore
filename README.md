@@ -52,7 +52,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Abbruch-Idempotenz | Wiederholbare Job-Abbrüche mit atomarem Replay-Outcome ohne doppelte Zustandsereignisse |
 | External-Agent-Jobverlauf | Auf 100 Einträge begrenzter Zustandsverlauf eigener Jobs ohne interne Ereignis-, Akteur- oder Worker-Daten |
 | External-Agent-Jobliste | Stabile Cursor-Paginierung über alle eigenen, weiterhin freigegebenen Jobs mit höchstens 100 Einträgen pro Seite |
-| External-Agent-Joblistenfilter | Repository- und zustandsgenaue Joblisten mit filtergebundenen Cursorn über ausschließlich eigene, freigegebene Jobs |
+| External-Agent-Joblistenfilter | Repository-, zustands- und terminalgenaue Joblisten mit filtergebundenen Cursorn über ausschließlich eigene, freigegebene Jobs |
 | Repository-Joblistenindex | Deckender SQLite-Index für schnelle repository-gefilterte Cursor-Seiten; bestehende Datenbanken werden beim Öffnen ergänzt |
 | External-Agent-Conditional-Polling | `ETag`/`If-None-Match` für paginierte Joblisten, Einzelstatus und Verlauf mit leerer `304`-Antwort bei unverändertem öffentlichen Zustand |
 | External-Agent-Discovery-Conditional-GET | `ETag`/`If-None-Match` für Capability-, Repository- und Schema-Discovery nach vollständiger Zugriffsprüfung |
@@ -279,10 +279,12 @@ Akteur-/Worker-IDs und die globale Queue-Sequenz werden nicht veröffentlicht.
 Die Jobliste lässt sich mit `limit` und dem zurückgegebenen `next_cursor` stabil
 seiteweise abrufen, sodass auch mehr als 100 eigene Aufträge erreichbar bleiben. Optional
 begrenzt `repository_id` auf ein im Token freigegebenes Repository und `state` auf genau einen
-der sechs öffentlich beworbenen Jobzustände. Beide Filter bleiben in Antwort, Cursor-Prüfung
-und `ETag` gebunden. Jede dafür gelesene Grant-Seite wird intern mit einer einzigen begrenzten,
+der sechs öffentlich beworbenen Jobzustände. Alternativ fasst `terminal=true` die drei
+abgeschlossenen und `terminal=false` die drei noch aktiven Zustände zusammen; `state` und
+`terminal` werden nicht kombiniert. Alle Filter bleiben in Antwort, Cursor-Prüfung und `ETag`
+gebunden. Jede dafür gelesene Grant-Seite wird intern mit einer einzigen begrenzten,
 mandanten- und workspacegebundenen Queue-Abfrage aufgelöst; dadurch entstehen auch bei
-Zustandsfiltern nicht mehr bis zu 100 einzelne Queue-Lookups pro Scan-Seite.
+Zustands- oder Terminalfiltern nicht mehr bis zu 100 einzelne Queue-Lookups pro Scan-Seite.
 
 Die Verwaltungs- und M2M-Verträge einschließlich Beispielpayload stehen in
 [`docs/EXTERNAL_AGENT_API.md`](docs/EXTERNAL_AGENT_API.md). Version 1 ist bewusst

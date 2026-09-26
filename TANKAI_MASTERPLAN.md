@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.25
+Version: 5.7.26
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 25. September 2026
+Statusdatum: 26. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 25. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 26. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.25-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.26-Inkrements:
 
-1d058f10231963ba0c004881b12d7627885628e2
+2d9a41d03be3f4d2d784699394cdd6a5d1dc69cd
 
 Zugehöriger Repository-Git-Tree:
 
-4b417e0add4228702c42ebc1665c99a2a445c004
+6747f34c5f107d8eebfc94a3c88c23dd109b3292
 
 Commit-Titel:
 
-docs: record delayed main CI receipt (#59)
+perf: batch external job list lookups (#60)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Batch-Lookup-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Joblisten-Terminalfilter-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 1d058f10231963ba0c004881b12d7627885628e2 mit Git-Tree
-4b417e0add4228702c42ebc1665c99a2a445c004,
+geschützter main-Ausgangsstand 2d9a41d03be3f4d2d784699394cdd6a5d1dc69cd mit Git-Tree
+6747f34c5f107d8eebfc94a3c88c23dd109b3292,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Joblisten-Zustandsfilter-Inkrement nicht wiederholt,
+External-Agent-Joblisten-Terminalfilter-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -442,6 +442,20 @@ TankAI Core CI Run #109, Run 35965000812, auf dem gemergten main-Commit
 1d058f10231963ba0c004881b12d7627885628e2: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+der begrenzte Queue-Batch-Lookup aus PR #60 für Agenten-Joblisten, der bis zu 100 Grants in
+einer mandanten- und workspacegebundenen Queue-Abfrage auflöst und dabei Reihenfolge sowie
+Zugriffsgrenzen erhält,
+
+TankAI Core CI Run #110, Run 36102493818, auf dem PR-#60-Head
+a3c5e3d12a719845a32493e9ef14495afbcbef7b: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Batch-Lookup-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #60 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #111, Run 36102581289, auf dem gemergten main-Commit
+2d9a41d03be3f4d2d784699394cdd6a5d1dc69cd: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -652,6 +666,13 @@ Capability-Discovery und Antwort veröffentlichen Parameter, zulässige Werte un
 Filter maschinenlesbar. Die stabile Grant-Reihenfolge wird über interne Seiten fortgesetzt;
 Cursor bleiben an Agent, aktuelle Allowlist, Repository und aktuellen Cursor-Jobzustand
 gebunden. Ungültige Werte werden ohne Spiegelung vor dem Validatorvergleich abgewiesen.
+
+development.external_agent_job_list_terminal_filter.v1 -> IMPLEMENTED; externe KI-Clients
+können die paginierte Liste alternativ auf alle abgeschlossenen oder alle noch aktiven eigenen
+Jobs begrenzen. Capability-Discovery nennt Parameter, kanonische Query-Werte und die
+gegenseitige Ausschließlichkeit mit `state`; Antwort, Cursor und Validator bleiben an den
+wirksamen Filter, Agenten, aktuelle Allowlist und optionales Repository gebunden. Ungültige,
+mehrfache oder kombinierte Werte werden ohne Spiegelung abgewiesen.
 
 development.external_agent_job_list_batch_lookup.v1 -> IMPLEMENTED; jede interne Grant-Seite
 lädt ihre zugänglichen Queue-Jobs mit einer einzigen begrenzten, mandanten- und
@@ -929,6 +950,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.26, 26. September 2026:
+
+Geschützten main-Ausgangsstand auf 2d9a41d03be3f4d2d784699394cdd6a5d1dc69cd / Tree
+6747f34c5f107d8eebfc94a3c88c23dd109b3292 gebunden; PR #60 sowie CI Runs #110 und #111 als
+erfolgreichen Batch-Lookup-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen
+extern blockierten Vorgang verifiziert. Einen maschinenlesbar beworbenen Terminalfilter für
+paginierte Agenten-Joblisten ergänzt, ohne Agenten-, Allowlist-, Repository-, Zustands-, Cursor-
+oder Validatorgrenzen zu lockern. Provider, Host und Production-Runtime bleiben unverändert.
 
 5.7.25, 25. September 2026:
 

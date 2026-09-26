@@ -1,8 +1,32 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 25. September 2026
+**Statusdatum:** 26. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Joblisten-Terminalfilter v1 — Nachweis 26. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 218 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- Queue-/Webserver-/Reality-Contract-Regressionen: 51 PASS; gezielter External-Agent-Gateway-
+  und Reality-Contract-Test: 2 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- Wrangler-Typgenerierung und TypeScript-Typecheck: PASS
+- `git diff --check` und Credential-Pattern-Scan der geänderten Zeilen: PASS
+- geprüft: `terminal=true` liefert ausschließlich `succeeded`, `failed` und `cancelled`,
+  `terminal=false` ausschließlich `queued`, `leased` und `running`
+- geprüft: Capability-Discovery, Antwort-Receipt, Repository-Kombination, tiefe Grant-Scans,
+  filtergebundene Cursor und unterschiedliche `ETag`-Validatoren bleiben konsistent
+- geprüft: unbekannte, mehrfache oder gemeinsam mit `state` gesetzte Terminalwerte liefern
+  `invalid_job_filter`, ohne Eingabewerte zu spiegeln
+- der vollständige Wrangler-Dry-Run erreichte lokal die Container-Build-Grenze und benötigt dort
+  weiterhin eine nicht vorhandene Docker-/Podman-CLI; Produktions-Container-Build und
+  Container-Smoke bleiben deshalb verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets, Provider, Berechtigungen,
+  Produktion oder Deployments verändert
 
 ## Unreleased: External-Agent-Joblisten-Batch-Lookup v1 — Nachweis 25. September 2026
 

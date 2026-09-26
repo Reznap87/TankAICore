@@ -882,7 +882,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "max_limit": 100,
             },
             "filters": {
-                "version": 2,
+                "version": 3,
                 "repository_parameter": "repository_id",
                 "allowed_values_source": "repository_ids",
                 "state_parameter": "state",
@@ -894,6 +894,9 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                     "failed",
                     "cancelled",
                 ],
+                "terminal_parameter": "terminal",
+                "allowed_terminal_values": ["false", "true"],
+                "mutually_exclusive_parameters": [["state", "terminal"]],
             },
             "result_receipt": {
                 "version": 1,
@@ -1223,9 +1226,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert status == 200
         assert [item["job_id"] for item in jobs["jobs"]] == [job_id]
         assert jobs["filters"] == {
-            "version": 2,
+            "version": 3,
             "repository_id": None,
             "state": None,
+            "terminal": None,
         }
         assert jobs["pagination"] == {
             "version": 1,
@@ -1258,9 +1262,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert status == 200
         assert [item["job_id"] for item in filtered_jobs["jobs"]] == [job_id]
         assert filtered_jobs["filters"] == {
-            "version": 2,
+            "version": 3,
             "repository_id": allowed.repository_id,
             "state": None,
+            "terminal": None,
         }
         assert filtered_headers["ETag"] != list_etag
         status, _, invalid_filter = client.get(
@@ -1311,9 +1316,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             second_job_id
         ]
         assert queued_page["filters"] == {
-            "version": 2,
+            "version": 3,
             "repository_id": allowed.repository_id,
             "state": "queued",
+            "terminal": None,
         }
         state_cursor = queued_page["pagination"]["next_cursor"]
         assert state_cursor == second_job_id
@@ -1357,6 +1363,58 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             )
             assert "DO_NOT_REFLECT_THIS_VALUE" not in json.dumps(
                 invalid_state_filter
+            )
+
+        status, terminal_headers, active_page = client.get(
+            f"/api/v1/jobs?limit=1&terminal=false"
+            f"&repository_id={allowed.repository_id}",
+            bearer=secret,
+        )
+        assert status == 200
+        assert [item["job_id"] for item in active_page["jobs"]] == [
+            second_job_id
+        ]
+        assert active_page["filters"] == {
+            "version": 3,
+            "repository_id": allowed.repository_id,
+            "state": None,
+            "terminal": False,
+        }
+        terminal_cursor = active_page["pagination"]["next_cursor"]
+        assert terminal_cursor == second_job_id
+        assert terminal_headers["ETag"] != state_headers["ETag"]
+        status, _, active_second_page = client.get(
+            f"/api/v1/jobs?limit=1&terminal=false&cursor={terminal_cursor}"
+            f"&repository_id={allowed.repository_id}",
+            bearer=secret,
+        )
+        assert status == 200
+        assert [item["job_id"] for item in active_second_page["jobs"]] == [
+            job_id
+        ]
+        assert active_second_page["pagination"]["next_cursor"] is None
+        status, _, terminal_page = client.get(
+            "/api/v1/jobs?terminal=true", bearer=secret
+        )
+        assert status == 200
+        assert terminal_page["jobs"] == []
+        assert terminal_page["filters"]["terminal"] is True
+        for invalid_terminal_query in (
+            "terminal=DO_NOT_REFLECT_THIS_VALUE",
+            "terminal=true&terminal=false",
+            "state=queued&terminal=false",
+        ):
+            status, _, invalid_terminal_filter = client.get(
+                f"/api/v1/jobs?{invalid_terminal_query}",
+                bearer=secret,
+                headers={"If-None-Match": terminal_headers["ETag"]},
+            )
+            assert status == 400
+            _assert_external_error(
+                invalid_terminal_filter, "invalid_job_filter"
+            )
+            assert "DO_NOT_REFLECT_THIS_VALUE" not in json.dumps(
+                invalid_terminal_filter
             )
 
         policy = app.job_queue.get_policy(workspace)
@@ -1428,9 +1486,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "next_cursor": None,
         }
         assert second_page["filters"] == {
-            "version": 2,
+            "version": 3,
             "repository_id": allowed.repository_id,
             "state": None,
+            "terminal": None,
         }
         for invalid_query in (
             "limit=0",
@@ -1580,6 +1639,34 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert [item["job_id"] for item in queued_jobs["jobs"]] == [
             second_job_id
         ]
+        status, _, terminal_jobs = client.get(
+            "/api/v1/jobs?terminal=true", bearer=secret
+        )
+        assert status == 200
+        assert [item["job_id"] for item in terminal_jobs["jobs"]] == [job_id]
+        status, _, active_jobs = client.get(
+            "/api/v1/jobs?terminal=false", bearer=secret
+        )
+        assert status == 200
+        assert [item["job_id"] for item in active_jobs["jobs"]] == [
+            second_job_id
+        ]
+        status, _, transitioned_terminal_cursor = client.get(
+            f"/api/v1/jobs?terminal=false&cursor={job_id}",
+            bearer=secret,
+        )
+        assert status == 400
+        _assert_external_error(
+            transitioned_terminal_cursor, "invalid_job_pagination"
+        )
+        status, _, cross_terminal_cursor = client.get(
+            f"/api/v1/jobs?terminal=true&cursor={terminal_cursor}",
+            bearer=secret,
+        )
+        assert status == 400
+        _assert_external_error(
+            cross_terminal_cursor, "invalid_job_pagination"
+        )
 
         status, _, replayed_cancel = client.post(
             f"/api/v1/jobs/{job_id}/cancel", {}, bearer=secret
@@ -1638,6 +1725,18 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             job_id
         ]
         assert deep_filtered_page["pagination"]["next_cursor"] is None
+        assert individual_lookups == 0
+        assert batch_sizes == [100, 3]
+        individual_lookups = 0
+        batch_sizes.clear()
+        status, _, deep_terminal_page = client.get(
+            "/api/v1/jobs?limit=1&terminal=true", bearer=secret
+        )
+        assert status == 200
+        assert [item["job_id"] for item in deep_terminal_page["jobs"]] == [
+            job_id
+        ]
+        assert deep_terminal_page["pagination"]["next_cursor"] is None
         assert individual_lookups == 0
         assert batch_sizes == [100, 3]
 
