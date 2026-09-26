@@ -385,9 +385,10 @@ Cursor für die nächste Seite:
 {
   "jobs": [],
   "filters": {
-    "version": 2,
+    "version": 3,
     "repository_id": null,
-    "state": null
+    "state": null,
+    "terminal": null
   },
   "pagination": {
     "version": 1,
@@ -435,7 +436,7 @@ curl --fail --silent --show-error \
   "https://TANKAI_HOST/api/v1/jobs?state=running&repository_id=REPOSITORY_UUID&limit=25"
 ```
 
-Der Antwortblock `filters` verwendet Vertragsversion 2 und wiederholt ausschließlich den
+Der Antwortblock `filters` verwendet Vertragsversion 3 und wiederholt ausschließlich den
 kanonischen Zustandswert sowie die optionale kanonische Repository-ID. Die Suche setzt die
 stabile Grant-Reihenfolge über mehrere interne Seiten fort, bis die angeforderte Zahl passender
 Jobs oder das Listenende erreicht ist. Ein `next_cursor` bezeichnet weiterhin den letzten
@@ -448,11 +449,27 @@ neue Momentaufnahme. Unbekannte oder mehrfach angegebene Zustände liefern
 `invalid_job_filter`. Eingabewerte werden nicht gespiegelt. Alle Prüfungen finden vor einem
 `If-None-Match`-Vergleich statt.
 
+Alternativ kann der Client alle terminalen oder noch aktiven Jobs gemeinsam abrufen:
+
+```bash
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
+  "https://TANKAI_HOST/api/v1/jobs?terminal=false&limit=25"
+```
+
+`terminal=true` umfasst `succeeded`, `failed` und `cancelled`; `terminal=false` umfasst
+`queued`, `leased` und `running`. Capability-Discovery bewirbt die kanonischen Query-Werte
+`false` und `true`. Die Antwort gibt den wirksamen Wert als JSON-Boolean wieder. `state` und
+`terminal` sind gegenseitig ausgeschlossen, damit Cursor und Momentaufnahme genau einen
+Filtervertrag besitzen. Unbekannte, mehrfach angegebene oder kombinierte Werte liefern
+`invalid_job_filter`, ohne Eingaben zu spiegeln. Cursor-, Allowlist-, Repository- und
+`ETag`-Grenzen entsprechen dem exakten Zustandsfilter.
+
 Intern wird jede bis zu 100 Grants große Scan-Seite mit genau einer begrenzten Queue-Abfrage
 aufgelöst. Diese Abfrage erzwingt weiterhin Mandant, Workspace und Nutzerzugriff, behält die
 Grant-Reihenfolge bei und lässt fehlende oder unzugängliche Jobs aus. Damit benötigt auch ein
-Zustandsfilter über mehrere Grant-Seiten nicht mehr eine Queue-Abfrage pro Grant. API-Antwort,
-Filter, Cursor und `ETag` ändern sich dadurch nicht.
+Zustands- oder Terminalfilter über mehrere Grant-Seiten nicht mehr eine Queue-Abfrage pro
+Grant. API-Antwort, Filter, Cursor und `ETag` ändern sich dadurch nicht.
 
 ### Begrenzter Job-Zustandsverlauf
 

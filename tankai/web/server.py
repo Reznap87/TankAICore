@@ -87,6 +87,7 @@ _EXTERNAL_JOB_TERMINAL_STATES = (
     JobState.FAILED.value,
     JobState.CANCELLED.value,
 )
+_EXTERNAL_JOB_TERMINAL_FILTER_VALUES = ("false", "true")
 _EXTERNAL_JOB_CANCELABLE_STATES = (JobState.QUEUED.value,)
 _BRAND_ASSET_ROOT = Path(__file__).with_name("static")
 _BRAND_ASSETS = {
@@ -1329,11 +1330,18 @@ class Handler(BaseHTTPRequestHandler):
                             "max_limit": _EXTERNAL_JOB_LIST_MAX_LIMIT,
                         },
                         "filters": {
-                            "version": 2,
+                            "version": 3,
                             "repository_parameter": "repository_id",
                             "allowed_values_source": "repository_ids",
                             "state_parameter": "state",
                             "allowed_states": list(_EXTERNAL_JOB_STATES),
+                            "terminal_parameter": "terminal",
+                            "allowed_terminal_values": list(
+                                _EXTERNAL_JOB_TERMINAL_FILTER_VALUES
+                            ),
+                            "mutually_exclusive_parameters": [
+                                ["state", "terminal"]
+                            ],
                         },
                         "result_receipt": {
                             "version": 1,
@@ -1432,9 +1440,12 @@ class Handler(BaseHTTPRequestHandler):
                     urlsplit(self.path).query,
                     keep_blank_values=True,
                     strict_parsing=True,
-                    max_num_fields=4,
+                    max_num_fields=5,
                 )
-                if "state" in query and len(query["state"]) != 1:
+                if any(
+                    field in query and len(query[field]) != 1
+                    for field in ("state", "terminal")
+                ):
                     self._agent_error(
                         "invalid_job_filter",
                         "Ungültiger Joblisten-Filter",
@@ -1446,6 +1457,7 @@ class Handler(BaseHTTPRequestHandler):
                     "limit",
                     "repository_id",
                     "state",
+                    "terminal",
                 }
                 if set(query) - allowed_query_fields or any(
                     len(values) != 1 for values in query.values()
@@ -1496,9 +1508,39 @@ class Handler(BaseHTTPRequestHandler):
                         400,
                     )
                     return
+                terminal_raw = query.get("terminal", [None])[0]
+                if (
+                    terminal_raw is not None
+                    and terminal_raw not in _EXTERNAL_JOB_TERMINAL_FILTER_VALUES
+                ):
+                    self._agent_error(
+                        "invalid_job_filter",
+                        "Ungültiger Joblisten-Filter",
+                        400,
+                    )
+                    return
+                if state_filter is not None and terminal_raw is not None:
+                    self._agent_error(
+                        "invalid_job_filter",
+                        "Ungültiger Joblisten-Filter",
+                        400,
+                    )
+                    return
+                terminal_filter = (
+                    None if terminal_raw is None else terminal_raw == "true"
+                )
+
+                def job_matches_filter(job) -> bool:
+                    if state_filter is not None:
+                        return job.state.value == state_filter
+                    if terminal_filter is not None:
+                        return (
+                            job.state.value in _EXTERNAL_JOB_TERMINAL_STATES
+                        ) is terminal_filter
+                    return True
 
                 next_cursor = None
-                if state_filter is None:
+                if state_filter is None and terminal_filter is None:
                     page = self.app.auth.agent_job_page(
                         agent_id=context.agent_id,
                         repository_ids=repository_ids,
@@ -1535,7 +1577,7 @@ class Handler(BaseHTTPRequestHandler):
                             ) from exc
                         if (
                             cursor_job.repository_id not in repository_ids
-                            or cursor_job.state.value != state_filter
+                            or not job_matches_filter(cursor_job)
                         ):
                             raise ValueError("Ungültige Joblisten-Paginierung")
 
@@ -1554,7 +1596,7 @@ class Handler(BaseHTTPRequestHandler):
                         for job in scan_jobs:
                             if (
                                 job.repository_id in repository_ids
-                                and job.state.value == state_filter
+                                and job_matches_filter(job)
                             ):
                                 jobs.append(self._external_job_payload(job))
                                 if len(jobs) > limit:
@@ -1569,9 +1611,10 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "jobs": jobs,
                         "filters": {
-                            "version": 2,
+                            "version": 3,
                             "repository_id": repository_id,
                             "state": state_filter,
+                            "terminal": terminal_filter,
                         },
                         "pagination": {
                             "version": 1,
