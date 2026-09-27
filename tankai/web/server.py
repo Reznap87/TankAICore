@@ -81,6 +81,8 @@ _EXTERNAL_ERROR_CODES = (
 )
 _EXTERNAL_JOB_LIST_DEFAULT_LIMIT = 100
 _EXTERNAL_JOB_LIST_MAX_LIMIT = 100
+_EXTERNAL_JOB_HISTORY_DEFAULT_LIMIT = 100
+_EXTERNAL_JOB_HISTORY_MAX_LIMIT = 100
 _EXTERNAL_JOB_STATES = tuple(state.value for state in JobState)
 _EXTERNAL_JOB_TERMINAL_STATES = (
     JobState.SUCCEEDED.value,
@@ -1291,6 +1293,12 @@ class Handler(BaseHTTPRequestHandler):
                         "status_path_template": "/api/v1/jobs/{job_id}",
                         "history_path_template": "/api/v1/jobs/{job_id}/history",
                         "history_version": 1,
+                        "history_query": {
+                            "version": 1,
+                            "limit_parameter": "limit",
+                            "default_limit": _EXTERNAL_JOB_HISTORY_DEFAULT_LIMIT,
+                            "max_limit": _EXTERNAL_JOB_HISTORY_MAX_LIMIT,
+                        },
                         "state_contract": {
                             "version": 1,
                             "states": list(_EXTERNAL_JOB_STATES),
@@ -1644,16 +1652,48 @@ class Handler(BaseHTTPRequestHandler):
                     raise PermissionError(
                         "Repository ist für diesen KI-Agenten nicht freigegeben"
                     )
+            except PermissionError as exc:
+                self._agent_error("job_not_found", str(exc), 404)
+                return
+            except (QueueError, ValueError) as exc:
+                self._agent_error("job_state_conflict", str(exc), 409)
+                return
+            try:
+                query = parse_qs(
+                    urlsplit(self.path).query,
+                    keep_blank_values=True,
+                    strict_parsing=True,
+                    max_num_fields=1,
+                )
+                if set(query) - {"limit"} or any(
+                    len(values) != 1 for values in query.values()
+                ):
+                    raise ValueError("Ungültige Job-History-Begrenzung")
+                limit_raw = query.get(
+                    "limit", [str(_EXTERNAL_JOB_HISTORY_DEFAULT_LIMIT)]
+                )[0]
+                if not re.fullmatch(r"[1-9][0-9]{0,2}", limit_raw):
+                    raise ValueError("Ungültige Job-History-Begrenzung")
+                limit = int(limit_raw)
+                if limit > _EXTERNAL_JOB_HISTORY_MAX_LIMIT:
+                    raise ValueError("Ungültige Job-History-Begrenzung")
+            except ValueError:
+                self._agent_error(
+                    "invalid_job_pagination",
+                    "Ungültige Job-History-Begrenzung",
+                    400,
+                )
+                return
+            try:
                 history = self.app.job_queue.job_state_history(
                     actor_user_id=context.owner_user_id,
                     workspace_id=context.workspace_id,
                     job_id=job.job_id,
+                    limit=limit,
                 )
                 self._conditional_json(
                     {"history": history.model_dump(mode="json")}
                 )
-            except PermissionError as exc:
-                self._agent_error("job_not_found", str(exc), 404)
             except (QueueError, ValueError) as exc:
                 self._agent_error("job_state_conflict", str(exc), 409)
             return

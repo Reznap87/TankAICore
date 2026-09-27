@@ -474,17 +474,19 @@ Grant. API-Antwort, Filter, Cursor und `ETag` ändern sich dadurch nicht.
 ### Begrenzter Job-Zustandsverlauf
 
 Nach dem Submit bewirbt `GET /api/v1/capabilities` unter `job_monitoring` den
-Status- und History-Pfad sowie die History-Version. Ein Client mit `jobs:read`
-kann den Verlauf seines eigenen Jobs abrufen:
+Status- und History-Pfad, die History-Version sowie unter `history_query` den optionalen
+`limit`-Parameter mit Standard und Maximum. Ein Client mit `jobs:read` kann den Verlauf seines
+eigenen Jobs abrufen und auf die neuesten 1 bis 100 Zustandswechsel begrenzen:
 
 ```bash
 curl --fail --silent --show-error \
   -H "Authorization: Bearer $TANKAI_AGENT_TOKEN" \
-  "https://TANKAI_HOST/api/v1/jobs/JOB_UUID/history"
+  "https://TANKAI_HOST/api/v1/jobs/JOB_UUID/history?limit=25"
 ```
 
-Die Antwort ist eine Momentaufnahme und enthält höchstens die 100 neuesten
-öffentlichen Zustandswechsel in chronologischer Reihenfolge:
+Die Antwort ist eine Momentaufnahme und enthält höchstens die angeforderte Zahl der neuesten
+öffentlichen Zustandswechsel in chronologischer Reihenfolge. Ohne `limit` bleibt die bisherige
+Voreinstellung 100:
 
 ```json
 {
@@ -502,11 +504,13 @@ Die Antwort ist eine Momentaufnahme und enthält höchstens die 100 neuesten
 }
 ```
 
-`truncated_before=true` bedeutet, dass ältere Zustände nicht in dieser Antwort
-enthalten sind. Die Route prüft dieselbe Agenten-Jobfreigabe und die aktuelle
-Repository-Allowlist wie der Einzelstatus. Jobs anderer Service-Agenten bleiben
-auch bei gemeinsamem Owner und Repository mit `404` verborgen. Veröffentlicht
-werden nur Zustand und UTC-Zeit; interne Eventtypen, Details, Fehlertexte,
+`truncated_before=true` bedeutet, dass ältere Zustände nicht in dieser Antwort enthalten sind.
+`limit` akzeptiert ausschließlich eine einzelne Ganzzahl zwischen 1 und 100. Unbekannte,
+mehrfache, leere oder außerhalb dieses Bereichs liegende Parameter werden neutral als
+`invalid_job_pagination` abgewiesen, ohne Eingabewerte zu spiegeln. Die Route prüft dieselbe
+Agenten-Jobfreigabe und die aktuelle Repository-Allowlist wie der Einzelstatus. Jobs anderer
+Service-Agenten bleiben auch bei gemeinsamem Owner und Repository mit `404` verborgen.
+Veröffentlicht werden nur Zustand und UTC-Zeit; interne Eventtypen, Details, Fehlertexte,
 Akteur-/Worker-IDs, Fence-Epochen und die globale Queue-Sequenz bleiben privat.
 
 ### Bedingtes Joblisten- und Status-Polling

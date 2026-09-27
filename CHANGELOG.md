@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### External-Agent-Jobverlauf-Limit v1
+
+- Clients können mit `limit` zwischen 1 und 100 gezielt nur die neuesten öffentlichen
+  Zustandswechsel eines eigenen Jobs abrufen; ohne Parameter bleibt die bisherige 100er-Grenze.
+- Capability-Discovery veröffentlicht Parameter, Standard und Maximum maschinenlesbar.
+- `truncated_before` kennzeichnet weiterhin ausgelassene ältere Zustände. Agenten-, Repository-
+  und Scope-Prüfung laufen vor der Abfrage und vor dem `ETag`-Vergleich; ungültige oder
+  unbekannte Parameter werden ohne Wertespiegelung abgewiesen.
+
 ### External-Agent-Joblisten-Terminalfilter v1
 
 - Paginierte Joblisten können mit `terminal=true` auf abgeschlossene oder mit
