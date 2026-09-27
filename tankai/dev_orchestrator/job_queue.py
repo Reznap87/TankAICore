@@ -1472,8 +1472,15 @@ class DevelopmentJobQueue:
         actor_user_id: str,
         workspace_id: str,
         job_id: str,
+        limit: int = 100,
     ) -> JobStateHistory:
         """Return a bounded state-only history after enforcing normal job access."""
+        if (
+            not isinstance(limit, int)
+            or isinstance(limit, bool)
+            or not 1 <= limit <= 100
+        ):
+            raise ValueError("History-Limit muss zwischen 1 und 100 liegen")
         self.get_job(
             actor_user_id=actor_user_id,
             workspace_id=workspace_id,
@@ -1498,14 +1505,14 @@ class DevelopmentJobQueue:
                 FROM job_events
                 WHERE job_id=? AND event_type IN ({placeholders})
                 ORDER BY sequence DESC
-                LIMIT 101
+                LIMIT ?
                 """,
-                (job_id, *public_event_types),
+                (job_id, *public_event_types, limit + 1),
             ).fetchall()
 
-        truncated = len(rows) > 100
+        truncated = len(rows) > limit
         events: list[PublicJobStateEvent] = []
-        for row in reversed(rows[:100]):
+        for row in reversed(rows[:limit]):
             state = event_states.get(row["event_type"])
             if row["event_type"] == "lease_expired":
                 try:

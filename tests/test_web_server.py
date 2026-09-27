@@ -842,6 +842,12 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
             "status_path_template": "/api/v1/jobs/{job_id}",
             "history_path_template": "/api/v1/jobs/{job_id}/history",
             "history_version": 1,
+            "history_query": {
+                "version": 1,
+                "limit_parameter": "limit",
+                "default_limit": 100,
+                "max_limit": 100,
+            },
             "state_contract": {
                 "version": 1,
                 "states": [
@@ -1585,6 +1591,13 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert status == 404
         assert "nicht gefunden" in hidden_history["error"]
         _assert_external_error(hidden_history, "job_not_found")
+        status, _, hidden_history_with_invalid_limit = client.get(
+            f"/api/v1/jobs/{job_id}/history?limit=0", bearer=second_secret
+        )
+        assert status == 404
+        _assert_external_error(
+            hidden_history_with_invalid_limit, "job_not_found"
+        )
         status, _, foreign_cursor = client.get(
             f"/api/v1/jobs?cursor={cursor}", bearer=second_secret
         )
@@ -1627,6 +1640,45 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert [
             event["state"] for event in cancelled_history["history"]["events"]
         ] == ["queued", "cancelled"]
+        status, limited_history_headers, limited_history = client.get(
+            f"/api/v1/jobs/{job_id}/history?limit=1",
+            bearer=secret,
+        )
+        assert status == 200
+        assert limited_history["history"]["truncated_before"] is True
+        assert [
+            event["state"] for event in limited_history["history"]["events"]
+        ] == ["cancelled"]
+        assert limited_history_headers["ETag"] != changed_history_headers["ETag"]
+        status, unchanged_limited_headers, unchanged_limited = client.get(
+            f"/api/v1/jobs/{job_id}/history?limit=1",
+            bearer=secret,
+            headers={"If-None-Match": limited_history_headers["ETag"]},
+        )
+        assert status == 304
+        assert unchanged_limited is None
+        assert (
+            unchanged_limited_headers["ETag"]
+            == limited_history_headers["ETag"]
+        )
+        for invalid_history_query in (
+            "limit=0",
+            "limit=101",
+            "limit=1&limit=2",
+            "unknown=DO_NOT_REFLECT_THIS_VALUE",
+        ):
+            status, _, invalid_history = client.get(
+                f"/api/v1/jobs/{job_id}/history?{invalid_history_query}",
+                bearer=secret,
+                headers={"If-None-Match": limited_history_headers["ETag"]},
+            )
+            assert status == 400
+            _assert_external_error(
+                invalid_history, "invalid_job_pagination"
+            )
+            assert "DO_NOT_REFLECT_THIS_VALUE" not in json.dumps(
+                invalid_history
+            )
         status, _, cancelled_jobs = client.get(
             "/api/v1/jobs?state=cancelled", bearer=secret
         )

@@ -398,6 +398,26 @@ def test_job_state_history_is_ordered_bounded_and_sanitized(queue_env) -> None:
     assert "sequence" not in serialized
     assert "details" not in serialized
 
+    limited = env["queue"].job_state_history(
+        actor_user_id=env["member"],
+        workspace_id=env["workspace"],
+        job_id=job.job_id,
+        limit=2,
+    )
+    assert limited.truncated_before is True
+    assert [event.state for event in limited.events] == [
+        JobState.RUNNING,
+        JobState.SUCCEEDED,
+    ]
+    for invalid_limit in (0, 101, True, 1.5):
+        with pytest.raises(ValueError, match="History-Limit"):
+            env["queue"].job_state_history(
+                actor_user_id=env["member"],
+                workspace_id=env["workspace"],
+                job_id=job.job_id,
+                limit=invalid_limit,
+            )
+
     with sqlite3.connect(env["queue"].path) as conn:
         now = datetime.now(timezone.utc).isoformat()
         conn.executemany(

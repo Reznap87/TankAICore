@@ -50,7 +50,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Retry-Vertrag | Maschinenlesbare Retry-Entscheidung und begrenzte Wartezeit für temporäre Queue- und Stundenlimit-Ablehnungen |
 | External-Agent-Idempotenz-Outcome | Jeder erfolgreiche Submit kennzeichnet versioniert, ob ein Job neu eingereiht oder atomar aus einem identischen Idempotenzschlüssel wiedergegeben wurde |
 | External-Agent-Abbruch-Idempotenz | Wiederholbare Job-Abbrüche mit atomarem Replay-Outcome ohne doppelte Zustandsereignisse |
-| External-Agent-Jobverlauf | Auf 100 Einträge begrenzter Zustandsverlauf eigener Jobs ohne interne Ereignis-, Akteur- oder Worker-Daten |
+| External-Agent-Jobverlauf | Auf wählbare 1–100 Einträge begrenzter Zustandsverlauf eigener Jobs ohne interne Ereignis-, Akteur- oder Worker-Daten |
 | External-Agent-Jobliste | Stabile Cursor-Paginierung über alle eigenen, weiterhin freigegebenen Jobs mit höchstens 100 Einträgen pro Seite |
 | External-Agent-Joblistenfilter | Repository-, zustands- und terminalgenaue Joblisten mit filtergebundenen Cursorn über ausschließlich eigene, freigegebene Jobs |
 | Repository-Joblistenindex | Deckender SQLite-Index für schnelle repository-gefilterte Cursor-Seiten; bestehende Datenbanken werden beim Öffnen ergänzt |
@@ -274,8 +274,10 @@ Ressourcen-, Laufzeit-, Inline-Secret- und Payload-Gates, ohne einen Job
 einzureihen. Queue-Kapazität, Nutzerlimit und Idempotenz werden dabei nicht
 reserviert und beim echten Submit erneut beziehungsweise atomar geprüft. Über
 `GET /api/v1/jobs/{job_id}/history` können Clients anschließend ausschließlich
-die chronologischen Zustände ihres eigenen Jobs verfolgen. Interne Eventdetails,
-Akteur-/Worker-IDs und die globale Queue-Sequenz werden nicht veröffentlicht.
+die chronologischen Zustände ihres eigenen Jobs verfolgen. Der optional beworbene
+`limit`-Parameter begrenzt die Antwort auf die neuesten 1 bis 100 Zustandswechsel; ohne ihn
+bleibt das bisherige Maximum 100. Interne Eventdetails, Akteur-/Worker-IDs und die globale
+Queue-Sequenz werden nicht veröffentlicht.
 Die Jobliste lässt sich mit `limit` und dem zurückgegebenen `next_cursor` stabil
 seiteweise abrufen, sodass auch mehr als 100 eigene Aufträge erreichbar bleiben. Optional
 begrenzt `repository_id` auf ein im Token freigegebenes Repository und `state` auf genau einen
