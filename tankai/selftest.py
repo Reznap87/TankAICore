@@ -775,12 +775,15 @@ def run_selftest() -> int:
         failed += 1
 
     try:
-        from tankai.web.server import HTML
-        assert ".innerHTML" not in HTML
-        assert "catch{}" not in HTML
-        assert "textContent" in HTML
-        assert "__CSP_NONCE__" not in HTML
-        _ok("Web-Rendering ohne dynamisches innerHTML")
+        from tankai.web.server import HTML_TEMPLATE, _render_html
+        rendered_html = _render_html("selftest-nonce")
+        assert ".innerHTML" not in rendered_html
+        assert "catch{}" not in rendered_html
+        assert "textContent" in rendered_html
+        assert "__CSP_NONCE__" in HTML_TEMPLATE
+        assert "__CSP_NONCE__" not in rendered_html
+        assert '<script nonce="selftest-nonce">' in rendered_html
+        _ok("Web-Rendering mit CSP-Nonce ohne dynamisches innerHTML")
     except Exception as exc:
         _fail("Web-Sicherheit", exc)
         failed += 1

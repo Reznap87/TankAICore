@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.27
+Version: 5.7.28
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 27. September 2026
+Statusdatum: 28. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 27. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 28. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.27-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.28-Inkrements:
 
-25e3095feec622f0926af2caf5fb58e85ce75d32
+b1dc766579baae9e1eb8054ea85bb09c9a327d90
 
 Zugehöriger Repository-Git-Tree:
 
-853dce6c7ebe28180afccb465e33fac3d8ce47fc
+e277ae5a24e43fe1edbc02a5e690fab627b5df6c
 
 Commit-Titel:
 
-feat: filter external job lists by terminal state (#61)
+feat: bound external job history responses (#62)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Jobverlauf-Limit-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des Per-Response-CSP-Nonce-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 25e3095feec622f0926af2caf5fb58e85ce75d32 mit Git-Tree
-853dce6c7ebe28180afccb465e33fac3d8ce47fc,
+geschützter main-Ausgangsstand b1dc766579baae9e1eb8054ea85bb09c9a327d90 mit Git-Tree
+e277ae5a24e43fe1edbc02a5e690fab627b5df6c,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Jobverlauf-Limit-Inkrement nicht wiederholt,
+Per-Response-CSP-Nonce-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -470,6 +470,20 @@ TankAI Core CI Run #113, Run 36225412757, auf dem gemergten main-Commit
 25e3095feec622f0926af2caf5fb58e85ce75d32: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+der begrenzte External-Agent-Jobverlauf aus PR #62 mit maschinenlesbarem 1-bis-100-Limit,
+unveränderter Standardgrenze und weiterhin scope-, agenten-, repository- und
+validatorgebundener Datenminimierung,
+
+TankAI Core CI Run #114, Run 36300374578, auf dem PR-#62-Head
+e58108b4052ba9b1d11646777e19347129804065: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Jobverlauf-Limit-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #62 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #115, Run 36300467604, auf dem gemergten main-Commit
+b1dc766579baae9e1eb8054ea85bb09c9a327d90: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -753,6 +767,11 @@ Queue und Stundenlimit sind retryable; nur das deterministisch berechenbare Stun
 eine begrenzte Wartezeit samt `Retry-After`. Fehlercodes, HTTP-Status, Meldungen und sämtliche
 Zugriffskontrollen bleiben unverändert.
 
+security.web.per_response_csp_nonce.v1 -> IMPLEMENTED; jede HTML-Antwort erhält einen frischen,
+URL-sicheren Nonce, der exakt mit dem einzigen eingebetteten Skript übereinstimmt. JSON-,
+`304`- und statische Asset-Antworten veröffentlichen keinen Nonce und sperren Skripte mit
+`script-src 'none'`; alle übrigen CSP- und Security-Header-Grenzen bleiben unverändert.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -973,6 +992,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.28, 28. September 2026:
+
+Geschützten main-Ausgangsstand auf b1dc766579baae9e1eb8054ea85bb09c9a327d90 / Tree
+e277ae5a24e43fe1edbc02a5e690fab627b5df6c gebunden; PR #62 sowie CI Runs #114 und #115 als
+erfolgreichen Jobverlauf-Limit-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Den wiederverwendeten prozessweiten CSP-Nonce
+durch einen frischen Nonce pro HTML-Antwort ersetzt und nicht ausführbare API-, `304`- und
+Asset-Antworten auf `script-src 'none'` begrenzt, ohne weitere Sicherheits-, Cache-, Provider-,
+Host- oder Produktionsverträge zu verändern.
 
 5.7.27, 27. September 2026:
 

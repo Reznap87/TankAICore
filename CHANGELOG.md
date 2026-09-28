@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Per-Response-CSP-Nonce v1
+
+- Jede HTML-Antwort erhält einen frisch erzeugten, URL-sicheren CSP-Nonce, der ausschließlich
+  das zugehörige eingebettete Skript freigibt. Ein bei Prozessstart wiederverwendbarer Nonce
+  entfällt.
+- JSON-, `304`- und statische Asset-Antworten veröffentlichen keine Nonces mehr und sperren
+  Skriptausführung mit `script-src 'none'` vollständig.
+- Die übrigen CSP-, Cache-, Frame-, Referrer- und Permissions-Policy-Grenzen bleiben
+  unverändert.
+
 ### External-Agent-Jobverlauf-Limit v1
 
 - Clients können mit `limit` zwischen 1 und 100 gezielt nur die neuesten öffentlichen

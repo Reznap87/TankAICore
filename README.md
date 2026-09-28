@@ -60,7 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
-| Web-UI | CSP, Security-Header, sichere DOM-Erzeugung |
+| Web-UI | Frischer CSP-Nonce pro HTML-Antwort, skriptfreie API-/Asset-CSP, Security-Header, sichere DOM-Erzeugung |
 | Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz |
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
