@@ -25,6 +25,7 @@ DOCKER = shutil.which("docker") or "docker"
 MANAGED_LABEL = "com.tankai.ci.production-web-smoke"
 SCOPE_LABEL = MANAGED_LABEL + ".scope"
 HTTP_LIMIT = 4096
+HTML_LIMIT = 50_000
 READY_TIMEOUT = 120.0
 ENVIRONMENT = (
     ("TANKAI_HOST", "0.0.0.0"),
@@ -70,9 +71,15 @@ SECURITY_HEADERS = {
     "Cache-Control": "no-store",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
-CSP = re.compile(
+CSP_SCRIPT_NONE = re.compile(
     r"default-src 'self'; base-uri 'none'; object-src 'none'; "
-    r"script-src 'nonce-[A-Za-z0-9_-]{24}'; "
+    r"script-src 'none'; "
+    r"style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+    r"frame-ancestors 'none'; form-action 'self'\Z"
+)
+CSP_HTML_NONCE = re.compile(
+    r"default-src 'self'; base-uri 'none'; object-src 'none'; "
+    r"script-src 'nonce-(?P<nonce>[A-Za-z0-9_-]{24})'; "
     r"style-src 'self' 'unsafe-inline'; connect-src 'self'; "
     r"frame-ancestors 'none'; form-action 'self'\Z"
 )
@@ -526,11 +533,49 @@ def wait_ready(container: str, base: str) -> tuple[Any, dict[str, Any]]:
     raise Failure(f"not ready via Docker health and HTTP within 120s ({last_http})")
 
 
-def security_headers(headers: Any) -> None:
+def security_headers(headers: Any, csp_pattern: re.Pattern[str]) -> re.Match[str]:
     for key, value in SECURITY_HEADERS.items():
         require((headers.get_all(key) or []) == [value], f"{key} differs")
     csp = headers.get_all("Content-Security-Policy") or []
-    require(len(csp) == 1 and CSP.fullmatch(csp[0]) is not None, "CSP differs")
+    match = csp_pattern.fullmatch(csp[0]) if len(csp) == 1 else None
+    require(match is not None, "CSP differs")
+    return match
+
+
+def html_contract(base: str) -> None:
+    nonces: list[str] = []
+    for path in ("/", "/index.html"):
+        request = Request(
+            base + path,
+            headers={"Accept": "text/html", "Connection": "close"},
+            method="GET",
+        )
+        with OPENER.open(request, timeout=5.0) as response:
+            require(response.status == 200, f"{path}: status differs")
+            require(
+                (response.headers.get_all("Content-Type") or [])
+                == ["text/html; charset=utf-8"],
+                f"{path}: Content-Type differs",
+            )
+            require(
+                not (response.headers.get_all("Set-Cookie") or []),
+                f"{path}: unexpected Set-Cookie",
+            )
+            match = security_headers(response.headers, CSP_HTML_NONCE)
+            raw = response.read(HTML_LIMIT + 1)
+        require(len(raw) <= HTML_LIMIT, f"{path}: HTML response too large")
+        try:
+            body = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise Failure(f"{path}: HTML response is not UTF-8") from exc
+        nonce = match.group("nonce")
+        require(
+            body.count(f'<script nonce="{nonce}">') == 1,
+            f"{path}: HTML nonce differs",
+        )
+        require("__CSP_NONCE__" not in body, f"{path}: nonce placeholder leaked")
+        nonces.append(nonce)
+    require(nonces[0] != nonces[1], "HTML nonce was reused")
 
 
 def health_contract(headers: Any, payload: dict[str, Any], version: str) -> None:
@@ -1007,8 +1052,9 @@ def smoke(
 
     headers, health = wait_ready(container, base)
     version = container_version(container)
-    security_headers(headers)
+    security_headers(headers, CSP_SCRIPT_NONE)
     health_contract(headers, health, version)
+    html_contract(base)
     unauthenticated_me(base)
     registration_disabled(base)
     identifiers, email, password = create_user(container, scope)
