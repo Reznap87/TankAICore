@@ -1,8 +1,30 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 27. September 2026
+**Statusdatum:** 28. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Per-Response-CSP-Nonce v1 — Nachweis 28. September 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 219 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- Queue-/Webserver-/Reality-Contract-Regressionen: 52 PASS; gezielter CSP-Nonce-Test: PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- TypeScript-Typecheck: PASS; Wrangler-Typgenerierung und Produktions-Dry-Run bleiben
+  verpflichtende GitHub-CI-Gates
+- `git diff --check` und Credential-Pattern-Scan der geänderten Zeilen: PASS
+- geprüft: `/` und `/index.html` erhalten je Antwort einen unterschiedlichen URL-sicheren
+  Nonce; CSP-Header und einziges eingebettetes Skript tragen exakt denselben Wert
+- geprüft: JSON- und statische Asset-Antworten enthalten keinen Nonce und setzen
+  `script-src 'none'`; bestehende CSP- und Cache-Direktiven bleiben erhalten
+- lokale Wrangler-Kommandos wurden an der sicheren Ausführungsgrenze nicht gegen den externen
+  Cloudflare-Endpunkt gestartet; Typgenerierung, Produktions-Dry-Run, Container-Build und
+  Container-Smoke bleiben verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets, Provider, Berechtigungen,
+  Produktion oder Deployments verändert
 
 ## Unreleased: External-Agent-Jobverlauf-Limit v1 — Nachweis 27. September 2026
 

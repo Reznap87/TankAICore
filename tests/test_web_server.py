@@ -411,12 +411,49 @@ def test_registration_disabled_and_public_auth_disable_blocked(tmp_path, monkeyp
 
 
 def test_html_uses_safe_dom_rendering() -> None:
-    assert "innerHTML" not in web_server.HTML
-    assert "catch{}" not in web_server.HTML
-    assert "textContent" in web_server.HTML
-    assert 'href="/favicon.ico"' in web_server.HTML
-    assert 'src="/favicon.png"' in web_server.HTML
+    assert "innerHTML" not in web_server.HTML_TEMPLATE
+    assert "catch{}" not in web_server.HTML_TEMPLATE
+    assert "textContent" in web_server.HTML_TEMPLATE
+    assert 'href="/favicon.ico"' in web_server.HTML_TEMPLATE
+    assert 'src="/favicon.png"' in web_server.HTML_TEMPLATE
     assert "HttpOnly" in web_server.Handler._session_cookie.__code__.co_consts
+
+
+def test_html_uses_a_fresh_matching_csp_nonce_per_response(
+    tmp_path, monkeypatch
+) -> None:
+    _configure(monkeypatch, tmp_path)
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        nonces = []
+        for path in ("/", "/index.html"):
+            with urlopen(base + path, timeout=5) as response:
+                assert response.status == 200
+                policy = response.headers["Content-Security-Policy"]
+                match = re.search(r"script-src 'nonce-([^']+)'", policy)
+                assert match is not None
+                nonce = match.group(1)
+                assert re.fullmatch(r"[A-Za-z0-9_-]+", nonce)
+                body = response.read().decode("utf-8")
+                assert body.count(f'<script nonce="{nonce}">') == 1
+                assert "__CSP_NONCE__" not in body
+                nonces.append(nonce)
+        assert nonces[0] != nonces[1]
+
+        with urlopen(base + "/api/health", timeout=5) as response:
+            policy = response.headers["Content-Security-Policy"]
+            assert "script-src 'none'" in policy
+            assert "nonce-" not in policy
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_brand_assets_are_served(tmp_path, monkeypatch) -> None:
@@ -436,6 +473,9 @@ def test_brand_assets_are_served(tmp_path, monkeypatch) -> None:
                 assert response.status == 200
                 assert response.headers.get_content_type() == content_type
                 assert response.headers["Cache-Control"] == "public, max-age=86400"
+                policy = response.headers["Content-Security-Policy"]
+                assert "script-src 'none'" in policy
+                assert "nonce-" not in policy
                 assert response.read().startswith(signature)
     finally:
         server.shutdown()
@@ -761,6 +801,8 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 304
         assert unchanged_headers["ETag"] == capability_etag
+        assert "script-src 'none'" in unchanged_headers["Content-Security-Policy"]
+        assert "nonce-" not in unchanged_headers["Content-Security-Policy"]
         assert unchanged is None
         status, _, unauthenticated_conditional = client.get(
             "/api/v1/capabilities",

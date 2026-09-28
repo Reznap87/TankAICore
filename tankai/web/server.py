@@ -51,7 +51,6 @@ from tankai.web.auth import (
 )
 from tankai.web.runtime import WorkspaceRuntimeManager
 
-_CSP_NONCE = secrets.token_urlsafe(18)
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
 _LOCAL_WORKSPACE_ID = "00000000-0000-4000-8000-000000000002"
@@ -401,7 +400,10 @@ refreshHealth(); loadMe(); setInterval(refreshHealth,15000);
 </script>
 </body>
 </html>"""
-HTML = HTML_TEMPLATE.replace("__CSP_NONCE__", _CSP_NONCE)
+
+
+def _render_html(csp_nonce: str) -> str:
+    return HTML_TEMPLATE.replace("__CSP_NONCE__", csp_nonce)
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -429,16 +431,24 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[web] {self.address_string()} {fmt % args}")
 
-    def _security_headers(self, *, cache_control: str = "no-store") -> None:
+    def _security_headers(
+        self,
+        *,
+        cache_control: str = "no-store",
+        script_nonce: str | None = None,
+    ) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", cache_control)
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        script_policy = (
+            f"'nonce-{script_nonce}'" if script_nonce is not None else "'none'"
+        )
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; base-uri 'none'; object-src 'none'; "
-            f"script-src 'nonce-{_CSP_NONCE}'; style-src 'self' 'unsafe-inline'; "
+            f"script-src {script_policy}; style-src 'self' 'unsafe-inline'; "
             "connect-src 'self'; frame-ancestors 'none'; form-action 'self'",
         )
 
@@ -807,10 +817,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if path in ("/", "/index.html"):
-            body = HTML.encode("utf-8")
+            csp_nonce = secrets.token_urlsafe(18)
+            body = _render_html(csp_nonce).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self._security_headers()
+            self._security_headers(script_nonce=csp_nonce)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
