@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.28
+Version: 5.7.29
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 28. September 2026
+Statusdatum: 29. September 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 28. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 29. September 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.28-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.29-Inkrements:
 
-b1dc766579baae9e1eb8054ea85bb09c9a327d90
+4a8f530dc371cfe0c8456701d83c7525f3a0204b
 
 Zugehöriger Repository-Git-Tree:
 
-e277ae5a24e43fe1edbc02a5e690fab627b5df6c
+455ae456f0158f4ab6890c3bee4b5fa6ee73ac27
 
 Commit-Titel:
 
-feat: bound external job history responses (#62)
+security: rotate CSP nonces per response (#63)
 
-Dieser Stand ist der Ausgangsstand des Per-Response-CSP-Nonce-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des Nonce-gebundene-Inline-Styles-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand b1dc766579baae9e1eb8054ea85bb09c9a327d90 mit Git-Tree
-e277ae5a24e43fe1edbc02a5e690fab627b5df6c,
+geschützter main-Ausgangsstand 4a8f530dc371cfe0c8456701d83c7525f3a0204b mit Git-Tree
+455ae456f0158f4ab6890c3bee4b5fa6ee73ac27,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Per-Response-CSP-Nonce-Inkrement nicht wiederholt,
+Nonce-gebundene-Inline-Styles-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -484,6 +484,20 @@ TankAI Core CI Run #115, Run 36300467604, auf dem gemergten main-Commit
 b1dc766579baae9e1eb8054ea85bb09c9a327d90: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+der frische CSP-Nonce pro HTML-Antwort aus PR #63; JSON-, `304`- und Asset-Antworten sperren
+Skripte vollständig. Der Produktions-Container-Smoke prüft Nonce-Rotation und Header-/DOM-
+Übereinstimmung,
+
+TankAI Core CI Run #117, Run 36390533116, auf dem finalen PR-#63-Head
+b6a6acb5c03bafde2f3bae16fae209979e5f1ad5: completed/success; die Jobs test und cloudflare
+bestanden einschließlich CSP-Nonce-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und verschärftem Container-Smoke; PR #63 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #118, Run 36390681107, auf dem gemergten main-Commit
+4a8f530dc371cfe0c8456701d83c7525f3a0204b: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -772,6 +786,11 @@ URL-sicheren Nonce, der exakt mit dem einzigen eingebetteten Skript übereinstim
 `304`- und statische Asset-Antworten veröffentlichen keinen Nonce und sperren Skripte mit
 `script-src 'none'`; alle übrigen CSP- und Security-Header-Grenzen bleiben unverändert.
 
+security.web.nonce_bound_inline_styles.v1 -> IMPLEMENTED; derselbe frische Antwort-Nonce bindet
+auch den einzigen eingebetteten Stylesheet-Block. Feste Darstellungsregeln liegen statt in
+`style`-Attributen in benannten CSS-Klassen; `style-src 'unsafe-inline'` entfällt. Nicht-HTML-
+Antworten sperren Styles mit `style-src 'none'`, ohne API-, Cache- oder Auth-Verträge zu ändern.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -992,6 +1011,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.29, 29. September 2026:
+
+Geschützten main-Ausgangsstand auf 4a8f530dc371cfe0c8456701d83c7525f3a0204b / Tree
+455ae456f0158f4ab6890c3bee4b5fa6ee73ac27 gebunden; PR #63 sowie CI Runs #117 und #118 als
+erfolgreichen Per-Response-CSP-Nonce-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Den frischen Antwort-Nonce auf den eingebetteten
+Stylesheet-Block erweitert, vier feste Style-Attribute in CSS-Klassen verschoben und
+`style-src 'unsafe-inline'` entfernt. Nicht-HTML-Antworten sperren Styles vollständig; API-,
+Cache-, Provider-, Host- und Produktionsverträge bleiben unverändert.
 
 5.7.28, 28. September 2026:
 

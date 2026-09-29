@@ -298,7 +298,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <link rel="icon" href="/favicon.ico" sizes="any"/>
   <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png"/>
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
-  <style>
+  <style nonce="__CSP_NONCE__">
     :root { --bg:#0b0f14; --card:#1a2332; --border:#243044; --accent:#3b82f6;
       --accent2:#8b5cf6; --text:#e8eef7; --muted:#8b9bb4; }
     * { box-sizing:border-box; }
@@ -334,6 +334,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .hist-item:hover,.hist-item:focus { color:var(--accent); outline:none; }
     #status,#loginStatus { color:var(--muted); font-size:.85rem; margin-left:.5rem; }
     .row { display:flex; gap:.5rem; align-items:center; } .row > * { flex:1; }
+    .row > .row-action { flex:0 0 auto; padding-top:1.1rem; }
+    .parallel-option { margin-bottom:.7rem; }
+    .parallel-option label { display:inline; }
+    .card h2.answer-heading { margin-top:.75rem; }
+    .rationale { margin-bottom:.5rem; }
   </style>
 </head>
 <body>
@@ -348,16 +353,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <main id="appView" class="layout" hidden>
     <div>
       <div class="card"><div class="row"><div><label for="workspace">Workspace</label><select id="workspace"></select></div>
-        <div style="flex:0 0 auto;padding-top:1.1rem"><button id="logoutBtn" class="secondary" type="button">Abmelden</button></div></div></div>
+        <div class="row-action"><button id="logoutBtn" class="secondary" type="button">Abmelden</button></div></div></div>
       <div class="card">
         <h2>Neues Ziel</h2>
         <label for="goal">Ziel</label><textarea id="goal" maxlength="20000" placeholder="Was soll erreicht werden?"></textarea>
         <label for="dod">Definition of Done</label><input id="dod" maxlength="5000" value="Eine klare, überprüfbare Antwort liegt vor."/>
-        <div style="margin-bottom:.7rem"><label style="display:inline"><input type="checkbox" id="parallel"/> Parallel</label></div>
+        <div class="parallel-option"><label><input type="checkbox" id="parallel"/> Parallel</label></div>
         <button id="runBtn" type="button">TankAI starten</button><span id="status"></span>
       </div>
-      <div class="card" id="outCard" hidden><div id="badges"></div><h2 style="margin-top:.75rem">Antwort</h2><div id="answer"></div></div>
-      <div class="card" id="planCard" hidden><h2>Plan</h2><div id="rationale" class="ver" style="margin-bottom:.5rem"></div>
+      <div class="card" id="outCard" hidden><div id="badges"></div><h2 class="answer-heading">Antwort</h2><div id="answer"></div></div>
+      <div class="card" id="planCard" hidden><h2>Plan</h2><div id="rationale" class="ver rationale"></div>
         <table><thead><tr><th>#</th><th>Typ</th><th>Beschreibung</th><th>Status</th></tr></thead><tbody id="planBody"></tbody></table></div>
       <div class="card" id="receiptCard" hidden><h2>Receipts</h2>
         <table><thead><tr><th>Actor</th><th>Action</th><th>OK</th><th>Summary</th></tr></thead><tbody id="receiptBody"></tbody></table></div>
@@ -435,20 +440,20 @@ class Handler(BaseHTTPRequestHandler):
         self,
         *,
         cache_control: str = "no-store",
-        script_nonce: str | None = None,
+        content_nonce: str | None = None,
     ) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", cache_control)
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-        script_policy = (
-            f"'nonce-{script_nonce}'" if script_nonce is not None else "'none'"
+        inline_policy = (
+            f"'nonce-{content_nonce}'" if content_nonce is not None else "'none'"
         )
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; base-uri 'none'; object-src 'none'; "
-            f"script-src {script_policy}; style-src 'self' 'unsafe-inline'; "
+            f"script-src {inline_policy}; style-src {inline_policy}; "
             "connect-src 'self'; frame-ancestors 'none'; form-action 'self'",
         )
 
@@ -821,7 +826,7 @@ class Handler(BaseHTTPRequestHandler):
             body = _render_html(csp_nonce).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self._security_headers(script_nonce=csp_nonce)
+            self._security_headers(content_nonce=csp_nonce)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
