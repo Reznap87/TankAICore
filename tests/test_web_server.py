@@ -440,8 +440,12 @@ def test_html_uses_a_fresh_matching_csp_nonce_per_response(
                 assert match is not None
                 nonce = match.group(1)
                 assert re.fullmatch(r"[A-Za-z0-9_-]+", nonce)
+                assert f"style-src 'nonce-{nonce}'" in policy
+                assert "unsafe-inline" not in policy
                 body = response.read().decode("utf-8")
+                assert body.count(f'<style nonce="{nonce}">') == 1
                 assert body.count(f'<script nonce="{nonce}">') == 1
+                assert "style=" not in body
                 assert "__CSP_NONCE__" not in body
                 nonces.append(nonce)
         assert nonces[0] != nonces[1]
@@ -449,6 +453,8 @@ def test_html_uses_a_fresh_matching_csp_nonce_per_response(
         with urlopen(base + "/api/health", timeout=5) as response:
             policy = response.headers["Content-Security-Policy"]
             assert "script-src 'none'" in policy
+            assert "style-src 'none'" in policy
+            assert "unsafe-inline" not in policy
             assert "nonce-" not in policy
     finally:
         server.shutdown()
@@ -475,6 +481,8 @@ def test_brand_assets_are_served(tmp_path, monkeypatch) -> None:
                 assert response.headers["Cache-Control"] == "public, max-age=86400"
                 policy = response.headers["Content-Security-Policy"]
                 assert "script-src 'none'" in policy
+                assert "style-src 'none'" in policy
+                assert "unsafe-inline" not in policy
                 assert "nonce-" not in policy
                 assert response.read().startswith(signature)
     finally:
@@ -802,6 +810,8 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert status == 304
         assert unchanged_headers["ETag"] == capability_etag
         assert "script-src 'none'" in unchanged_headers["Content-Security-Policy"]
+        assert "style-src 'none'" in unchanged_headers["Content-Security-Policy"]
+        assert "unsafe-inline" not in unchanged_headers["Content-Security-Policy"]
         assert "nonce-" not in unchanged_headers["Content-Security-Policy"]
         assert unchanged is None
         status, _, unauthenticated_conditional = client.get(

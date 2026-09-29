@@ -74,13 +74,13 @@ SECURITY_HEADERS = {
 CSP_SCRIPT_NONE = re.compile(
     r"default-src 'self'; base-uri 'none'; object-src 'none'; "
     r"script-src 'none'; "
-    r"style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+    r"style-src 'none'; connect-src 'self'; "
     r"frame-ancestors 'none'; form-action 'self'\Z"
 )
 CSP_HTML_NONCE = re.compile(
     r"default-src 'self'; base-uri 'none'; object-src 'none'; "
     r"script-src 'nonce-(?P<nonce>[A-Za-z0-9_-]{24})'; "
-    r"style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+    r"style-src 'nonce-(?P=nonce)'; connect-src 'self'; "
     r"frame-ancestors 'none'; form-action 'self'\Z"
 )
 OPENER = build_opener(ProxyHandler({}))
@@ -570,9 +570,14 @@ def html_contract(base: str) -> None:
             raise Failure(f"{path}: HTML response is not UTF-8") from exc
         nonce = match.group("nonce")
         require(
+            body.count(f'<style nonce="{nonce}">') == 1,
+            f"{path}: HTML style nonce differs",
+        )
+        require(
             body.count(f'<script nonce="{nonce}">') == 1,
             f"{path}: HTML nonce differs",
         )
+        require("style=" not in body, f"{path}: inline style attribute present")
         require("__CSP_NONCE__" not in body, f"{path}: nonce placeholder leaked")
         nonces.append(nonce)
     require(nonces[0] != nonces[1], "HTML nonce was reused")

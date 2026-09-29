@@ -782,7 +782,9 @@ def run_selftest() -> int:
         assert "textContent" in rendered_html
         assert "__CSP_NONCE__" in HTML_TEMPLATE
         assert "__CSP_NONCE__" not in rendered_html
+        assert '<style nonce="selftest-nonce">' in rendered_html
         assert '<script nonce="selftest-nonce">' in rendered_html
+        assert "style=" not in rendered_html
         _ok("Web-Rendering mit CSP-Nonce ohne dynamisches innerHTML")
     except Exception as exc:
         _fail("Web-Sicherheit", exc)

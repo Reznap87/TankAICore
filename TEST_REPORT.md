@@ -1,8 +1,27 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 28. September 2026
+**Statusdatum:** 29. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Nonce-gebundene Inline-Styles v1 — Nachweis 29. September 2026
+
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 219 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- Queue-/Webserver-/Reality-Contract-Regressionen: 52 PASS; gezielter HTML-CSP-Test: PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- TypeScript-Typecheck: PASS; Wrangler-Typgenerierung, Produktions-Dry-Run und
+  Container-Smoke bleiben verpflichtende GitHub-CI-Gates
+- `git diff --check` und Credential-Pattern-Scan der geänderten Zeilen: PASS
+- geprüft: HTML-CSP und DOM tragen für Skript und Style exakt denselben frischen Nonce;
+  aufeinanderfolgende Antworten verwenden unterschiedliche Werte
+- geprüft: kein `style`-Attribut und kein `unsafe-inline` verbleibt; JSON-, `304`- und
+  Asset-Antworten setzen `script-src 'none'` und `style-src 'none'`
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets, Provider, Berechtigungen,
+  Produktion oder Deployments verändert
 
 ## Unreleased: Per-Response-CSP-Nonce v1 — Nachweis 28. September 2026
 

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Nonce-gebundene Inline-Styles v1
+
+- Der bestehende frische HTML-Antwort-Nonce schützt jetzt sowohl das eingebettete Skript als
+  auch den eingebetteten Stylesheet-Block.
+- Die pauschale CSP-Freigabe `style-src 'unsafe-inline'` entfällt. Vier feste
+  `style`-Attribute wurden ohne Darstellungsverlust in benannte CSS-Klassen verschoben.
+- JSON-, `304`- und statische Asset-Antworten sperren nun Skripte und Styles jeweils mit
+  `'none'`; der Produktions-Container-Smoke prüft den vollständigen Vertrag.
+
 ### Per-Response-CSP-Nonce v1
 
 - Jede HTML-Antwort erhält einen frisch erzeugten, URL-sicheren CSP-Nonce, der ausschließlich
