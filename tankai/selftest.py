@@ -775,7 +775,11 @@ def run_selftest() -> int:
         failed += 1
 
     try:
-        from tankai.web.server import HTML_TEMPLATE, _render_html
+        from tankai.web.server import (
+            HTML_TEMPLATE,
+            _CROSS_ORIGIN_SECURITY_HEADERS,
+            _render_html,
+        )
         rendered_html = _render_html("selftest-nonce")
         assert ".innerHTML" not in rendered_html
         assert "catch{}" not in rendered_html
@@ -785,7 +789,13 @@ def run_selftest() -> int:
         assert '<style nonce="selftest-nonce">' in rendered_html
         assert '<script nonce="selftest-nonce">' in rendered_html
         assert "style=" not in rendered_html
-        _ok("Web-Rendering mit CSP-Nonce ohne dynamisches innerHTML")
+        assert dict(_CROSS_ORIGIN_SECURITY_HEADERS) == {
+            "Cross-Origin-Opener-Policy": "same-origin",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "Origin-Agent-Cluster": "?1",
+            "X-Permitted-Cross-Domain-Policies": "none",
+        }
+        _ok("Web-Rendering mit Nonce und Cross-Origin-Isolation")
     except Exception as exc:
         _fail("Web-Sicherheit", exc)
         failed += 1

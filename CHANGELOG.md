@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Cross-Origin-Response-Isolation v1
+
+- Alle HTML-, JSON-, `304`- und Asset-Antworten setzen jetzt einheitlich
+  `Cross-Origin-Opener-Policy: same-origin` und
+  `Cross-Origin-Resource-Policy: same-origin`.
+- `Origin-Agent-Cluster: ?1` bindet Dokumente an einen origin-spezifischen Agent-Cluster;
+  `X-Permitted-Cross-Domain-Policies: none` sperrt veraltete Cross-Domain-Policy-Dateien.
+- CSP-, Cache-, Session-, API- und Authentifizierungsverträge bleiben unverändert; der
+  Produktions-Container-Smoke prüft jeden Header mit exakt einem Wert.
+
 ### Nonce-gebundene Inline-Styles v1
 
 - Der bestehende frische HTML-Antwort-Nonce schützt jetzt sowohl das eingebettete Skript als

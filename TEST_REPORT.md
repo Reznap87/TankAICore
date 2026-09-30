@@ -1,8 +1,27 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 29. September 2026
+**Statusdatum:** 30. September 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Cross-Origin-Response-Isolation v1 — Nachweis 30. September 2026
+
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 219 PASS
+- `PYTHONUTF8=1 python -m tankai --selftest`: 24 PASS
+- Queue-/Webserver-/Reality-Contract-Regressionen: 52 PASS
+- `python -m pip check`: PASS
+- `npm audit --omit=dev --offline`: 0 bekannte Funde
+- TypeScript-Typecheck und Wrangler-Typgenerierung: PASS
+- der lokale Wrangler-Produktions-Dry-Run erreichte die Container-Build-Grenze und stoppte
+  erwartungsgemäß, weil in der Ausführungsumgebung keine Docker-CLI verfügbar ist;
+  Produktions-Dry-Run, Container-Build und Container-Smoke bleiben verpflichtende GitHub-CI-Gates
+- geprüft wird: HTML-, JSON-, `304`- und statische Asset-Antworten enthalten COOP, CORP,
+  Origin-Agent-Cluster und die Sperre veralteter Cross-Domain-Policies jeweils exakt einmal
+- CSP-, Cache-, Session-, Auth-, Provider- und API-Verträge bleiben unverändert
+- keine Queue, kein Worker, Service-Agent oder Token außerhalb isolierter temporärer
+  Testdatenbanken aktiviert beziehungsweise erzeugt; keine Secrets, Provider, Berechtigungen,
+  Produktion oder Deployments verändert
 
 ## Unreleased: Nonce-gebundene Inline-Styles v1 — Nachweis 29. September 2026
 
