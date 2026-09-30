@@ -10,10 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.29" in current
-    assert "Statusdatum: 29. September 2026" in current
-    assert "4a8f530dc371cfe0c8456701d83c7525f3a0204b" in current
-    assert "455ae456f0158f4ab6890c3bee4b5fa6ee73ac27" in current
+    assert "Version: 5.7.30" in current
+    assert "Statusdatum: 30. September 2026" in current
+    assert "3394d1c6ba37a384c63638d2b1d5f70d4c5cb396" in current
+    assert "40238fdcb0ba896d274995504d4882d9cf099eba" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -63,6 +63,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #115" in current
     assert "TankAI Core CI Run #117" in current
     assert "TankAI Core CI Run #118" in current
+    assert "TankAI Core CI Run #119" in current
+    assert "TankAI Core CI Run #120" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -82,6 +84,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #61" in current
     assert "PR #62" in current
     assert "PR #63" in current
+    assert "PR #64" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -137,6 +140,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "development.external_agent_retry_contract.v1 -> IMPLEMENTED" in current
     assert "security.web.per_response_csp_nonce.v1 -> IMPLEMENTED" in current
     assert "security.web.nonce_bound_inline_styles.v1 -> IMPLEMENTED" in current
+    assert "security.web.cross_origin_response_isolation.v1 -> IMPLEMENTED" in current
     assert "ops.ci.node24_action_runtime -> IMPLEMENTED" in current
     assert "development.local_qwen25_coder_runtime -> IMPLEMENTED" in current
     assert "development.local_qwen25_coder_model_integrity -> IMPLEMENTED" in current

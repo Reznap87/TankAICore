@@ -285,6 +285,10 @@ def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
         assert health["auth_required"] is True
         assert "llm" not in health
         assert headers["X-Content-Type-Options"] == "nosniff"
+        assert headers["Cross-Origin-Opener-Policy"] == "same-origin"
+        assert headers["Cross-Origin-Resource-Policy"] == "same-origin"
+        assert headers["Origin-Agent-Cluster"] == "?1"
+        assert headers["X-Permitted-Cross-Domain-Policies"] == "none"
         assert "Content-Security-Policy" in headers
 
         status, _, denied = user_a.get("/api/auth/me")
@@ -435,6 +439,9 @@ def test_html_uses_a_fresh_matching_csp_nonce_per_response(
         for path in ("/", "/index.html"):
             with urlopen(base + path, timeout=5) as response:
                 assert response.status == 200
+                assert response.headers["Cross-Origin-Opener-Policy"] == "same-origin"
+                assert response.headers["Cross-Origin-Resource-Policy"] == "same-origin"
+                assert response.headers["Origin-Agent-Cluster"] == "?1"
                 policy = response.headers["Content-Security-Policy"]
                 match = re.search(r"script-src 'nonce-([^']+)'", policy)
                 assert match is not None
@@ -479,6 +486,8 @@ def test_brand_assets_are_served(tmp_path, monkeypatch) -> None:
                 assert response.status == 200
                 assert response.headers.get_content_type() == content_type
                 assert response.headers["Cache-Control"] == "public, max-age=86400"
+                assert response.headers["Cross-Origin-Resource-Policy"] == "same-origin"
+                assert response.headers["X-Permitted-Cross-Domain-Policies"] == "none"
                 policy = response.headers["Content-Security-Policy"]
                 assert "script-src 'none'" in policy
                 assert "style-src 'none'" in policy
@@ -1579,6 +1588,10 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert unchanged is None
         assert unchanged_headers["ETag"] == job_etag
         assert unchanged_headers["Cache-Control"] == "no-store"
+        assert unchanged_headers["Cross-Origin-Opener-Policy"] == "same-origin"
+        assert unchanged_headers["Cross-Origin-Resource-Policy"] == "same-origin"
+        assert unchanged_headers["Origin-Agent-Cluster"] == "?1"
+        assert unchanged_headers["X-Permitted-Cross-Domain-Policies"] == "none"
 
         status, history_headers, history = client.get(
             f"/api/v1/jobs/{job_id}/history", bearer=secret

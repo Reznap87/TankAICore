@@ -99,6 +99,12 @@ _BRAND_ASSETS = {
         (_BRAND_ASSET_ROOT / "apple-touch-icon.png").read_bytes(),
     ),
 }
+_CROSS_ORIGIN_SECURITY_HEADERS = (
+    ("Cross-Origin-Opener-Policy", "same-origin"),
+    ("Cross-Origin-Resource-Policy", "same-origin"),
+    ("Origin-Agent-Cluster", "?1"),
+    ("X-Permitted-Cross-Domain-Policies", "none"),
+)
 
 
 def _env(name: str, default: str = "") -> str:
@@ -445,6 +451,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
+        for name, value in _CROSS_ORIGIN_SECURITY_HEADERS:
+            self.send_header(name, value)
         self.send_header("Cache-Control", cache_control)
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         inline_policy = (
