@@ -1,8 +1,23 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 30. September 2026
+**Statusdatum:** 1. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Cloudflare-Toolchain-Abhängigkeitssicherheit v1 — Nachweis 1. Oktober 2026
+
+- `python -m compileall -q tankai tests`: PASS
+- `python -m pytest -q`: 220 PASS
+- `python -m tankai --selftest`: 24 PASS
+- gezielte Toolchain-/Reality-Contract-Regressionen: 2 PASS
+- `npm ci --ignore-scripts`: PASS
+- vollständiger `npm audit --audit-level=high`: 0 bekannte Funde
+- Produktionsabhängigkeits-Audit mit `--omit=dev`: 0 bekannte Funde
+- Wrangler `4.145.0`-Typgenerierung und TypeScript-`--noEmit`: PASS
+- Worker-Dry-Run mit `--containers-rollout=none`: PASS
+- vollständiger Produktions-Dry-Run und Container-Smoke bleiben mangels lokaler Docker-CLI
+  verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Secrets, Berechtigungen, Provider, Server, Produktion oder Deployments verändert
 
 ## Unreleased: Cross-Origin-Response-Isolation v1 — Nachweis 30. September 2026
 
