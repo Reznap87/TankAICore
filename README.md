@@ -78,7 +78,9 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 - Externe GitHub Actions sind auf vollständige Commit-SHAs festgesetzt; alle verwendeten
   offiziellen First-Party-JavaScript-Actions laufen auf Node.js 24. Verwendet werden
   `checkout` v7.0.1, `setup-python` v7.0.0, `setup-node` v7.0.0 und `upload-artifact` v6.0.0.
-  Wrangler bleibt für den Produktionsworkflow auf `4.124.0` festgesetzt.
+  Wrangler bleibt für den Produktionsworkflow auf `4.145.0` festgesetzt; das zugehörige
+  Lockfile bindet die gegen die aktuellen High-Severity-Advisories gehärteten `sharp`- und
+  `undici`-Versionen.
 
 ## Was 1.9.0 zusätzlich umsetzt
 

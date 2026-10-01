@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Cloudflare-Toolchain-Abhängigkeitssicherheit v1
+
+- Wrangler ist exakt von `4.124.0` auf `4.145.0` aktualisiert; das Lockfile bindet dadurch
+  Miniflare `5.20260930.0-alpha`, Sharp `0.35.4` und Undici `7.29.1`.
+- Der vollständige npm-Audit ist wieder ohne bekannte Funde. Ein Regressionstest schützt die
+  direkten und transitiven Sicherheitspins vor einem unbemerkten Rückfall.
+- Worker-, Container-, Provider-, Secret- und Deploymentverträge bleiben unverändert; die
+  Änderung betrifft ausschließlich Entwicklungs- und CI-Werkzeuge.
+
 ### Cross-Origin-Response-Isolation v1
 
 - Alle HTML-, JSON-, `304`- und Asset-Antworten setzen jetzt einheitlich

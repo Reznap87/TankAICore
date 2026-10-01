@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.30
+Version: 5.7.31
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 30. September 2026
+Statusdatum: 1. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 30. September 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 1. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.30-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.31-Inkrements:
 
-3394d1c6ba37a384c63638d2b1d5f70d4c5cb396
+4646cfe9a29e5937b43bbb94db28f5b62ac51a40
 
 Zugehöriger Repository-Git-Tree:
 
-40238fdcb0ba896d274995504d4882d9cf099eba
+177c81741692a8c199ddb11dfb3928bfe2db9a58
 
 Commit-Titel:
 
-security: bind inline styles to response nonce (#64)
+security: isolate cross-origin web responses (#65)
 
-Dieser Stand ist der Ausgangsstand des Cross-Origin-Response-Isolation-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des Cloudflare-Toolchain-Sicherheitsinkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 3394d1c6ba37a384c63638d2b1d5f70d4c5cb396 mit Git-Tree
-40238fdcb0ba896d274995504d4882d9cf099eba,
+geschützter main-Ausgangsstand 4646cfe9a29e5937b43bbb94db28f5b62ac51a40 mit Git-Tree
+177c81741692a8c199ddb11dfb3928bfe2db9a58,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Cross-Origin-Response-Isolation-Inkrement nicht wiederholt,
+Cloudflare-Toolchain-Sicherheitsinkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -512,6 +512,20 @@ TankAI Core CI Run #120, Run 36532649973, auf dem gemergten main-Commit
 3394d1c6ba37a384c63638d2b1d5f70d4c5cb396: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+die einheitliche Cross-Origin-Response-Isolation aus PR #65; HTML-, JSON-, `304`- und
+Asset-Antworten setzen COOP und CORP auf `same-origin`, fordern einen origin-spezifischen
+Agent-Cluster an und sperren veraltete Cross-Domain-Policy-Dateien,
+
+TankAI Core CI Run #121, Run 36681693306, auf dem finalen PR-#65-Head
+a6aecd1e5559d2520d29c9db4e14ea4ecf830baf: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Cross-Origin-Header-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und verschärftem Container-Smoke; PR #65 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #122, Run 36681922837, auf dem gemergten main-Commit
+4646cfe9a29e5937b43bbb94db28f5b62ac51a40: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -817,6 +831,13 @@ JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Rel
 `actions/upload-artifact` v6.0.0. Python 3.12, Node.js 22, Trigger, Caches, Berechtigungs-,
 Environment-, Secret-, Build-, Preflight-, Backup- und Deployverträge bleiben gleich.
 
+ops.cloudflare_toolchain_dependency_security.v1 -> IMPLEMENTED; Wrangler ist exakt auf
+`4.145.0` festgesetzt. Das Lockfile bindet dadurch Miniflare `5.20260930.0-alpha`, Sharp
+`0.35.4` und Undici `7.29.1`; der vollständige npm-Audit meldet keine bekannten Funde mehr.
+Eine Regression prüft die direkten und transitiven Pins. Die Abhängigkeiten bleiben reine
+Entwicklungs-/CI-Werkzeuge; Worker-, Container-, Provider-, Secret- und Deploymentverträge
+ändern sich nicht.
+
 development.local_qwen25_coder_runtime -> IMPLEMENTED; ein separater Compose-Override verbindet
 TankAI über den vorhandenen OpenAI-kompatiblen Adapter mit Qwen2.5-Coder-7B-Instruct Q4_K_M.
 Serverimage und Modellrevision sind unveränderlich gebunden, TankAI wartet auf den eingebauten
@@ -1031,6 +1052,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.31, 1. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 4646cfe9a29e5937b43bbb94db28f5b62ac51a40 / Tree
+177c81741692a8c199ddb11dfb3928bfe2db9a58 gebunden; PR #65 sowie CI Runs #121 und #122 als
+erfolgreichen Cross-Origin-Response-Isolations-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert. Die Cloudflare-Entwicklungstoolchain
+gegen die beim frischen npm-Audit belegten High-Severity-Funde in transitiven `sharp`- und
+`undici`-Versionen aktualisiert, ohne Runtime-, Provider-, Host- oder Produktionsverträge zu
+verändern.
 
 5.7.30, 30. September 2026:
 
