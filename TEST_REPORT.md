@@ -1,8 +1,29 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 1. Oktober 2026
+**Statusdatum:** 2. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Logout-Origin-Cleanup v1 — Nachweis 2. Oktober 2026
+
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 220 PASS
+- `python -m tankai --selftest`: 24 PASS
+- gezielte Logout-/Reality-Contract-Regressionen: 2 PASS
+- erfolgreicher Logout: serverseitiger Session-Widerruf und abgelaufenes
+  `tankai_session`-Cookie: PASS
+- `Clear-Site-Data: "cache", "cookies", "storage"` ausschließlich auf der erfolgreichen
+  Logout-Antwort: PASS
+- erneuter Zugriff mit dem widerrufenen Session-Token: HTTP 401 / PASS
+- Produktions-Container-Smoke um denselben Logout-Vertrag erweitert
+- `python -m pip check`: PASS
+- `npm ci --ignore-scripts`, vollständiger npm-Audit und Produktionsabhängigkeits-Audit:
+  PASS / 0 bekannte Funde
+- Wrangler-Typgenerierung, TypeScript-`--noEmit` und Worker-Dry-Run mit
+  `--containers-rollout=none`: PASS
+- Produktions-Container-Build und verschärfter Container-Smoke bleiben mangels lokaler
+  Docker-CLI verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Secrets, Berechtigungen, Provider, Server, Produktion oder Deployments verändert
 
 ## Unreleased: Cloudflare-Toolchain-Abhängigkeitssicherheit v1 — Nachweis 1. Oktober 2026
 

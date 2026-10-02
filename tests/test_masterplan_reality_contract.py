@@ -10,10 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.31" in current
-    assert "Statusdatum: 1. Oktober 2026" in current
-    assert "4646cfe9a29e5937b43bbb94db28f5b62ac51a40" in current
-    assert "177c81741692a8c199ddb11dfb3928bfe2db9a58" in current
+    assert "Version: 5.7.32" in current
+    assert "Statusdatum: 2. Oktober 2026" in current
+    assert "2132f9a4267b38a22385d7c47a0d4ac922252d9c" in current
+    assert "61dfb269e9f3417d96c446f6df94adf809abd89e" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -67,6 +67,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #120" in current
     assert "TankAI Core CI Run #121" in current
     assert "TankAI Core CI Run #122" in current
+    assert "TankAI Core CI Run #123" in current
+    assert "TankAI Core CI Run #124" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -88,6 +90,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #63" in current
     assert "PR #64" in current
     assert "PR #65" in current
+    assert "PR #66" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -144,6 +147,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "security.web.per_response_csp_nonce.v1 -> IMPLEMENTED" in current
     assert "security.web.nonce_bound_inline_styles.v1 -> IMPLEMENTED" in current
     assert "security.web.cross_origin_response_isolation.v1 -> IMPLEMENTED" in current
+    assert "security.web.logout_origin_cleanup.v1 -> IMPLEMENTED" in current
     assert "ops.ci.node24_action_runtime -> IMPLEMENTED" in current
     assert "ops.cloudflare_toolchain_dependency_security.v1 -> IMPLEMENTED" in current
     assert "development.local_qwen25_coder_runtime -> IMPLEMENTED" in current

@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.31
+Version: 5.7.32
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 1. Oktober 2026
+Statusdatum: 2. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 1. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 2. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.31-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.32-Inkrements:
 
-4646cfe9a29e5937b43bbb94db28f5b62ac51a40
+2132f9a4267b38a22385d7c47a0d4ac922252d9c
 
 Zugehöriger Repository-Git-Tree:
 
-177c81741692a8c199ddb11dfb3928bfe2db9a58
+61dfb269e9f3417d96c446f6df94adf809abd89e
 
 Commit-Titel:
 
-security: isolate cross-origin web responses (#65)
+security: update audited Cloudflare toolchain (#66)
 
-Dieser Stand ist der Ausgangsstand des Cloudflare-Toolchain-Sicherheitsinkrements. Ein
+Dieser Stand ist der Ausgangsstand des Logout-Origin-Cleanup-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 4646cfe9a29e5937b43bbb94db28f5b62ac51a40 mit Git-Tree
-177c81741692a8c199ddb11dfb3928bfe2db9a58,
+geschützter main-Ausgangsstand 2132f9a4267b38a22385d7c47a0d4ac922252d9c mit Git-Tree
+61dfb269e9f3417d96c446f6df94adf809abd89e,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Cloudflare-Toolchain-Sicherheitsinkrement nicht wiederholt,
+Logout-Origin-Cleanup-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -526,6 +526,20 @@ TankAI Core CI Run #122, Run 36681922837, auf dem gemergten main-Commit
 4646cfe9a29e5937b43bbb94db28f5b62ac51a40: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+die aktualisierte und sicherheitsgeprüfte Cloudflare-Entwicklungstoolchain aus PR #66 mit exakt
+gepinntem Wrangler `4.145.0` sowie gegen die belegten High-Severity-Advisories aktualisierten
+Sharp- und Undici-Abhängigkeiten,
+
+TankAI Core CI Run #123, Run 36827486123, auf dem finalen PR-#66-Head
+dca51d29febec1a087bc8aa8ab196332d602a1f4: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Toolchain-Sicherheitsregression, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und Container-Smoke; PR #66 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #124, Run 36827626347, auf dem gemergten main-Commit
+2132f9a4267b38a22385d7c47a0d4ac922252d9c: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -825,6 +839,12 @@ origin-spezifischen Agent-Cluster an und sperren veraltete Cross-Domain-Policy-D
 Produktions-Container-Smoke prüft jeden Header exakt einmal; CSP-, Cache-, Session-, API- und
 Authentifizierungsverträge bleiben unverändert.
 
+security.web.logout_origin_cleanup.v1 -> IMPLEMENTED; ein erfolgreicher, CSRF-geschützter
+Logout widerruft weiterhin die serverseitige Session und lässt das `HttpOnly`-Session-Cookie
+sofort ablaufen. Zusätzlich fordert die Antwort mit `Clear-Site-Data` die Löschung von Cache,
+Cookies und Origin-Storage an. Der Header bleibt auf diesen erfolgreichen Pfad begrenzt; der
+Produktions-Container-Smoke prüft auch die anschließende Ablehnung des widerrufenen Tokens.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -1052,6 +1072,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.32, 2. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 2132f9a4267b38a22385d7c47a0d4ac922252d9c / Tree
+61dfb269e9f3417d96c446f6df94adf809abd89e gebunden; PR #66 sowie CI Runs #123 und #124 als
+erfolgreichen Cloudflare-Toolchain-Sicherheitsnachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert. Den erfolgreichen Logout um eine
+standardisierte Löschanforderung für Cache, Cookies und Origin-Storage ergänzt, ohne
+Authentifizierungs-, Provider-, Host- oder Produktionsgrenzen zu lockern.
 
 5.7.31, 1. Oktober 2026:
 
