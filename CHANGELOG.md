@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Logout-Origin-Cleanup v1
+
+- Ein erfolgreicher, CSRF-geschützter Logout löscht neben der serverseitigen Session und dem
+  `HttpOnly`-Cookie jetzt auch Browser-Cache, Cookies und Origin-Storage über den standardisierten
+  `Clear-Site-Data`-Header.
+- Der Header wird ausschließlich auf der erfolgreichen Logout-Antwort gesetzt. Ignoriert ein
+  Client den Header, bleiben der bisherige Cookie-Ablauf und der serverseitige Session-Widerruf
+  unverändert wirksam.
+- Der Produktions-Container-Smoke prüft Header, Cookie-Löschung und die Ablehnung eines erneuten
+  Zugriffs mit dem widerrufenen Session-Token.
+
 ### Cloudflare-Toolchain-Abhängigkeitssicherheit v1
 
 - Wrangler ist exakt von `4.124.0` auf `4.145.0` aktualisiert; das Lockfile bindet dadurch

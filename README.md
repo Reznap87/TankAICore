@@ -61,7 +61,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
 | Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, sichere DOM-Erzeugung |
-| Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz |
+| Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz und Origin-Cleanup beim Logout |
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
 | Produktionsreife | Kontrollierter Single-Host-Betrieb möglich; reale Runtime-E2E-Prüfung, Multi-Host-Koordination, Image-Signaturprüfung, Credential-Broker und Monitoring fehlen |
@@ -329,6 +329,9 @@ Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root R
 - Opaque, widerrufbare Sessions in einer `HttpOnly`-/`SameSite=Strict`-Cookie; bei HTTPS wird `Secure` gesetzt.
 - CSRF-Token für alle zustandsändernden authentifizierten API-Aufrufe.
 - Anmeldung, Abmeldung, Session-Auflösung und vollständige Session-Invalidierung nach Passwortwechsel.
+- Erfolgreiche Abmeldungen widerrufen die serverseitige Session, lassen das Session-Cookie sofort
+  ablaufen und senden `Clear-Site-Data: "cache", "cookies", "storage"`, damit unterstützende
+  Browser zusätzlich Origin-Cache und lokalen Storage entfernen.
 - Persistente Mandanten, Workspaces und serverseitig geprüfte Memberships mit `owner`, `admin` und `member`.
 - Die aktive Workspace-ID stammt aus der autorisierten Session. Vom Client übermittelte Nutzer-IDs werden nicht für Datenzugriffe akzeptiert.
 - Jeder Workspace besitzt getrennte `memory.db`, `ltm.db`, `vectors.npz`, `runs.jsonl`, `web_history.jsonl` und `cold/` unter einer validierten Datenwurzel.

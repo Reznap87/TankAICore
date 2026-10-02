@@ -702,7 +702,7 @@ def login_contract(
     identifiers: dict[str, str],
     email: str,
     password: str,
-) -> None:
+) -> tuple[str, str]:
     code, headers, payload = request_json(
         base,
         "POST",
@@ -799,8 +799,65 @@ def login_contract(
         raise Failure("cookie max-age invalid") from exc
     require(1 <= max_age <= 43_200, "cookie max-age outside contract")
 
-    # OPENER has no cookie processor. Never replay the Secure cookie over HTTP.
+    # OPENER has no cookie processor; ordinary requests never replay this Secure cookie.
+    # The dedicated logout contract below replays it once against loopback only.
     unauthenticated_me(base)
+    return set_cookie[0].split(";", 1)[0], payload["csrf_token"]
+
+
+def logout_contract(base: str, cookie: str, csrf_token: str) -> None:
+    request = Request(
+        base + "/api/auth/logout",
+        data=b"{}",
+        headers={
+            "Accept": "application/json",
+            "Connection": "close",
+            "Content-Type": "application/json",
+            "Cookie": cookie,
+            "X-CSRF-Token": csrf_token,
+        },
+        method="POST",
+    )
+    with OPENER.open(request, timeout=5.0) as response:
+        require(response.status == 200, "logout is not 200")
+        headers = response.headers
+        payload = read_json(response)
+    require(payload == {"ok": True}, "logout response differs")
+    require(
+        (headers.get_all("Clear-Site-Data") or [])
+        == ['"cache", "cookies", "storage"'],
+        "logout Clear-Site-Data differs",
+    )
+    set_cookie = headers.get_all("Set-Cookie") or []
+    require(len(set_cookie) == 1, "logout does not clear exactly one cookie")
+    cleared = SimpleCookie()
+    cleared.load(set_cookie[0])
+    require(set(cleared) == {"tankai_session"}, "logout cookie name differs")
+    morsel = cleared["tankai_session"]
+    require(not morsel.value, "logout cookie is not empty")
+    require(morsel["max-age"] == "0", "logout cookie max-age differs")
+    security_headers(headers, CSP_SCRIPT_NONE)
+
+    # The server-side session must be revoked even if a client ignores Clear-Site-Data.
+    replay = Request(
+        base + "/api/auth/me",
+        headers={
+            "Accept": "application/json",
+            "Connection": "close",
+            "Cookie": cookie,
+        },
+        method="GET",
+    )
+    try:
+        OPENER.open(replay, timeout=5.0)
+    except HTTPError as exc:
+        require(exc.code == 401, "revoked session replay is not 401")
+        require(
+            read_json(exc) == {"error": "Nicht angemeldet"},
+            "revoked session response differs",
+        )
+    else:
+        raise Failure("revoked session replay succeeded")
 
 
 FS_PROBE = r"""
@@ -1068,7 +1125,8 @@ def smoke(
     registration_disabled(base)
     identifiers, email, password = create_user(container, scope)
     filesystem_contract(container)
-    login_contract(base, identifiers, email, password)
+    cookie, csrf_token = login_contract(base, identifiers, email, password)
+    logout_contract(base, cookie, csrf_token)
 
 
 def arguments() -> argparse.Namespace:

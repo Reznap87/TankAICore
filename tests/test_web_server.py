@@ -375,8 +375,20 @@ def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
             data_root / tenant_b / "workspaces" / workspace_b
         ).resolve()
 
-        status, _, logged_out = user_a.post("/api/auth/logout", {}, csrf=csrf_a)
+        status, rejected_headers, rejected_logout = user_a.post(
+            "/api/auth/logout", {}, csrf="invalid"
+        )
+        assert status == 403
+        assert "CSRF" in rejected_logout["error"]
+        assert "Clear-Site-Data" not in rejected_headers
+
+        status, logout_headers, logged_out = user_a.post(
+            "/api/auth/logout", {}, csrf=csrf_a
+        )
         assert status == 200 and logged_out["ok"] is True
+        assert logout_headers["Clear-Site-Data"] == '"cache", "cookies", "storage"'
+        assert "tankai_session=" in logout_headers["Set-Cookie"]
+        assert "Max-Age=0" in logout_headers["Set-Cookie"]
         status, _, _ = user_a.get("/api/auth/me")
         assert status == 401
     finally:

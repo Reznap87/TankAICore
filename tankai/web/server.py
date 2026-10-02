@@ -105,6 +105,7 @@ _CROSS_ORIGIN_SECURITY_HEADERS = (
     ("Origin-Agent-Cluster", "?1"),
     ("X-Permitted-Cross-Domain-Policies", "none"),
 )
+_LOGOUT_CLEAR_SITE_DATA = '"cache", "cookies", "storage"'
 
 
 def _env(name: str, default: str = "") -> str:
@@ -986,7 +987,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/auth/logout":
             if self.app.auth_mode != "disabled":
                 self.app.auth.revoke_session(context.session_id, user_id=context.user_id)
-            self._json({"ok": True}, set_cookie=self._session_cookie("", 0))
+            self._json(
+                {"ok": True},
+                set_cookie=self._session_cookie("", 0),
+                headers={"Clear-Site-Data": _LOGOUT_CLEAR_SITE_DATA},
+            )
             return
         if path == "/api/workspaces/select":
             data = self._read_json(max_bytes=10_000)
