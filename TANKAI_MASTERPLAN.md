@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.32
+Version: 5.7.33
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 2. Oktober 2026
+Statusdatum: 3. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 2. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 3. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.32-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.33-Inkrements:
 
-2132f9a4267b38a22385d7c47a0d4ac922252d9c
+8052449647edbb669049e9c6ca394b7f5a2f1cfb
 
 Zugehöriger Repository-Git-Tree:
 
-61dfb269e9f3417d96c446f6df94adf809abd89e
+9227920c792752941a05cdc52d8b2add209ef01b
 
 Commit-Titel:
 
-security: update audited Cloudflare toolchain (#66)
+security: clear origin data on logout (#67)
 
-Dieser Stand ist der Ausgangsstand des Logout-Origin-Cleanup-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des HSTS-Policy-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,8 +99,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 2132f9a4267b38a22385d7c47a0d4ac922252d9c mit Git-Tree
-61dfb269e9f3417d96c446f6df94adf809abd89e,
+geschützter main-Ausgangsstand 8052449647edbb669049e9c6ca394b7f5a2f1cfb mit Git-Tree
+9227920c792752941a05cdc52d8b2add209ef01b,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
@@ -540,6 +540,20 @@ TankAI Core CI Run #124, Run 36827626347, auf dem gemergten main-Commit
 2132f9a4267b38a22385d7c47a0d4ac922252d9c: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+das erfolgreiche Logout-Origin-Cleanup aus PR #67; der CSRF-geschützte Logout widerruft die
+Session, lässt das Session-Cookie ablaufen und fordert zusätzlich die Löschung von Cache,
+Cookies und Origin-Storage an,
+
+TankAI Core CI Run #125, Run 36972677948, auf dem finalen PR-#67-Head
+3761bbd637704904b9b7df882b3bdbde14d1e5fa: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Logout-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und verschärftem Container-Smoke; PR #67 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #126, Run 36972802225, auf dem gemergten main-Commit
+8052449647edbb669049e9c6ca394b7f5a2f1cfb: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Logout-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -845,6 +859,13 @@ sofort ablaufen. Zusätzlich fordert die Antwort mit `Clear-Site-Data` die Lösc
 Cookies und Origin-Storage an. Der Header bleibt auf diesen erfolgreichen Pfad begrenzt; der
 Produktions-Container-Smoke prüft auch die anschließende Ablehnung des widerrufenen Tokens.
 
+security.web.hsts_policy.v1 -> IMPLEMENTED; Antworten setzen
+`Strict-Transport-Security` ausschließlich, wenn sichere Session-Cookies aktiviert sind. Der
+Standardwert beträgt ein Jahr und ist auf 0 bis zwei Jahre begrenzt; `includeSubDomains` und
+`preload` bleiben bewusst aus. Lokale HTTP-Entwicklung mit deaktivierten Secure-Cookies erhält
+keinen HSTS-Header. Der Produktions-Container-Smoke prüft den exakten Header auf allen
+Antwortklassen.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -1072,6 +1093,14 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.33, 3. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 8052449647edbb669049e9c6ca394b7f5a2f1cfb / Tree
+9227920c792752941a05cdc52d8b2add209ef01b gebunden; PR #67 sowie CI Runs #125 und #126 als
+erfolgreichen Logout-Origin-Cleanup-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. HSTS an den sicheren Cookie-/Produktionsmodus
+gebunden, ohne lokale HTTP-Entwicklung, Subdomains, Provider, Hosts oder Produktion zu verändern.
 
 5.7.32, 2. Oktober 2026:
 

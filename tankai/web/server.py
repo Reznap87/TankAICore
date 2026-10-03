@@ -235,6 +235,7 @@ class AppContext:
     runtimes: WorkspaceRuntimeManager
     job_queue: DevelopmentJobQueue | None
     cookie_secure: bool
+    hsts_seconds: int
     allow_registration: bool
     login_limiter: LoginRateLimiter
     provider_limiter: ProviderCallRateLimiter
@@ -276,6 +277,9 @@ class AppContext:
             runtimes=WorkspaceRuntimeManager(data_root),
             job_queue=job_queue,
             cookie_secure=cookie_secure,
+            hsts_seconds=_safe_int(
+                "TANKAI_HSTS_SECONDS", 31_536_000, 0, 63_072_000
+            ),
             allow_registration=_env_bool("TANKAI_ALLOW_REGISTRATION", False),
             login_limiter=LoginRateLimiter(
                 limit=_safe_int("TANKAI_LOGIN_ATTEMPTS", 5, 3, 20),
@@ -454,6 +458,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         for name, value in _CROSS_ORIGIN_SECURITY_HEADERS:
             self.send_header(name, value)
+        if self.app.cookie_secure:
+            self.send_header(
+                "Strict-Transport-Security",
+                f"max-age={self.app.hsts_seconds}",
+            )
         self.send_header("Cache-Control", cache_control)
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         inline_policy = (

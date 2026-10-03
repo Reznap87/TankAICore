@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### HSTS-Policy v1
+
+- Antworten senden `Strict-Transport-Security` nur im sicheren Cookie-/Produktionsmodus; lokale
+  HTTP-Entwicklung bleibt ohne HSTS.
+- Die Richtlinie verwendet standardmäßig `max-age=31536000` und kann kontrolliert zwischen 0
+  und 63072000 Sekunden gesetzt werden. `includeSubDomains` und `preload` bleiben bewusst aus.
+- Der Produktions-Container-Smoke prüft den Header auf HTML-, JSON-, Asset-, `304`- und
+  Logout-Antworten gemeinsam mit den bestehenden Sicherheitsheadern.
+
 ### Logout-Origin-Cleanup v1
 
 - Ein erfolgreicher, CSRF-geschützter Logout löscht neben der serverseitigen Session und dem

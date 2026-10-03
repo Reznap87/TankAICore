@@ -60,7 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
-| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, sichere DOM-Erzeugung |
+| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, produktionsgebundenes HSTS, sichere DOM-Erzeugung |
 | Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz und Origin-Cleanup beim Logout |
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
@@ -352,7 +352,10 @@ printf '%s\n' 'EIN-LANGES-SICHERES-PASSWORT' | \
     --tenant TankAI --workspace Standard --password-stdin
 ```
 
-Danach `python -m tankai.web.server` starten und über die Weboberfläche anmelden. Für öffentlichen Betrieb muss der Dienst hinter HTTPS laufen und `TANKAI_COOKIE_SECURE=1` gesetzt sein.
+Danach `python -m tankai.web.server` starten und über die Weboberfläche anmelden. Für öffentlichen
+Betrieb muss der Dienst hinter HTTPS laufen und `TANKAI_COOKIE_SECURE=1` gesetzt sein. Nur in
+diesem sicheren Modus sendet TankAI HSTS; `TANKAI_HSTS_SECONDS` steuert die Dauer zwischen 0 und
+63072000 Sekunden (Standard: 31536000). `includeSubDomains` und `preload` bleiben bewusst aus.
 
 ### Migrationshinweis
 

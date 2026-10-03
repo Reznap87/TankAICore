@@ -1,8 +1,28 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 2. Oktober 2026
+**Statusdatum:** 3. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: HSTS-Policy v1 — Nachweis 3. Oktober 2026
+
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 221 PASS
+- `python -m tankai --selftest`: 24 PASS
+- gezielte Secure-/Insecure-HSTS- und Reality-Contract-Regressionen: 3 PASS
+- lokaler HTTP-Modus mit `TANKAI_COOKIE_SECURE=0`: kein HSTS-Header / PASS
+- sicherer Modus mit konfigurierter Dauer: exakt ein
+  `Strict-Transport-Security: max-age=86400` / PASS
+- Produktions-Container-Smoke prüft `max-age=31536000` auf allen bestehenden Antwortklassen
+- `python -m pip check`: PASS
+- `npm ci --ignore-scripts`, vollständiger npm-Audit und Produktionsabhängigkeits-Audit:
+  PASS / 0 bekannte Funde
+- Wrangler-Typgenerierung, TypeScript-`--noEmit` und Worker-Dry-Run mit
+  `--containers-rollout=none`: PASS
+- der vollständig konfigurierte Wrangler-Dry-Run erreichte erwartungsgemäß die lokale
+  Docker-Grenze; Produktions-Container-Build und HSTS-Smoke bleiben verpflichtende
+  GitHub-CI-Gates vor einem Merge
+- keine Secrets, Berechtigungen, Provider, Server, Produktion oder Deployments verändert
 
 ## Unreleased: Logout-Origin-Cleanup v1 — Nachweis 2. Oktober 2026
 
