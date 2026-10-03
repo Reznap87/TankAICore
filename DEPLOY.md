@@ -53,6 +53,7 @@ TANKAI_DATA_ROOT=/opt/tankai/.tankai/data
 TANKAI_AUTH_DB=/opt/tankai/.tankai/data/auth.db
 TANKAI_SESSION_HOURS=12
 TANKAI_COOKIE_SECURE=1
+TANKAI_HSTS_SECONDS=31536000
 TANKAI_ALLOW_REGISTRATION=0
 TANKAI_LOGIN_ATTEMPTS=5
 TANKAI_LOGIN_WINDOW=300
@@ -65,7 +66,11 @@ sudo chmod 700 /opt/tankai/.tankai /opt/tankai/.tankai/data
 sudo chown -R tankai:tankai /opt/tankai
 ```
 
-`TANKAI_COOKIE_SECURE=1` ist für HTTPS verbindlich. Direkter HTTP-Zugriff auf Port 8765 kann die Secure-Cookie nicht verwenden und ist nur für den Reverse Proxy vorgesehen.
+`TANKAI_COOKIE_SECURE=1` ist für HTTPS verbindlich. In diesem Modus sendet TankAI zusätzlich
+`Strict-Transport-Security: max-age=31536000`; `TANKAI_HSTS_SECONDS` ist auf 0 bis 63072000
+Sekunden begrenzt. `includeSubDomains` und `preload` werden bewusst nicht gesetzt. Direkter
+HTTP-Zugriff auf Port 8765 kann die Secure-Cookie nicht verwenden und ist nur für den Reverse
+Proxy vorgesehen.
 
 ## 4. Ersten Benutzer anlegen
 

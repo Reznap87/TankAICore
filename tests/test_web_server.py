@@ -289,6 +289,7 @@ def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
         assert headers["Cross-Origin-Resource-Policy"] == "same-origin"
         assert headers["Origin-Agent-Cluster"] == "?1"
         assert headers["X-Permitted-Cross-Domain-Policies"] == "none"
+        assert "Strict-Transport-Security" not in headers
         assert "Content-Security-Policy" in headers
 
         status, _, denied = user_a.get("/api/auth/me")
@@ -424,6 +425,31 @@ def test_registration_disabled_and_public_auth_disable_blocked(tmp_path, monkeyp
     monkeypatch.setenv("TANKAI_AUTH_MODE", "disabled")
     with pytest.raises(RuntimeError, match="nur auf Loopback"):
         web_server.AppContext.from_env("0.0.0.0")
+
+
+def test_hsts_is_bound_to_secure_cookie_mode(tmp_path, monkeypatch) -> None:
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("TANKAI_COOKIE_SECURE", "1")
+    monkeypatch.setenv("TANKAI_HSTS_SECONDS", "86400")
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(
+            f"http://127.0.0.1:{server.server_address[1]}/api/health",
+            timeout=5,
+        ) as response:
+            assert response.status == 200
+            assert response.headers.get_all("Strict-Transport-Security") == [
+                "max-age=86400"
+            ]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_html_uses_safe_dom_rendering() -> None:

@@ -35,6 +35,7 @@ ENVIRONMENT = (
     ("TANKAI_AUTH_DB", "/app/data/auth.db"),
     ("TANKAI_SESSION_HOURS", "12"),
     ("TANKAI_COOKIE_SECURE", "1"),
+    ("TANKAI_HSTS_SECONDS", "31536000"),
     ("TANKAI_ALLOW_REGISTRATION", "0"),
     ("TANKAI_DEV_QUEUE_ENABLED", "0"),
     ("TANKAI_LLM", "mock"),
@@ -72,6 +73,7 @@ SECURITY_HEADERS = {
     "Cross-Origin-Resource-Policy": "same-origin",
     "Origin-Agent-Cluster": "?1",
     "X-Permitted-Cross-Domain-Policies": "none",
+    "Strict-Transport-Security": "max-age=31536000",
     "Cache-Control": "no-store",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
