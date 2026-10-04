@@ -272,7 +272,9 @@ def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
     )
 
     app = web_server.AppContext.from_env("127.0.0.1")
-    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -392,6 +394,46 @@ def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
         assert "Max-Age=0" in logout_headers["Set-Cookie"]
         status, _, _ = user_a.get("/api/auth/me")
         assert status == 401
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_unsupported_http_methods_use_secure_405_contract(tmp_path, monkeypatch) -> None:
+    _configure(monkeypatch, tmp_path)
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        for method in ("DELETE", "TRACE", "BREW", "HEAD"):
+            request = Request(base + "/api/health", method=method)
+            with pytest.raises(HTTPError) as caught:
+                urlopen(request, timeout=5)
+            response = caught.value
+            try:
+                body = response.read()
+                headers = response.headers
+            finally:
+                response.close()
+
+            assert response.code == 405
+            assert headers.get_all("Allow") == ["GET, POST"]
+            assert headers.get_all("Content-Type") == [
+                "application/json; charset=utf-8"
+            ]
+            assert headers.get_all("X-Content-Type-Options") == ["nosniff"]
+            assert headers.get_all("X-Frame-Options") == ["DENY"]
+            assert headers.get_all("Cache-Control") == ["no-store"]
+            assert headers.get_all("Cross-Origin-Opener-Policy") == ["same-origin"]
+            assert "Strict-Transport-Security" not in headers
+            if method == "HEAD":
+                assert body == b""
+                assert int(headers["Content-Length"]) > 0
+            else:
+                assert json.loads(body) == {"error": "Methode nicht erlaubt"}
     finally:
         server.shutdown()
         server.server_close()

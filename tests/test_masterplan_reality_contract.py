@@ -10,10 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.33" in current
-    assert "Statusdatum: 3. Oktober 2026" in current
-    assert "8052449647edbb669049e9c6ca394b7f5a2f1cfb" in current
-    assert "9227920c792752941a05cdc52d8b2add209ef01b" in current
+    assert "Version: 5.7.34" in current
+    assert "Statusdatum: 4. Oktober 2026" in current
+    assert "4890ac064956579bd00dc0c828b2456842c6a38b" in current
+    assert "8816dbb338de7434d57eeea11b0593e1db184d5f" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -71,6 +71,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #124" in current
     assert "TankAI Core CI Run #125" in current
     assert "TankAI Core CI Run #126" in current
+    assert "TankAI Core CI Run #127" in current
+    assert "TankAI Core CI Run #128" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -94,6 +96,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #65" in current
     assert "PR #66" in current
     assert "PR #67" in current
+    assert "PR #68" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -152,6 +155,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "security.web.cross_origin_response_isolation.v1 -> IMPLEMENTED" in current
     assert "security.web.logout_origin_cleanup.v1 -> IMPLEMENTED" in current
     assert "security.web.hsts_policy.v1 -> IMPLEMENTED" in current
+    assert "security.web.http_method_rejection.v1 -> IMPLEMENTED" in current
     assert "ops.ci.node24_action_runtime -> IMPLEMENTED" in current
     assert "ops.cloudflare_toolchain_dependency_security.v1 -> IMPLEMENTED" in current
     assert "development.local_qwen25_coder_runtime -> IMPLEMENTED" in current

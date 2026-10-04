@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.33
+Version: 5.7.34
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 3. Oktober 2026
+Statusdatum: 4. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 3. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 4. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.33-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.34-Inkrements:
 
-8052449647edbb669049e9c6ca394b7f5a2f1cfb
+4890ac064956579bd00dc0c828b2456842c6a38b
 
 Zugehöriger Repository-Git-Tree:
 
-9227920c792752941a05cdc52d8b2add209ef01b
+8816dbb338de7434d57eeea11b0593e1db184d5f
 
 Commit-Titel:
 
-security: clear origin data on logout (#67)
+security: enforce HSTS in secure mode (#68)
 
-Dieser Stand ist der Ausgangsstand des HSTS-Policy-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des HTTP-Methodenabwehr-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 8052449647edbb669049e9c6ca394b7f5a2f1cfb mit Git-Tree
-9227920c792752941a05cdc52d8b2add209ef01b,
+geschützter main-Ausgangsstand 4890ac064956579bd00dc0c828b2456842c6a38b mit Git-Tree
+8816dbb338de7434d57eeea11b0593e1db184d5f,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Logout-Origin-Cleanup-Inkrement nicht wiederholt,
+HTTP-Methodenabwehr-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -554,6 +554,19 @@ TankAI Core CI Run #126, Run 36972802225, auf dem gemergten main-Commit
 8052449647edbb669049e9c6ca394b7f5a2f1cfb: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Logout-Smoke,
 
+die produktionsgebundene HSTS-Policy aus PR #68 mit kontrolliertem `max-age`, ohne
+`includeSubDomains` oder `preload` und ohne HSTS in lokaler HTTP-Entwicklung,
+
+TankAI Core CI Run #127, Run 37104522555, auf dem finalen PR-#68-Head
+8d81c82f639f04894cdcb88d4288e020f51ed3a3: completed/success; die Jobs test und cloudflare
+bestanden einschließlich HSTS-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und verschärftem Container-Smoke; PR #68 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #128, Run 37104620259, auf dem gemergten main-Commit
+4890ac064956579bd00dc0c828b2456842c6a38b: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und HSTS-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -866,6 +879,12 @@ Standardwert beträgt ein Jahr und ist auf 0 bis zwei Jahre begrenzt; `includeSu
 keinen HSTS-Header. Der Produktions-Container-Smoke prüft den exakten Header auf allen
 Antwortklassen.
 
+security.web.http_method_rejection.v1 -> IMPLEMENTED; nicht unterstützte HTTP-Methoden werden
+einheitlich ohne Eingabespiegelung als `405 Method Not Allowed` mit `Allow: GET, POST`,
+begrenztem JSON und dem vollständigen Sicherheitsheader-Vertrag abgewiesen. `HEAD` bleibt
+abgewiesen und unterdrückt protokollgerecht den Body; der Produktions-Container-Smoke prüft
+denselben Vertrag auf `TRACE`.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -1093,6 +1112,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.34, 4. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 4890ac064956579bd00dc0c828b2456842c6a38b / Tree
+8816dbb338de7434d57eeea11b0593e1db184d5f gebunden; PR #68 sowie CI Runs #127 und #128 als
+erfolgreichen HSTS-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen extern
+blockierten Vorgang verifiziert. Nicht unterstützte HTTP-Methoden auf einen sicheren,
+maschinenlesbaren `405`-Vertrag vereinheitlicht, ohne erlaubte Methoden, Authentifizierung,
+Provider, Hosts oder Produktion zu verändern.
 
 5.7.33, 3. Oktober 2026:
 

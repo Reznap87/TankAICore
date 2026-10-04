@@ -13,7 +13,7 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
-from http import cookies
+from http import HTTPStatus, cookies
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -59,6 +59,7 @@ _EXTERNAL_VALIDATION_PATH_DEPTH = 16
 _EXTERNAL_VALIDATION_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
 _EXTERNAL_VALIDATION_CODE_RE = re.compile(r"^[a-z0-9_.-]{1,80}$")
 _EXTERNAL_ERROR_CONTRACT_VERSION = 1
+_ALLOWED_HTTP_METHODS = "GET, POST"
 _EXTERNAL_ERROR_CODES = (
     "bearer_token_required",
     "invalid_agent_token",
@@ -447,6 +448,26 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[web] {self.address_string()} {fmt % args}")
 
+    def send_error(
+        self,
+        code: int,
+        message: str | None = None,
+        explain: str | None = None,
+    ) -> None:
+        if (
+            code == HTTPStatus.NOT_IMPLEMENTED
+            and message is not None
+            and message.startswith("Unsupported method")
+        ):
+            self._json(
+                {"error": "Methode nicht erlaubt"},
+                HTTPStatus.METHOD_NOT_ALLOWED,
+                headers={"Allow": _ALLOWED_HTTP_METHODS},
+                suppress_body=self.command == "HEAD",
+            )
+            return
+        super().send_error(code, message, explain)
+
     def _security_headers(
         self,
         *,
@@ -482,6 +503,7 @@ class Handler(BaseHTTPRequestHandler):
         *,
         set_cookie: str | None = None,
         headers: dict[str, str] | None = None,
+        suppress_body: bool = False,
     ) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
@@ -493,7 +515,8 @@ class Handler(BaseHTTPRequestHandler):
         self._security_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if not suppress_body:
+            self.wfile.write(body)
 
     @staticmethod
     def _public_etag(obj: object) -> str:

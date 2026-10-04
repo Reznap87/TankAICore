@@ -60,7 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
-| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, produktionsgebundenes HSTS, sichere DOM-Erzeugung |
+| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, produktionsgebundenes HSTS, sichere `405`-Methodenabwehr und DOM-Erzeugung |
 | Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz und Origin-Cleanup beim Logout |
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
@@ -338,6 +338,9 @@ Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root R
 - Verlauf, LTM und Short-Term-Memory werden ausschließlich aus dem aktiven autorisierten Workspace geladen.
 - Öffentliche Selbstregistrierung ist standardmäßig deaktiviert. Benutzer werden über `python -m tankai.web.auth_cli create-user` angelegt.
 - Prozesslokales Login-Rate-Limit ergänzt Reverse-Proxy-Limits.
+- Nicht unterstützte HTTP-Methoden werden ohne Methodenspiegelung als JSON mit
+  `405 Method Not Allowed` und `Allow: GET, POST` abgewiesen; auch diese Antworten tragen den
+  vollständigen Sicherheitsheader-Vertrag. `HEAD` liefert dabei keinen Response-Body.
 - Audit-Ereignisse für Login, Workspace-Auswahl, Workspace-Erstellung und Runs werden persistent gespeichert.
 - `TANKAI_AUTH_MODE=disabled` ist mechanisch auf Loopback-Binds begrenzt.
 - Docker läuft read-only, ohne Linux-Capabilities und mit `no-new-privileges`; nur `/app/data` und `/tmp` sind beschreibbar.
