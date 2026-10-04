@@ -611,6 +611,21 @@ def unauthenticated_me(base: str) -> None:
     require(payload == {"error": "Nicht angemeldet"}, "me response differs")
 
 
+def unsupported_method_contract(base: str) -> None:
+    code, headers, payload = request_json(base, "TRACE", "/api/health")
+    public_json_headers(headers, "TRACE /api/health")
+    security_headers(headers, CSP_SCRIPT_NONE)
+    require(code == 405, "unsupported method is not 405")
+    require(
+        (headers.get_all("Allow") or []) == ["GET, POST"],
+        "unsupported method Allow differs",
+    )
+    require(
+        payload == {"error": "Methode nicht erlaubt"},
+        "unsupported method response differs",
+    )
+
+
 def registration_disabled(base: str) -> None:
     code, headers, payload = request_json(
         base,
@@ -1122,6 +1137,7 @@ def smoke(
     version = container_version(container)
     security_headers(headers, CSP_SCRIPT_NONE)
     health_contract(headers, health, version)
+    unsupported_method_contract(base)
     html_contract(base)
     unauthenticated_me(base)
     registration_disabled(base)

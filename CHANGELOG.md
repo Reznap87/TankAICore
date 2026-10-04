@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### HTTP-Methodenabwehr v1
+
+- Nicht unterstützte HTTP-Methoden liefern jetzt einheitlich `405 Method Not Allowed` statt
+  einer Python-Server-`501`-Antwort. `Allow: GET, POST` beschreibt die tatsächlich
+  implementierten Methoden, ohne die abgewiesene Methode zu spiegeln.
+- Die Antwort verwendet denselben begrenzten JSON- und Sicherheitsheader-Vertrag wie die
+  übrigen Web-Endpunkte. `HEAD` bleibt abgewiesen und sendet protokollgerecht keinen Body.
+- Der Produktions-Container-Smoke prüft Status, `Allow`, JSON und alle Sicherheitsheader auf
+  einer abgewiesenen `TRACE`-Anfrage.
+
 ### HSTS-Policy v1
 
 - Antworten senden `Strict-Transport-Security` nur im sicheren Cookie-/Produktionsmodus; lokale

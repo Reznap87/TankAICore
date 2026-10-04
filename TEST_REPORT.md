@@ -1,8 +1,27 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 3. Oktober 2026
+**Statusdatum:** 4. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: HTTP-Methodenabwehr v1 — Nachweis 4. Oktober 2026
+
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 222 PASS
+- `python -m tankai --selftest`: 24 PASS
+- Webserver-/Reality-Contract-Regressionen: 13 PASS; gezielter Methodentest: PASS
+- `DELETE`, `TRACE` und eine unbekannte Methode liefern neutralisiertes JSON, HTTP 405,
+  `Allow: GET, POST` und den vollständigen Sicherheitsheader-Vertrag: PASS
+- `HEAD` bleibt HTTP 405 und liefert trotz repräsentativer `Content-Length` keinen Body: PASS
+- Produktions-Container-Smoke prüft denselben Vertrag auf einer `TRACE`-Anfrage
+- `python -m pip check`: PASS
+- `npm ci --ignore-scripts`, vollständiger npm-Audit und Produktionsabhängigkeits-Audit:
+  PASS / 0 bekannte Funde
+- Wrangler-Typgenerierung, TypeScript-`--noEmit` und Worker-Dry-Run mit
+  `--containers-rollout=none`: PASS
+- die lokale Ausführungsumgebung besitzt keine Docker-CLI; Produktions-Container-Build und
+  verschärfter Container-Smoke bleiben verpflichtende GitHub-CI-Gates vor einem Merge
+- keine Secrets, Berechtigungen, Provider, Server, Produktion oder Deployments verändert
 
 ## Unreleased: HSTS-Policy v1 — Nachweis 3. Oktober 2026
 
