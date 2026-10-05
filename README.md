@@ -340,7 +340,9 @@ Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root R
 - Prozesslokales Login-Rate-Limit ergänzt Reverse-Proxy-Limits.
 - Nicht unterstützte HTTP-Methoden werden ohne Methodenspiegelung als JSON mit
   `405 Method Not Allowed` und `Allow: GET, POST` abgewiesen; auch diese Antworten tragen den
-  vollständigen Sicherheitsheader-Vertrag. `HEAD` liefert dabei keinen Response-Body.
+  vollständigen Sicherheitsheader-Vertrag. `HEAD` liefert dabei keinen Response-Body. Im
+  External-Agent-Namespace ergänzt die Antwort den versionierten Code `method_not_allowed`
+  sowie die bestehenden Retry-Felder des v1-Fehlervertrags.
 - Audit-Ereignisse für Login, Workspace-Auswahl, Workspace-Erstellung und Runs werden persistent gespeichert.
 - `TANKAI_AUTH_MODE=disabled` ist mechanisch auf Loopback-Binds begrenzt.
 - Docker läuft read-only, ohne Linux-Capabilities und mit `no-new-privileges`; nur `/app/data` und `/tmp` sind beschreibbar.

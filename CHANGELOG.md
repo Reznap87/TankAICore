@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### External-Agent-Methodenfehlervertrag v1
+
+- Nicht unterstützte Methoden im Namespace `/api/v1/` liefern jetzt zusätzlich den stabilen
+  Fehlercode `method_not_allowed`, Fehlervertragsversion und Retry-Metadaten.
+- `405 Method Not Allowed`, `Allow: GET, POST`, die menschenlesbare Meldung und der leere
+  `HEAD`-Body bleiben unverändert; andere Webpfade behalten ihren begrenzten neutralen Fehler.
+- Capability-Discovery, Regressionstest und Produktions-Container-Smoke prüfen denselben
+  maschinenlesbaren Vertrag.
+
 ### HTTP-Methodenabwehr v1
 
 - Nicht unterstützte HTTP-Methoden liefern jetzt einheitlich `405 Method Not Allowed` statt

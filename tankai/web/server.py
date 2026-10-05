@@ -77,6 +77,7 @@ _EXTERNAL_ERROR_CODES = (
     "job_not_found",
     "job_state_conflict",
     "job_cancel_conflict",
+    "method_not_allowed",
     "endpoint_not_found",
 )
 _EXTERNAL_JOB_LIST_DEFAULT_LIMIT = 100
@@ -459,12 +460,22 @@ class Handler(BaseHTTPRequestHandler):
             and message is not None
             and message.startswith("Unsupported method")
         ):
-            self._json(
-                {"error": "Methode nicht erlaubt"},
-                HTTPStatus.METHOD_NOT_ALLOWED,
-                headers={"Allow": _ALLOWED_HTTP_METHODS},
-                suppress_body=self.command == "HEAD",
-            )
+            headers = {"Allow": _ALLOWED_HTTP_METHODS}
+            if urlsplit(self.path).path.startswith("/api/v1/"):
+                self._agent_error(
+                    "method_not_allowed",
+                    "Methode nicht erlaubt",
+                    HTTPStatus.METHOD_NOT_ALLOWED,
+                    headers=headers,
+                    suppress_body=self.command == "HEAD",
+                )
+            else:
+                self._json(
+                    {"error": "Methode nicht erlaubt"},
+                    HTTPStatus.METHOD_NOT_ALLOWED,
+                    headers=headers,
+                    suppress_body=self.command == "HEAD",
+                )
             return
         super().send_error(code, message, explain)
 
@@ -560,6 +571,7 @@ class Handler(BaseHTTPRequestHandler):
         headers: dict[str, str] | None = None,
         retryable: bool = False,
         retry_after_seconds: int | None = None,
+        suppress_body: bool = False,
     ) -> None:
         """Return a stable external error code while retaining the legacy message."""
 
@@ -583,6 +595,7 @@ class Handler(BaseHTTPRequestHandler):
             },
             status,
             headers=response_headers,
+            suppress_body=suppress_body,
         )
 
     def _read_json(

@@ -440,6 +440,47 @@ def test_unsupported_http_methods_use_secure_405_contract(tmp_path, monkeypatch)
         thread.join(timeout=5)
 
 
+def test_external_agent_unsupported_methods_use_versioned_error_contract(
+    tmp_path, monkeypatch
+) -> None:
+    _configure(monkeypatch, tmp_path)
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        for method in ("DELETE", "TRACE", "BREW", "HEAD"):
+            request = Request(base + "/api/v1/capabilities", method=method)
+            with pytest.raises(HTTPError) as caught:
+                urlopen(request, timeout=5)
+            response = caught.value
+            try:
+                body = response.read()
+                headers = response.headers
+            finally:
+                response.close()
+
+            assert response.code == 405
+            assert headers.get_all("Allow") == ["GET, POST"]
+            assert headers.get_all("Content-Type") == [
+                "application/json; charset=utf-8"
+            ]
+            assert headers.get_all("Cache-Control") == ["no-store"]
+            assert headers.get_all("Cross-Origin-Opener-Policy") == ["same-origin"]
+            if method == "HEAD":
+                assert body == b""
+                assert int(headers["Content-Length"]) > 0
+            else:
+                payload = json.loads(body)
+                _assert_external_error(payload, "method_not_allowed")
+                assert payload["error"] == "Methode nicht erlaubt"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_registration_disabled_and_public_auth_disable_blocked(tmp_path, monkeypatch) -> None:
     _configure(monkeypatch, tmp_path)
     app = web_server.AppContext.from_env("127.0.0.1")
@@ -940,6 +981,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "job_not_found",
                 "job_state_conflict",
                 "job_cancel_conflict",
+                "method_not_allowed",
                 "endpoint_not_found",
             ],
         }

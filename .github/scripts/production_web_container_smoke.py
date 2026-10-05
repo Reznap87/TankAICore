@@ -625,6 +625,30 @@ def unsupported_method_contract(base: str) -> None:
         "unsupported method response differs",
     )
 
+    code, headers, payload = request_json(
+        base,
+        "TRACE",
+        "/api/v1/capabilities",
+    )
+    public_json_headers(headers, "TRACE /api/v1/capabilities")
+    security_headers(headers, CSP_SCRIPT_NONE)
+    require(code == 405, "external unsupported method is not 405")
+    require(
+        (headers.get_all("Allow") or []) == ["GET, POST"],
+        "external unsupported method Allow differs",
+    )
+    require(
+        payload
+        == {
+            "error": "Methode nicht erlaubt",
+            "error_code": "method_not_allowed",
+            "error_contract_version": 1,
+            "retryable": False,
+            "retry_after_seconds": None,
+        },
+        "external unsupported method response differs",
+    )
+
 
 def registration_disabled(base: str) -> None:
     code, headers, payload = request_json(
