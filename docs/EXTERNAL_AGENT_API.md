@@ -237,11 +237,14 @@ den begrenzten `validation`-Block mit JSON-Pointern. Die aktuelle v1-Code-Menge 
 | `job_not_found` | 404 | Job fehlt oder bleibt wegen Agenten-/Repository-Isolation verborgen |
 | `job_state_conflict` | 409 | Status oder Verlauf ist im aktuellen Queue-Zustand nicht verfügbar |
 | `job_cancel_conflict` | 409 | Job kann im aktuellen Zustand nicht abgebrochen werden |
+| `method_not_allowed` | 405 | HTTP-Methode wird im External-Agent-Namespace nicht unterstützt |
 | `endpoint_not_found` | 404 | v1-Pfad ist unbekannt |
 
 HTTP-Status und `error`-Text bleiben für bestehende Integrationen erhalten. Fehlercodes enthalten
 keine Token, Payloadwerte, Hostpfade oder internen Ausnahmearten. Berechtigungen und die bewusst
-neutrale `404`-Antwort für fremde Jobs werden dadurch nicht gelockert.
+neutrale `404`-Antwort für fremde Jobs werden dadurch nicht gelockert. Nicht unterstützte
+Methoden liefern zusätzlich `Allow: GET, POST`; `HEAD` verwendet denselben Fehlervertrag,
+unterdrückt aber den Response-Body.
 
 Jede unterstützte Fehlerantwort enthält außerdem den versionierten Retry-Vertrag.
 `retryable=false` bedeutet, dass derselbe unveränderte Request nicht automatisch wiederholt

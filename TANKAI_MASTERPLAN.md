@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.34
+Version: 5.7.35
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 4. Oktober 2026
+Statusdatum: 5. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 4. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 5. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.34-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.35-Inkrements:
 
-4890ac064956579bd00dc0c828b2456842c6a38b
+48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3
 
 Zugehöriger Repository-Git-Tree:
 
-8816dbb338de7434d57eeea11b0593e1db184d5f
+4b8b71a8c2fa04c00c908c0edc4a4fec1ef5b335
 
 Commit-Titel:
 
-security: enforce HSTS in secure mode (#68)
+security: normalize unsupported HTTP methods (#69)
 
-Dieser Stand ist der Ausgangsstand des HTTP-Methodenabwehr-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des External-Agent-Methodenfehlervertrag-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 4890ac064956579bd00dc0c828b2456842c6a38b mit Git-Tree
-8816dbb338de7434d57eeea11b0593e1db184d5f,
+geschützter main-Ausgangsstand 48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3 mit Git-Tree
+4b8b71a8c2fa04c00c908c0edc4a4fec1ef5b335,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-HTTP-Methodenabwehr-Inkrement nicht wiederholt,
+External-Agent-Methodenfehlervertrag-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -567,6 +567,20 @@ TankAI Core CI Run #128, Run 37104620259, auf dem gemergten main-Commit
 4890ac064956579bd00dc0c828b2456842c6a38b: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und HSTS-Smoke,
 
+die neutralisierte Abweisung nicht unterstützter HTTP-Methoden aus PR #69 mit einheitlichem
+JSON, `405 Method Not Allowed`, `Allow: GET, POST`, vollständigen Sicherheitsheadern und
+bodylosem `HEAD`,
+
+TankAI Core CI Run #129, Run 37183074482, auf dem finalen PR-#69-Head
+e260bd33069fea267e098783e1b9824bf62193cd: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Methodenabwehr-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und verschärftem Container-Smoke; PR #69 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #130, Run 37183165473, auf dem gemergten main-Commit
+48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Methodenabwehr-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -824,6 +838,14 @@ Body-, Schema-, Scope-, Repository-, Queue-, Paginierungs-, Jobstatus-, Abbruch-
 Routingfehler sind ohne Textauswertung unterscheidbar. Fremde Jobs bleiben neutral als
 `job_not_found` verborgen; Tokens, Eingabewerte, Hostpfade und interne Ausnahmearten werden
 nicht in Codes gespiegelt.
+
+development.external_agent_method_error_contract.v1 -> IMPLEMENTED; nicht unterstützte
+Methoden im Namespace `/api/v1/` verwenden denselben versionierten Fehlervertrag mit dem
+stabilen Code `method_not_allowed` und nicht wiederholbaren Retry-Metadaten. HTTP 405,
+`Allow: GET, POST`, die neutrale Meldung und der bodylose `HEAD` bleiben erhalten; andere
+Webpfade behalten ihren begrenzten generischen Methodenfehler. Capability-Discovery und der
+Produktions-Container-Smoke prüfen den neuen Code ohne Authentifizierungs-, Agenten-,
+Repository-, Queue- oder Jobgrenzen zu verändern.
 
 development.external_agent_idempotency_outcome.v1 -> IMPLEMENTED; jeder erfolgreiche Submit
 kennzeichnet maschinenlesbar und versioniert, ob er einen Job neu eingereiht oder einen bereits

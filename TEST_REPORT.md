@@ -1,8 +1,24 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 4. Oktober 2026
+**Statusdatum:** 5. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: External-Agent-Methodenfehlervertrag v1 — Nachweis 5. Oktober 2026
+
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 223 PASS
+- `python -m tankai --selftest`: 24 PASS
+- `/api/v1/`-Regression: `DELETE`, `TRACE`, unbekannte Methode und `HEAD` liefern HTTP 405,
+  `Allow: GET, POST` und `method_not_allowed`: PASS
+- `HEAD` unterdrückt weiterhin ausschließlich den Body; repräsentative `Content-Length` und
+  vollständige Sicherheitsheader bleiben erhalten: PASS
+- Capability-Discovery veröffentlicht `method_not_allowed` in der versionierten Code-Menge: PASS
+- Produktions-Container-Smoke prüft den External-Agent-Vertrag auf `TRACE`: in Pflicht-CI
+- Python-/Node-Abhängigkeiten, TypeScript, Worker-Dry-Run ohne Container-Rollout und
+  Credential-Scan: PASS; der vollständige lokale Wrangler-Dry-Run benötigt eine hier nicht
+  verfügbare Docker-CLI und bleibt mit Container-Build/-Smoke Pflicht-CI-Gate
+- keine Secrets, Berechtigungen, Provider, Server, Produktion oder Deployments verändert
 
 ## Unreleased: HTTP-Methodenabwehr v1 — Nachweis 4. Oktober 2026
 
