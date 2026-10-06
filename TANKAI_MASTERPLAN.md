@@ -5,7 +5,7 @@ Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/Ta
 Statusdatum: 6. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 5. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 6. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
