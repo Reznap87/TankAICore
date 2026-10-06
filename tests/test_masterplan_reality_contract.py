@@ -12,6 +12,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert separator
     assert "Version: 5.7.36" in current
     assert "Statusdatum: 6. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 6. Oktober 2026" in current
     assert "df31153551cb0213242c9be49ce0a3df9426e623" in current
     assert "987548be0d65bfa4782754455279635033fd0b3d" in current
     assert "kein offener Pull Request" in current
