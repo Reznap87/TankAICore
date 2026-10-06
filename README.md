@@ -60,7 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
-| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, produktionsgebundenes HSTS, sichere `405`-Methodenabwehr und DOM-Erzeugung |
+| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, produktionsgebundenes HSTS, serverseitige Request-Korrelation, sichere `405`-Methodenabwehr und DOM-Erzeugung |
 | Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz und Origin-Cleanup beim Logout |
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
@@ -343,6 +343,9 @@ Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root R
   vollständigen Sicherheitsheader-Vertrag. `HEAD` liefert dabei keinen Response-Body. Im
   External-Agent-Namespace ergänzt die Antwort den versionierten Code `method_not_allowed`
   sowie die bestehenden Retry-Felder des v1-Fehlervertrags.
+- Jede Webantwort trägt eine frische, 96 Bit starke `X-Request-ID`. Eingehende Werte werden
+  bewusst ignoriert; dieselbe serverseitige ID verbindet Zugriffslog, Antwort und die neutrale
+  Referenz eines internen Fehlers, ohne Ausnahme- oder Nutzdaten offenzulegen.
 - Audit-Ereignisse für Login, Workspace-Auswahl, Workspace-Erstellung und Runs werden persistent gespeichert.
 - `TANKAI_AUTH_MODE=disabled` ist mechanisch auf Loopback-Binds begrenzt.
 - Docker läuft read-only, ohne Linux-Capabilities und mit `no-new-privileges`; nur `/app/data` und `/tmp` sind beschreibbar.

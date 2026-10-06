@@ -400,6 +400,67 @@ def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
         thread.join(timeout=5)
 
 
+def test_request_ids_are_server_generated_unique_and_correlate_errors(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    store = _configure(monkeypatch, tmp_path)
+    store.create_user_with_tenant(
+        email="request-id@example.com",
+        password="Request-ID-password-123",
+        display_name="Request ID",
+        tenant_name="Request ID Tenant",
+    )
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, first_headers, _ = client.get(
+            "/api/health", headers={"X-Request-ID": "client-controlled"}
+        )
+        assert status == 200
+        first_request_id = first_headers["X-Request-ID"]
+        assert re.fullmatch(r"[0-9a-f]{24}", first_request_id)
+        assert first_request_id != "client-controlled"
+
+        status, second_headers, _ = client.get("/api/health")
+        assert status == 200
+        second_request_id = second_headers["X-Request-ID"]
+        assert re.fullmatch(r"[0-9a-f]{24}", second_request_id)
+        assert second_request_id != first_request_id
+
+        status, _, _ = client.post(
+            "/api/auth/login",
+            {
+                "email": "request-id@example.com",
+                "password": "Request-ID-password-123",
+            },
+        )
+        assert status == 200
+
+        def fail_runtime_lookup(*, tenant_id: str, workspace_id: str):
+            raise RuntimeError("private failure detail")
+
+        monkeypatch.setattr(app.runtimes, "get", fail_runtime_lookup)
+        status, error_headers, payload = client.get("/api/health")
+        assert status == 500
+        error_request_id = error_headers["X-Request-ID"]
+        assert re.fullmatch(r"[0-9a-f]{24}", error_request_id)
+        assert payload == {
+            "error": f"Interner Serverfehler. Referenz: {error_request_id}"
+        }
+        assert "private failure detail" not in payload["error"]
+        captured = capsys.readouterr()
+        assert f"request_id={error_request_id}" in captured.out
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_unsupported_http_methods_use_secure_405_contract(tmp_path, monkeypatch) -> None:
     _configure(monkeypatch, tmp_path)
     app = web_server.AppContext.from_env("127.0.0.1")
