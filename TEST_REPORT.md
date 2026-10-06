@@ -1,8 +1,26 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 5. Oktober 2026
+**Statusdatum:** 6. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Request-Korrelation v1 — Nachweis 6. Oktober 2026
+
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 224 PASS
+- `python -m tankai --selftest`: 24 PASS
+- jede Antwort erhält genau eine serverseitig erzeugte 24-stellige Hex-ID im Header
+  `X-Request-ID`; aufeinanderfolgende Requests unterscheiden sich: PASS
+- ein eingehender Clientwert wird nicht übernommen: PASS
+- ein interner Fehler verwendet im neutralen Body exakt dieselbe Referenz wie Antwortheader und
+  Zugriffslog, ohne private Ausnahmedetails auszugeben: PASS
+- Produktions-Container-Smoke prüft die Request-ID auf allen bereits erfassten Antwortklassen:
+  in Pflicht-CI
+- `python -m pip check`, TypeScript-`--noEmit` und Wrangler-Typgenerierung: PASS
+- vollständiger npm-Audit und Produktionsabhängigkeits-Audit: PASS / 0 bekannte Funde
+- der lokale Wrangler-Dry-Run wurde nicht an den externen Cloudflare-Dienst übertragen;
+  Worker-Dry-Run, Produktions-Container-Build und verschärfter Smoke bleiben Pflicht-CI-Gates
+- keine Secrets, Berechtigungen, Provider, Server, Produktion oder Deployments verändert
 
 ## Unreleased: External-Agent-Methodenfehlervertrag v1 — Nachweis 5. Oktober 2026
 

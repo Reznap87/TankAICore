@@ -1,8 +1,8 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.35
+Version: 5.7.36
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 5. Oktober 2026
+Statusdatum: 6. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
 0. Verifizierter Projektstand und Ausführungsvertrag am 5. Oktober 2026
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.35-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.36-Inkrements:
 
-48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3
+df31153551cb0213242c9be49ce0a3df9426e623
 
 Zugehöriger Repository-Git-Tree:
 
-4b8b71a8c2fa04c00c908c0edc4a4fec1ef5b335
+987548be0d65bfa4782754455279635033fd0b3d
 
 Commit-Titel:
 
-security: normalize unsupported HTTP methods (#69)
+api: version unsupported method errors (#70)
 
-Dieser Stand ist der Ausgangsstand des External-Agent-Methodenfehlervertrag-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des Request-Korrelations-ID-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3 mit Git-Tree
-4b8b71a8c2fa04c00c908c0edc4a4fec1ef5b335,
+geschützter main-Ausgangsstand df31153551cb0213242c9be49ce0a3df9426e623 mit Git-Tree
+987548be0d65bfa4782754455279635033fd0b3d,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-External-Agent-Methodenfehlervertrag-Inkrement nicht wiederholt,
+Request-Korrelations-ID-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -581,6 +581,20 @@ TankAI Core CI Run #130, Run 37183165473, auf dem gemergten main-Commit
 48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Methodenabwehr-Smoke,
 
+der versionierte Methodenfehlervertrag aus PR #70; nicht unterstützte Methoden im Namespace
+`/api/v1/` liefern zusätzlich den stabilen Code `method_not_allowed`, ohne HTTP-Status,
+`Allow`, neutrale Meldung, bodylosen `HEAD` oder andere Webpfade zu verändern,
+
+TankAI Core CI Run #131, Run 37280236430, auf dem finalen PR-#70-Head
+ad5b032a869d1e79f209363770f343ad9c31a8ec: completed/success; die Jobs test und cloudflare
+bestanden einschließlich External-Agent-Methodenregressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und verschärftem Container-Smoke; PR #70 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #132, Run 37280447310, auf dem gemergten main-Commit
+df31153551cb0213242c9be49ce0a3df9426e623: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und External-Agent-Methoden-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -907,6 +921,12 @@ begrenztem JSON und dem vollständigen Sicherheitsheader-Vertrag abgewiesen. `HE
 abgewiesen und unterdrückt protokollgerecht den Body; der Produktions-Container-Smoke prüft
 denselben Vertrag auf `TRACE`.
 
+security.web.request_correlation_id.v1 -> IMPLEMENTED; jede Webantwort trägt genau eine
+serverseitig erzeugte, zufällige `X-Request-ID`. Clientwerte werden nicht übernommen. Dieselbe
+ID verbindet Antwortheader, Zugriffslog und die neutrale Referenz interner Fehler, ohne
+Ausnahme-, Eingabe- oder Nutzdaten zu veröffentlichen; der Produktions-Container-Smoke prüft
+alle bereits abgedeckten Antwortklassen.
+
 ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
 JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
 `actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
@@ -1134,6 +1154,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.35, 5. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3 / Tree
+4b8b71a8c2fa04c00c908c0edc4a4fec1ef5b335 gebunden; PR #69 sowie CI Runs #129 und #130 als
+erfolgreichen HTTP-Methodenabwehr-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Nicht unterstützte Methoden im Namespace
+`/api/v1/` an den bestehenden versionierten Fehlervertrag gebunden, ohne Status-, Methoden-,
+Authentifizierungs-, Provider-, Host- oder Produktionsgrenzen zu verändern.
 
 5.7.34, 4. Oktober 2026:
 

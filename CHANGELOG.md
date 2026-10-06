@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Request-Korrelation v1
+
+- Jede HTML-, JSON-, Asset-, `304`- und Methodenfehlerantwort erhält eine frische, zufällige
+  `X-Request-ID` mit 96 Bit Entropie.
+- Vom Client gelieferte Request-IDs werden nicht übernommen. Dieselbe serverseitige ID erscheint
+  im Zugriffslog und verbindet interne Fehlerantworten mit ihrer neutralen Referenz.
+- Regressionstest und Produktions-Container-Smoke prüfen Format, Eindeutigkeit,
+  Nichtübernahme und vollständige Antwortabdeckung.
+
 ### External-Agent-Methodenfehlervertrag v1
 
 - Nicht unterstützte Methoden im Namespace `/api/v1/` liefern jetzt zusätzlich den stabilen

@@ -77,6 +77,7 @@ SECURITY_HEADERS = {
     "Cache-Control": "no-store",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
+REQUEST_ID = re.compile(r"[0-9a-f]{24}\Z")
 CSP_SCRIPT_NONE = re.compile(
     r"default-src 'self'; base-uri 'none'; object-src 'none'; "
     r"script-src 'none'; "
@@ -542,6 +543,11 @@ def wait_ready(container: str, base: str) -> tuple[Any, dict[str, Any]]:
 def security_headers(headers: Any, csp_pattern: re.Pattern[str]) -> re.Match[str]:
     for key, value in SECURITY_HEADERS.items():
         require((headers.get_all(key) or []) == [value], f"{key} differs")
+    request_ids = headers.get_all("X-Request-ID") or []
+    require(
+        len(request_ids) == 1 and REQUEST_ID.fullmatch(request_ids[0]) is not None,
+        "X-Request-ID differs",
+    )
     csp = headers.get_all("Content-Security-Policy") or []
     match = csp_pattern.fullmatch(csp[0]) if len(csp) == 1 else None
     require(match is not None, "CSP differs")

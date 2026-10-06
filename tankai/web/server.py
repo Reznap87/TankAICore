@@ -442,12 +442,29 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "TankAI"
     sys_version = ""
 
+    def handle_one_request(self) -> None:
+        self._tankai_request_id = secrets.token_hex(12)
+        super().handle_one_request()
+
     @property
     def app(self) -> AppContext:
         return self.server.app  # type: ignore[attr-defined]
 
+    @property
+    def request_id(self) -> str:
+        """Return one opaque server-generated correlation ID for this request."""
+
+        request_id = getattr(self, "_tankai_request_id", None)
+        if request_id is None:
+            request_id = secrets.token_hex(12)
+            self._tankai_request_id = request_id
+        return request_id
+
     def log_message(self, fmt, *args):
-        print(f"[web] {self.address_string()} {fmt % args}")
+        print(
+            f"[web] request_id={self.request_id} "
+            f"{self.address_string()} {fmt % args}"
+        )
 
     def send_error(
         self,
@@ -485,6 +502,7 @@ class Handler(BaseHTTPRequestHandler):
         cache_control: str = "no-store",
         content_nonce: str | None = None,
     ) -> None:
+        self.send_header("X-Request-ID", self.request_id)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -557,10 +575,15 @@ class Handler(BaseHTTPRequestHandler):
         self._json(obj, headers={"ETag": etag})
 
     def _internal_error(self, operation: str) -> None:
-        request_id = secrets.token_hex(6)
-        print(f"[web] interner Fehler operation={operation} request_id={request_id}")
+        print(
+            f"[web] interner Fehler operation={operation} "
+            f"request_id={self.request_id}"
+        )
         traceback.print_exc()
-        self._json({"error": f"Interner Serverfehler. Referenz: {request_id}"}, 500)
+        self._json(
+            {"error": f"Interner Serverfehler. Referenz: {self.request_id}"},
+            500,
+        )
 
     def _agent_error(
         self,
