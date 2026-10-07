@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Cloudflare-Toolchain-Abhängigkeitssicherheit v2
+
+- Ein Root-Override hebt das von Miniflare deklarierte Sharp `0.35.4` reproduzierbar auf
+  `0.35.5` an und entfernt damit `GHSA-wq5f-xc86-pv6w` / `CVE-2026-96889` aus dem
+  Cloudflare-Entwicklungs- und CI-Baum.
+- Das Lockfile aktualisiert die plattformspezifischen Sharp- und libvips-Artefakte vollständig;
+  eine Regression bindet den Override und die tatsächlich aufgelöste Version.
+- Wrangler, Miniflare, Undici, Worker-, Container-, Secret-, Provider- und Deploymentverträge
+  bleiben unverändert. Vollständiger und Produktionsabhängigkeits-Audit melden keine Funde.
+
 ### Request-Korrelation v1
 
 - Jede HTML-, JSON-, Asset-, `304`- und Methodenfehlerantwort erhält eine frische, zufällige

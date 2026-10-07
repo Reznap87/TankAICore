@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.36
+Version: 5.7.37
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 6. Oktober 2026
+Statusdatum: 7. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 6. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 7. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.36-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.37-Inkrements:
 
-df31153551cb0213242c9be49ce0a3df9426e623
+60599fbad5ebe87fae215f184ec0cd99d1b09505
 
 Zugehöriger Repository-Git-Tree:
 
-987548be0d65bfa4782754455279635033fd0b3d
+610acc565a3f74dcb18c956cde98ee8c541a6a31
 
 Commit-Titel:
 
-api: version unsupported method errors (#70)
+docs: align request correlation reality date (#72)
 
-Dieser Stand ist der Ausgangsstand des Request-Korrelations-ID-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des Sharp-Sicherheitsupdate-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand df31153551cb0213242c9be49ce0a3df9426e623 mit Git-Tree
-987548be0d65bfa4782754455279635033fd0b3d,
+geschützter main-Ausgangsstand 60599fbad5ebe87fae215f184ec0cd99d1b09505 mit Git-Tree
+610acc565a3f74dcb18c956cde98ee8c541a6a31,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Request-Korrelations-ID-Inkrement nicht wiederholt,
+Sharp-Sicherheitsupdate-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -595,6 +595,32 @@ TankAI Core CI Run #132, Run 37280447310, auf dem gemergten main-Commit
 df31153551cb0213242c9be49ce0a3df9426e623: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und External-Agent-Methoden-Smoke,
 
+die serverseitige Request-Korrelation aus PR #71 mit frischen, nicht übernehmbaren
+`X-Request-ID`-Werten auf allen Antwortklassen sowie derselben neutralen Referenz in
+Antwortheader, Zugriffslog und internen Fehlerantworten,
+
+TankAI Core CI Run #133, Run 37427245492, auf dem finalen PR-#71-Head
+4554eb0a8ea01e9646a508634bdea279a0be932e: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Request-Korrelations-Regressionen, TypeScript-/Wrangler-Prüfung,
+Produktions-Container-Build und verschärftem Container-Smoke; PR #71 wurde anschließend
+konfliktfrei gemergt,
+
+TankAI Core CI Run #134, Run 37427425022, auf dem gemergten main-Commit
+07fd6856d8285813047cae85c419b966b37e4149: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Request-Korrelations-Smoke,
+
+die reine Reality-Contract-Datumskorrektur aus PR #72, die Überschrift, Version und Statusdatum
+gemeinsam an den 6. Oktober 2026 bindet,
+
+TankAI Core CI Run #135, Run 37427711332, auf dem finalen PR-#72-Head
+bf39dd0bbe85e63119b7fc425652de27e16ed005: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Reality-Contract-Regression, Produktions-Container-Build und
+Container-Smoke; PR #72 wurde anschließend konfliktfrei gemergt,
+
+TankAI Core CI Run #136, Run 37427822618, auf dem gemergten main-Commit
+60599fbad5ebe87fae215f184ec0cd99d1b09505: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -940,6 +966,13 @@ Eine Regression prüft die direkten und transitiven Pins. Die Abhängigkeiten bl
 Entwicklungs-/CI-Werkzeuge; Worker-, Container-, Provider-, Secret- und Deploymentverträge
 ändern sich nicht.
 
+ops.cloudflare_toolchain_dependency_security.v2 -> IMPLEMENTED; ein Root-Override ersetzt das
+von Miniflare deklarierte Sharp `0.35.4` im tatsächlich installierten Baum reproduzierbar durch
+das gegen `GHSA-wq5f-xc86-pv6w` / `CVE-2026-96889` gepatchte Sharp `0.35.5`. Lockfile,
+Regression und isoliertes `npm ci` binden die aufgelöste Version; vollständiger und
+Produktionsabhängigkeits-Audit melden keine Funde. Wrangler, Miniflare, Undici, Worker-,
+Container-, Secret-, Provider- und Deploymentverträge bleiben unverändert.
+
 development.local_qwen25_coder_runtime -> IMPLEMENTED; ein separater Compose-Override verbindet
 TankAI über den vorhandenen OpenAI-kompatiblen Adapter mit Qwen2.5-Coder-7B-Instruct Q4_K_M.
 Serverimage und Modellrevision sind unveränderlich gebunden, TankAI wartet auf den eingebauten
@@ -1154,6 +1187,16 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.36, 6. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf df31153551cb0213242c9be49ce0a3df9426e623 / Tree
+987548be0d65bfa4782754455279635033fd0b3d gebunden; PR #70 sowie CI Runs #131 und #132 als
+erfolgreichen External-Agent-Methodenfehlervertrag-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert. Eine serverseitige,
+nicht übernehmbare Request-Korrelations-ID für sämtliche Webantworten, Zugriffslogs und neutrale
+interne Fehlerreferenzen ergänzt, ohne Authentifizierungs-, Provider-, Host- oder
+Produktionsgrenzen zu verändern.
 
 5.7.35, 5. Oktober 2026:
 
