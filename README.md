@@ -79,8 +79,9 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
   offiziellen First-Party-JavaScript-Actions laufen auf Node.js 24. Verwendet werden
   `checkout` v7.0.1, `setup-python` v7.0.0, `setup-node` v7.0.0 und `upload-artifact` v6.0.0.
   Wrangler bleibt für den Produktionsworkflow auf `4.145.0` festgesetzt; das zugehörige
-  Lockfile bindet die gegen die aktuellen High-Severity-Advisories gehärteten `sharp`- und
-  `undici`-Versionen.
+  Lockfile erzwingt `sharp` 0.35.5 und bindet `undici` 7.29.1. Damit ist die am 6. Oktober 2026
+  veröffentlichte High-Severity-Lücke `GHSA-wq5f-xc86-pv6w` aus dem reproduzierbaren
+  Cloudflare-Build entfernt.
 
 ## Was 1.9.0 zusätzlich umsetzt
 

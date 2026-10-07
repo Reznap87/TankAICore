@@ -1,8 +1,24 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 6. Oktober 2026
+**Statusdatum:** 7. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Cloudflare-Toolchain-Abhängigkeitssicherheit v2 — Nachweis 7. Oktober 2026
+
+- Ausgangsaudit: Sharp `0.35.4`, `GHSA-wq5f-xc86-pv6w` / `CVE-2026-96889`, drei
+  High-Severity-Funde: reproduziert
+- Root-Override und Lockfile lösen Sharp exakt als `0.35.5` mit den zugehörigen
+  Plattformartefakten und libvips `1.3.4` auf: PASS
+- isoliertes `npm ci --ignore-scripts` aus dem Lockfile: Sharp `0.35.5 overridden`: PASS
+- vollständiger npm-Audit und Produktionsabhängigkeits-Audit: PASS / 0 bekannte Funde
+- `python -m compileall -q tankai tests .github/scripts`: PASS
+- `python -m pytest -q`: 224 PASS
+- `python -m tankai --selftest`: 24 PASS
+- `python -m pip check`, TypeScript-`--noEmit` und Wrangler-Typprüfung: PASS
+- Worker-Dry-Run, Produktions-Container-Build und Container-Smoke bleiben Pflicht-CI-Gates
+- keine Runtime-, Secret-, Berechtigungs-, Provider-, Server-, Produktions- oder
+  Deploymentänderung
 
 ## Unreleased: Request-Korrelation v1 — Nachweis 6. Oktober 2026
 
