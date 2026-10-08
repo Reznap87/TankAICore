@@ -288,6 +288,7 @@ def test_health_auth_csrf_and_tenant_isolation(tmp_path, monkeypatch) -> None:
         assert "llm" not in health
         assert headers["X-Content-Type-Options"] == "nosniff"
         assert headers["Cross-Origin-Opener-Policy"] == "same-origin"
+        assert headers["Cross-Origin-Embedder-Policy"] == "require-corp"
         assert headers["Cross-Origin-Resource-Policy"] == "same-origin"
         assert headers["Origin-Agent-Cluster"] == "?1"
         assert headers["X-Permitted-Cross-Domain-Policies"] == "none"
@@ -489,6 +490,9 @@ def test_unsupported_http_methods_use_secure_405_contract(tmp_path, monkeypatch)
             assert headers.get_all("X-Frame-Options") == ["DENY"]
             assert headers.get_all("Cache-Control") == ["no-store"]
             assert headers.get_all("Cross-Origin-Opener-Policy") == ["same-origin"]
+            assert headers.get_all("Cross-Origin-Embedder-Policy") == [
+                "require-corp"
+            ]
             assert "Strict-Transport-Security" not in headers
             if method == "HEAD":
                 assert body == b""
@@ -529,6 +533,9 @@ def test_external_agent_unsupported_methods_use_versioned_error_contract(
             ]
             assert headers.get_all("Cache-Control") == ["no-store"]
             assert headers.get_all("Cross-Origin-Opener-Policy") == ["same-origin"]
+            assert headers.get_all("Cross-Origin-Embedder-Policy") == [
+                "require-corp"
+            ]
             if method == "HEAD":
                 assert body == b""
                 assert int(headers["Content-Length"]) > 0
@@ -622,6 +629,10 @@ def test_html_uses_a_fresh_matching_csp_nonce_per_response(
             with urlopen(base + path, timeout=5) as response:
                 assert response.status == 200
                 assert response.headers["Cross-Origin-Opener-Policy"] == "same-origin"
+                assert (
+                    response.headers["Cross-Origin-Embedder-Policy"]
+                    == "require-corp"
+                )
                 assert response.headers["Cross-Origin-Resource-Policy"] == "same-origin"
                 assert response.headers["Origin-Agent-Cluster"] == "?1"
                 policy = response.headers["Content-Security-Policy"]
@@ -668,6 +679,10 @@ def test_brand_assets_are_served(tmp_path, monkeypatch) -> None:
                 assert response.status == 200
                 assert response.headers.get_content_type() == content_type
                 assert response.headers["Cache-Control"] == "public, max-age=86400"
+                assert (
+                    response.headers["Cross-Origin-Embedder-Policy"]
+                    == "require-corp"
+                )
                 assert response.headers["Cross-Origin-Resource-Policy"] == "same-origin"
                 assert response.headers["X-Permitted-Cross-Domain-Policies"] == "none"
                 policy = response.headers["Content-Security-Policy"]
@@ -1000,6 +1015,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         )
         assert status == 304
         assert unchanged_headers["ETag"] == capability_etag
+        assert unchanged_headers["Cross-Origin-Embedder-Policy"] == "require-corp"
         assert "script-src 'none'" in unchanged_headers["Content-Security-Policy"]
         assert "style-src 'none'" in unchanged_headers["Content-Security-Policy"]
         assert "unsafe-inline" not in unchanged_headers["Content-Security-Policy"]
@@ -1772,6 +1788,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert unchanged_headers["ETag"] == job_etag
         assert unchanged_headers["Cache-Control"] == "no-store"
         assert unchanged_headers["Cross-Origin-Opener-Policy"] == "same-origin"
+        assert unchanged_headers["Cross-Origin-Embedder-Policy"] == "require-corp"
         assert unchanged_headers["Cross-Origin-Resource-Policy"] == "same-origin"
         assert unchanged_headers["Origin-Agent-Cluster"] == "?1"
         assert unchanged_headers["X-Permitted-Cross-Domain-Policies"] == "none"

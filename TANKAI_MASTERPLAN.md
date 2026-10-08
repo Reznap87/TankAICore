@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.37
+Version: 5.7.38
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 7. Oktober 2026
+Statusdatum: 8. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 7. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 8. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.37-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.38-Inkrements:
 
-60599fbad5ebe87fae215f184ec0cd99d1b09505
+7daeec9d315997ec513f33c60ccd02bf61029517
 
 Zugehöriger Repository-Git-Tree:
 
-610acc565a3f74dcb18c956cde98ee8c541a6a31
+d0f1d559033a28322935324ae4bf7e8dbb010a73
 
 Commit-Titel:
 
-docs: align request correlation reality date (#72)
+security: update Sharp to patched 0.35.5 (#73)
 
-Dieser Stand ist der Ausgangsstand des Sharp-Sicherheitsupdate-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand des COEP-Härtungsinkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 60599fbad5ebe87fae215f184ec0cd99d1b09505 mit Git-Tree
-610acc565a3f74dcb18c956cde98ee8c541a6a31,
+geschützter main-Ausgangsstand 7daeec9d315997ec513f33c60ccd02bf61029517 mit Git-Tree
+d0f1d559033a28322935324ae4bf7e8dbb010a73,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Sharp-Sicherheitsupdate-Inkrement nicht wiederholt,
+COEP-Härtungsinkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -621,6 +621,20 @@ TankAI Core CI Run #136, Run 37427822618, auf dem gemergten main-Commit
 60599fbad5ebe87fae215f184ec0cd99d1b09505: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+das Cloudflare-Toolchain-Sicherheitsupdate aus PR #73, das die transitive Sharp-Version über
+einen Root-Override auf die gegen GHSA-wq5f-xc86-pv6w gepatchte Version 0.35.5 bindet, ohne
+Wrangler-, Worker-, Container-, Provider- oder Deploymentverträge zu verändern,
+
+TankAI Core CI Run #137, Run 37584321625, auf dem finalen PR-#73-Head
+9db27e9535387005bd3e6062874a7c462c7e3f8d: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Dependency-Regression, vollständigem npm-Audit,
+Produktions-Container-Build und Container-Smoke; PR #73 wurde anschließend konfliktfrei
+gemergt,
+
+TankAI Core CI Run #138, Run 37584456249, auf dem gemergten main-Commit
+7daeec9d315997ec513f33c60ccd02bf61029517: completed/success; die Jobs test und cloudflare
+bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -928,6 +942,12 @@ origin-spezifischen Agent-Cluster an und sperren veraltete Cross-Domain-Policy-D
 Produktions-Container-Smoke prüft jeden Header exakt einmal; CSP-, Cache-, Session-, API- und
 Authentifizierungsverträge bleiben unverändert.
 
+security.web.cross_origin_embedder_policy.v1 -> IMPLEMENTED; HTML-, JSON-, `304`-, Asset- und
+Methodenfehlerantworten setzen COEP exakt einmal auf `require-corp`. Zusammen mit COOP
+`same-origin` vervollständigt dies die dokumentseitige Cross-Origin-Isolation; eigene Assets
+senden weiterhin CORP `same-origin`. CSP-, Cache-, Session-, API-, Provider- und
+Deploymentverträge bleiben unverändert.
+
 security.web.logout_origin_cleanup.v1 -> IMPLEMENTED; ein erfolgreicher, CSRF-geschützter
 Logout widerruft weiterhin die serverseitige Session und lässt das `HttpOnly`-Session-Cookie
 sofort ablaufen. Zusätzlich fordert die Antwort mit `Clear-Site-Data` die Löschung von Cache,
@@ -1187,6 +1207,15 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.37, 7. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 60599fbad5ebe87fae215f184ec0cd99d1b09505 / Tree
+610acc565a3f74dcb18c956cde98ee8c541a6a31 gebunden; PR #73 sowie CI Runs #137 und #138 als
+erfolgreichen Sharp-Sicherheitsupdate-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Die bestehende Cross-Origin-Isolation um
+`Cross-Origin-Embedder-Policy: require-corp` ergänzt, ohne CSP-, Cache-, Session-, API-,
+Provider-, Host- oder Produktionsgrenzen zu verändern.
 
 5.7.36, 6. Oktober 2026:
 
