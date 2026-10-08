@@ -35,7 +35,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 218 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 224 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
@@ -60,7 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
-| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, Cross-Origin-Isolationsheader, produktionsgebundenes HSTS, serverseitige Request-Korrelation, sichere `405`-Methodenabwehr und DOM-Erzeugung |
+| Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, COOP/COEP/CORP-Isolation, produktionsgebundenes HSTS, serverseitige Request-Korrelation, sichere `405`-Methodenabwehr und DOM-Erzeugung |
 | Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz und Origin-Cleanup beim Logout |
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
@@ -347,6 +347,9 @@ Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root R
 - Jede Webantwort trägt eine frische, 96 Bit starke `X-Request-ID`. Eingehende Werte werden
   bewusst ignoriert; dieselbe serverseitige ID verbindet Zugriffslog, Antwort und die neutrale
   Referenz eines internen Fehlers, ohne Ausnahme- oder Nutzdaten offenzulegen.
+- Jede Antwort setzt `Cross-Origin-Embedder-Policy: require-corp`; gemeinsam mit COOP
+  `same-origin` und CORP `same-origin` dürfen Dokumente nur eigene oder ausdrücklich dafür
+  freigegebene Cross-Origin-Ressourcen einbetten.
 - Audit-Ereignisse für Login, Workspace-Auswahl, Workspace-Erstellung und Runs werden persistent gespeichert.
 - `TANKAI_AUTH_MODE=disabled` ist mechanisch auf Loopback-Binds begrenzt.
 - Docker läuft read-only, ohne Linux-Capabilities und mit `no-new-privileges`; nur `/app/data` und `/tmp` sind beschreibbar.

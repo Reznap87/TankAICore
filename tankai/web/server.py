@@ -103,6 +103,7 @@ _BRAND_ASSETS = {
 }
 _CROSS_ORIGIN_SECURITY_HEADERS = (
     ("Cross-Origin-Opener-Policy", "same-origin"),
+    ("Cross-Origin-Embedder-Policy", "require-corp"),
     ("Cross-Origin-Resource-Policy", "same-origin"),
     ("Origin-Agent-Cluster", "?1"),
     ("X-Permitted-Cross-Domain-Policies", "none"),

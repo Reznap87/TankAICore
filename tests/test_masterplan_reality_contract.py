@@ -10,11 +10,11 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.37" in current
-    assert "Statusdatum: 7. Oktober 2026" in current
-    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 7. Oktober 2026" in current
-    assert "60599fbad5ebe87fae215f184ec0cd99d1b09505" in current
-    assert "610acc565a3f74dcb18c956cde98ee8c541a6a31" in current
+    assert "Version: 5.7.38" in current
+    assert "Statusdatum: 8. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 8. Oktober 2026" in current
+    assert "7daeec9d315997ec513f33c60ccd02bf61029517" in current
+    assert "d0f1d559033a28322935324ae4bf7e8dbb010a73" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -82,6 +82,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #134" in current
     assert "TankAI Core CI Run #135" in current
     assert "TankAI Core CI Run #136" in current
+    assert "TankAI Core CI Run #137" in current
+    assert "TankAI Core CI Run #138" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -110,6 +112,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #70" in current
     assert "PR #71" in current
     assert "PR #72" in current
+    assert "PR #73" in current
     assert (
         "development.external_agent_gateway.v1 -> IMPLEMENTED UND CI-VERIFIZIERT"
         in current
@@ -170,6 +173,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "security.web.per_response_csp_nonce.v1 -> IMPLEMENTED" in current
     assert "security.web.nonce_bound_inline_styles.v1 -> IMPLEMENTED" in current
     assert "security.web.cross_origin_response_isolation.v1 -> IMPLEMENTED" in current
+    assert "security.web.cross_origin_embedder_policy.v1 -> IMPLEMENTED" in current
     assert "security.web.logout_origin_cleanup.v1 -> IMPLEMENTED" in current
     assert "security.web.hsts_policy.v1 -> IMPLEMENTED" in current
     assert "security.web.http_method_rejection.v1 -> IMPLEMENTED" in current

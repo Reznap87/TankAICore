@@ -1,8 +1,26 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 7. Oktober 2026
+**Statusdatum:** 8. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Cross-Origin-Embedder-Policy v1 — Nachweis 8. Oktober 2026
+
+- HTML-, JSON-, Asset-, `304`- und Methodenfehlerantworten setzen
+  `Cross-Origin-Embedder-Policy: require-corp`: PASS
+- COOP und CORP bleiben exakt `same-origin`; CSP-, Cache-, HSTS-, Session- und API-Verträge
+  bleiben unverändert: PASS
+- Webserver-Regressionen: 14 PASS
+- Produktions-Container-Smoke prüft COEP auf allen bereits erfassten Antwortklassen: in
+  Pflicht-CI
+- `python -m pytest -q`: 224 PASS; `python -m tankai --selftest`: 24 PASS
+- Python-Compile, Dependency-Check, TypeScript-`--noEmit` und Wrangler-Typprüfung: PASS
+- isoliertes `npm ci --ignore-scripts`, vollständiger npm-Audit und
+  Produktionsabhängigkeits-Audit: PASS / 0 bekannte Funde
+- Worker-only-Dry-Run mit `--containers-rollout=none` und Artefaktprüfung: PASS; der vollständige
+  lokale Container-Dry-Run benötigt eine hier nicht verfügbare Docker-CLI und bleibt gemeinsam
+  mit Produktions-Container-Build und Smoke Pflicht-CI-Gate
+- keine Secrets, Berechtigungen, Provider, Server, Produktion oder Deployments verändert
 
 ## Unreleased: Cloudflare-Toolchain-Abhängigkeitssicherheit v2 — Nachweis 7. Oktober 2026
 

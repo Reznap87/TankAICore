@@ -791,11 +791,12 @@ def run_selftest() -> int:
         assert "style=" not in rendered_html
         assert dict(_CROSS_ORIGIN_SECURITY_HEADERS) == {
             "Cross-Origin-Opener-Policy": "same-origin",
+            "Cross-Origin-Embedder-Policy": "require-corp",
             "Cross-Origin-Resource-Policy": "same-origin",
             "Origin-Agent-Cluster": "?1",
             "X-Permitted-Cross-Domain-Policies": "none",
         }
-        _ok("Web-Rendering mit Nonce und Cross-Origin-Isolation")
+        _ok("Web-Rendering mit Nonce und COOP/COEP/CORP-Isolation")
     except Exception as exc:
         _fail("Web-Sicherheit", exc)
         failed += 1

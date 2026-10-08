@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Cross-Origin-Embedder-Policy v1
+
+- Alle HTML-, JSON-, `304`-, Asset- und Methodenfehlerantworten setzen zusätzlich
+  `Cross-Origin-Embedder-Policy: require-corp`.
+- Zusammen mit `Cross-Origin-Opener-Policy: same-origin` vervollständigt die Richtlinie die
+  bestehende Cross-Origin-Isolation; alle von der Oberfläche geladenen Ressourcen stammen
+  weiterhin vom selben Origin und senden `Cross-Origin-Resource-Policy: same-origin`.
+- CSP-, Cache-, Session-, API-, Provider- und Deploymentverträge bleiben unverändert. Der
+  Produktions-Container-Smoke prüft COEP als genau einen Header auf allen Antwortklassen.
+
 ### Cloudflare-Toolchain-Abhängigkeitssicherheit v2
 
 - Ein Root-Override hebt das von Miniflare deklarierte Sharp `0.35.4` reproduzierbar auf
