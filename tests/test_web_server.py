@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import sqlite3
 import subprocess
 import threading
 from http.cookiejar import CookieJar
+from http.client import HTTPResponse
 from urllib.error import HTTPError
 from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 from uuid import uuid4
@@ -456,6 +458,55 @@ def test_request_ids_are_server_generated_unique_and_correlate_errors(
         assert "private failure detail" not in payload["error"]
         captured = capsys.readouterr()
         assert f"request_id={error_request_id}" in captured.out
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("raw_request", "expected_status", "head"),
+    [
+        (b"GET /client-controlled extra HTTP/1.1\r\n\r\n", 400, False),
+        (b"GET /" + b"x" * 65536 + b" HTTP/1.1\r\n\r\n", 414, False),
+        (b"GET / HTTP/1.1\r\nX-Test: " + b"x" * 65536 + b"\r\n\r\n", 431, False),
+        (b"GET /client-controlled HTTP/9.0\r\n\r\n", 505, False),
+        (b"HEAD / HTTP/1.1\r\nX-Test: " + b"x" * 65536 + b"\r\n\r\n", 431, True),
+    ],
+)
+def test_http_parser_errors_are_neutral_secure_json(
+    tmp_path, monkeypatch, raw_request, expected_status, head
+) -> None:
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("TANKAI_COOKIE_SECURE", "1")
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with socket.create_connection(server.server_address, timeout=5) as connection:
+            connection.sendall(raw_request)
+            response = HTTPResponse(connection, method="HEAD" if head else "GET")
+            response.begin()
+            body = response.read()
+            headers = response.headers
+            assert response.status == expected_status
+            assert headers.get_all("Content-Type") == ["application/json; charset=utf-8"]
+            assert headers.get_all("Connection") == ["close"]
+            assert headers.get_all("Cache-Control") == ["no-store"]
+            assert headers.get_all("X-Content-Type-Options") == ["nosniff"]
+            assert headers.get_all("Cross-Origin-Embedder-Policy") == ["require-corp"]
+            assert headers.get_all("Strict-Transport-Security") == ["max-age=31536000"]
+            assert "script-src 'none'; style-src 'none'" in headers["Content-Security-Policy"]
+            assert re.fullmatch(r"[0-9a-f]{24}", headers["X-Request-ID"])
+            if head:
+                assert body == b""
+            else:
+                assert json.loads(body) == {"error": "HTTP-Anfrage abgewiesen"}
+                assert len(body) == int(headers["Content-Length"])
+            assert b"client-controlled" not in body
+            assert b"<!DOCTYPE" not in body
+            response.close()
     finally:
         server.shutdown()
         server.server_close()

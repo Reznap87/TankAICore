@@ -10,11 +10,11 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.38" in current
-    assert "Statusdatum: 8. Oktober 2026" in current
-    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 8. Oktober 2026" in current
-    assert "7daeec9d315997ec513f33c60ccd02bf61029517" in current
-    assert "d0f1d559033a28322935324ae4bf7e8dbb010a73" in current
+    assert "Version: 5.7.39" in current
+    assert "Statusdatum: 9. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 9. Oktober 2026" in current
+    assert "46eb625d51c88d545fa50b216e7794716be12bbb" in current
+    assert "dd2bfb0f4254cd938593cc5a281e9c85dc701aa7" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -84,6 +84,9 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #136" in current
     assert "TankAI Core CI Run #137" in current
     assert "TankAI Core CI Run #138" in current
+    assert "TankAI Core CI Run #139" in current
+    assert "TankAI Core CI Run #140" in current
+    assert "PR #74" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -177,6 +180,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "security.web.logout_origin_cleanup.v1 -> IMPLEMENTED" in current
     assert "security.web.hsts_policy.v1 -> IMPLEMENTED" in current
     assert "security.web.http_method_rejection.v1 -> IMPLEMENTED" in current
+    assert "security.web.http_parser_error_contract.v1 -> IMPLEMENTED" in current
     assert "security.web.request_correlation_id.v1 -> IMPLEMENTED" in current
     assert "ops.ci.node24_action_runtime -> IMPLEMENTED" in current
     assert "ops.cloudflare_toolchain_dependency_security.v1 -> IMPLEMENTED" in current

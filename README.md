@@ -35,7 +35,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 224 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 229 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
@@ -344,6 +344,9 @@ Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root R
   vollständigen Sicherheitsheader-Vertrag. `HEAD` liefert dabei keinen Response-Body. Im
   External-Agent-Namespace ergänzt die Antwort den versionierten Code `method_not_allowed`
   sowie die bestehenden Retry-Felder des v1-Fehlervertrags.
+- HTTP-Parserfehler behalten `400`, `414`, `431` und `505`, antworten jedoch mit neutralem
+  JSON und vollständigen Sicherheitsheadern. Requestzeilen, Versionen und Headerwerte werden
+  nicht gespiegelt; die Verbindung wird geschlossen und `HEAD` bleibt ohne Body.
 - Jede Webantwort trägt eine frische, 96 Bit starke `X-Request-ID`. Eingehende Werte werden
   bewusst ignoriert; dieselbe serverseitige ID verbindet Zugriffslog, Antwort und die neutrale
   Referenz eines internen Fehlers, ohne Ausnahme- oder Nutzdaten offenzulegen.

@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.38
+Version: 5.7.39
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 8. Oktober 2026
+Statusdatum: 9. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 8. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 9. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.38-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.39-Inkrements:
 
-7daeec9d315997ec513f33c60ccd02bf61029517
+46eb625d51c88d545fa50b216e7794716be12bbb
 
 Zugehöriger Repository-Git-Tree:
 
-d0f1d559033a28322935324ae4bf7e8dbb010a73
+dd2bfb0f4254cd938593cc5a281e9c85dc701aa7
 
 Commit-Titel:
 
-security: update Sharp to patched 0.35.5 (#73)
+security: require CORP-compatible embedding (#74)
 
-Dieser Stand ist der Ausgangsstand des COEP-Härtungsinkrements. Ein
+Dieser Stand ist der Ausgangsstand des HTTP-Parser-Härtungsinkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 7daeec9d315997ec513f33c60ccd02bf61029517 mit Git-Tree
-d0f1d559033a28322935324ae4bf7e8dbb010a73,
+geschützter main-Ausgangsstand 46eb625d51c88d545fa50b216e7794716be12bbb mit Git-Tree
+dd2bfb0f4254cd938593cc5a281e9c85dc701aa7,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-COEP-Härtungsinkrement nicht wiederholt,
+HTTP-Parser-Härtungsinkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -635,6 +635,14 @@ TankAI Core CI Run #138, Run 37584456249, auf dem gemergten main-Commit
 7daeec9d315997ec513f33c60ccd02bf61029517: completed/success; die Jobs test und cloudflare
 bestanden erneut einschließlich Produktions-Container-Build und Container-Smoke,
 
+PR #74 ergänzte Cross-Origin-Embedder-Policy ohne Produktionsmutation.
+
+TankAI Core CI Run #139, Run 37738756832: completed/success auf dem PR-#74-Head;
+Pflichtjobs test und cloudflare einschließlich Container-Build und Smoke bestanden.
+
+TankAI Core CI Run #140, Run 37738900650, auf main-Commit
+46eb625d51c88d545fa50b216e7794716be12bbb: completed/success; beide Pflichtjobs bestanden.
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -967,6 +975,12 @@ begrenztem JSON und dem vollständigen Sicherheitsheader-Vertrag abgewiesen. `HE
 abgewiesen und unterdrückt protokollgerecht den Body; der Produktions-Container-Smoke prüft
 denselben Vertrag auf `TRACE`.
 
+security.web.http_parser_error_contract.v1 -> IMPLEMENTED; HTTP-Parserfehler behalten
+ihre Statuscodes 400, 414, 431 und 505, liefern aber neutrales JSON ohne Request-, Versions-
+oder Headerspiegelung und den vollständigen Sicherheitsheader-Vertrag. Fehlerhafte Versionen
+erhalten eine lesbare HTTP/1.0-Antwort; HEAD unterdrückt den Body und die Verbindung wird
+geschlossen. Regressionen und Produktions-Container-Smoke prüfen diesen Vertrag.
+
 security.web.request_correlation_id.v1 -> IMPLEMENTED; jede Webantwort trägt genau eine
 serverseitig erzeugte, zufällige `X-Request-ID`. Clientwerte werden nicht übernommen. Dieselbe
 ID verbindet Antwortheader, Zugriffslog und die neutrale Referenz interner Fehler, ohne
@@ -1207,6 +1221,14 @@ Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene he
 implementiert oder produktiv betrieben wird.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.38, 8. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 7daeec9d315997ec513f33c60ccd02bf61029517 / Tree
+d0f1d559033a28322935324ae4bf7e8dbb010a73 gebunden. PR #74 ergänzte COEP require-corp;
+CI Runs #139 und #140 bestanden einschließlich Produktions-Container-Build und Smoke.
+Kein offener PR, Issue #25 bleibt extern blockiert; keine Produktionsmutation.
+
 
 5.7.37, 7. Oktober 2026:
 

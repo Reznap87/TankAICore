@@ -1,8 +1,25 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 8. Oktober 2026
+**Statusdatum:** 9. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: HTTP-Parser-Fehlervertrag v1 — Nachweis 9. Oktober 2026
+
+- Vorher: fehlerhafte Requestsyntax lieferte HTML mit gespiegelter Eingabe und ohne
+  TankAI-Sicherheitsheader; der neue Regressionstest schlug gegen den Ausgangscode fehl.
+- Jetzt: neutrales JSON mit unveränderten Statuscodes `400`, `414`, `431`, `505`, vollständigen
+  Sicherheitsheadern, serverseitiger Request-ID und `Connection: close`: PASS
+- Fehlerversionen erhalten eine lesbare HTTP/1.0-Antwort; HEAD bleibt ohne Body: PASS
+- `python -m pytest -q`: 229 PASS; `python -m tankai --selftest`: 24 PASS
+- Python-Compile und Dependency-Check: PASS; `git diff --check`: PASS
+- Isoliertes `npm ci --ignore-scripts`, Wrangler-Typen, TypeScript-`--noEmit`, Worker-only-
+  Dry-Run mit `--containers-rollout=none` und Artefaktprüfung: PASS
+- Vollständiger npm-Audit und Produktionsabhängigkeits-Audit: 0 bekannte Funde
+- Neuer Parser-Smoke-Helper lokal gegen einen temporären Mock-Webserver: PASS (`400`, `505`)
+- Vollständiger Container-Dry-Run, Produktions-Container-Build und Smoke bleiben mangels lokaler
+  Docker-CLI Pflicht-CI-Gates vor einem Merge.
+- Keine Secrets, Berechtigungen, Provider, Produktion oder Deployments verändert.
 
 ## Unreleased: Cross-Origin-Embedder-Policy v1 — Nachweis 8. Oktober 2026
 
