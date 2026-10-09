@@ -1134,6 +1134,10 @@ markieren, solange ein sicherer ausführbarer Task existiert.
 
 0.10 Unmittelbare Ausführungsreihenfolge
 
+Für unabhängige Produktentwicklung gilt zusätzlich die priorisierte Nutzenfolge in 0.11.5;
+P1 ist der nächste vorbereitbare Produkt-Task. Die folgenden Betriebs- und Produktionsgates
+bleiben bestehen und werden dadurch weder übersprungen noch erneut implementiert.
+
 1. Die in PRs #26 bis #29 abgeschlossenen repositoryseitigen Live-Provider-Verträge nicht
    wiederholen. Issue #25 bleibt für die externen Konfigurations- und Autorisierungsschritte offen.
 
@@ -1219,6 +1223,221 @@ Modellverträge.
 
 Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene heute bereits
 implementiert oder produktiv betrieben wird.
+
+0.11.1 Richtungsentscheidung: eigenes kooperierendes KI-System
+Planungsrevision: 2026-10-09.1; durch Nutzerauftrag in dieser Sitzung festgelegt.
+Status: verbindliche Zielrichtung und priorisierte Entwicklungsplanung; kein neuer
+Implementierungs-, Trainings-, Host- oder Produktionsnachweis.
+
+TankAI ist das eigene, zusammenhängende KI-System mit eigener Identität, Commander,
+Projektgedächtnis, Werkzeugverträgen und Ergebnisprüfung. Externe KI-Modelle und selbst
+betriebene Modelle sind austauschbare Fähigkeiten dieses Systems. Ein API-Anschluss ist mit
+dieser Produktidentität vereinbar, überträgt aber weder Eigentum noch Trainingsrechte am
+Anbietermodell. Ein selbst betriebenes offenes Modell wird nicht als selbst entwickeltes
+Grundmodell bezeichnet.
+
+Beide Modellpfade sind Zielumfang: externe APIs UND eigene Modellinferenz. Es gibt keine
+Pflicht, dafür vorab ein großes Grundmodell von null zu trainieren. Bestehende Adapter,
+Commander-/Agentenmodule, Memory-Verträge, Tool Fabric und External Agent Gateway werden
+weiterentwickelt; parallele Auth-, Queue-, Memory- oder Providerarchitekturen sind zu vermeiden.
+Die Modellfamilie aus Abschnitt 10 bleibt der schrittweise Ausbaupfad.
+
+Produktleitbild: TankAI versteht das eigentliche Ziel, schlägt bessere Wege vor, organisiert
+passende Fähigkeiten und führt die Arbeit bis zu einem überprüfbaren Ergebnis.
+Leitsatz: Nicht nur dieselben 100 Meter schneller laufen; prüfen, ob ein anderer Weg oder das
+Vermeiden unnötiger Arbeit das Ziel besser erreicht. Eine Alternative darf ausdrückliche
+Nutzeranforderungen nicht stillschweigend ersetzen. Überlegenheit wird anhand erledigter
+Aufgaben, Qualität, Kosten und Zeit gemessen, nicht aus Agentenzahl oder Modellnamen abgeleitet.
+
+0.11.2 Produktfähigkeiten, die den nächsten Ausbau bestimmen
+
+A. Zielklärung und bessere Lösungswege
+Der Commander unterscheidet gewünschtes Ergebnis, ausdrücklich verlangtes Vorgehen,
+Randbedingungen und Definition of Done. Bei relevantem Nutzen entwickelt er Alternativen und
+erklärt Aufwand, Unsicherheit und Konsequenzen. Notwendige Rückfragen werden gezielt gestellt;
+unabhängige autorisierte Arbeit läuft weiter. Keine unnötigen Alternativen bei trivialen Aufgaben.
+Abnahme: Vergleich gegen dieselben Aufgaben ohne Alternativplanung; Bewertung von Zielerfüllung,
+vermeidbaren Schritten und Einhaltung ausdrücklicher Anforderungen.
+
+B. Entscheidungsfähiges Projektgedächtnis
+Bestehende Speicherklassen um nachvollziehbare Entscheidungsbezüge erweitern: Ziel,
+Entscheidung, Begründung, Quelle, Zeitpunkt, Gültigkeit, offene Annahmen, verworfene Versuche und
+bestätigter nächster Schritt. Widersprüche und veraltete Informationen werden kenntlich gemacht.
+Speicherung bleibt nutzer-/workspacegebunden, einsehbar, korrigierbar und löschbar.
+Abnahme: eine unterbrochene Aufgabe mit gespeicherter Entscheidung korrekt fortsetzen; eine
+überholte Annahme erkennen; fremde Projektinformationen zuverlässig ausgeschlossen halten.
+Vor einer Schemaänderung Migration und Rückwärtskompatibilität separat planen.
+
+C. Ideenlabor
+Für geeignete komplexe Ideen die Perspektiven Erfinder, Kritiker, Praktiker und Prüfer nutzen.
+Ergebnis: wenige begründete Varianten, entscheidende Unsicherheit, empfohlener Weg und kleinster
+aussagekräftiger Versuch. Rollen können ein Modell mehrfach oder mehrere Modelle verwenden.
+Unabhängige Prüfung wird nur bei tatsächlich unabhängigem Modell-/Providerpfad behauptet.
+Abnahme: Varianten enthalten überprüfbare Unterschiede und einen ausführbaren Versuch;
+kein Konsens mehrerer Rollen wird ohne externe Belege als Wahrheit behandelt.
+
+D. Ausführung bis zum belegten Abschluss
+Bestehende Goal-/Run-Zustände, Queue-/Gateway-Verträge und Receipts verwenden. Ein Auftrag
+enthält Abnahmekriterien, erlaubte Werkzeuge, Datenklasse, Budget und Abbruchbedingungen.
+Zwischenstände überstehen Unterbrechungen. Vorgeschlagen, ausgeführt, geprüft und veröffentlicht
+bleiben unterscheidbare Zustände. Fehlende Pflichtschritte verhindern completed.
+Abnahme: ein begrenzter Arbeitsablauf erzeugt ein nutzbares Artefakt, besteht seine Prüfungen und
+lässt sich nach Neustart ohne doppelte externe Wirkung fortsetzen.
+
+E. Fähigkeitsrouting und geprüfte Wiederverwendung
+Routing entscheidet zwischen gültigem gespeicherten Ergebnis, deterministischem Werkzeug,
+kleinem eigenen Modell und externem Spezialmodell. Fähigkeiten werden anhand realer
+Verfügbarkeit, Datenklasse, Qualität, Latenz und Kosten gewählt. Wiederverwendung prüft
+Eigentum, Quellenbezug, Aktualität und Kontext; private Ergebnisse werden nicht global geteilt.
+Fallbacks respektieren dieselben Daten- und Budgetgrenzen. Nicht jede Anfrage startet ein Team.
+Abnahme: Vergleich mit einer festen Baseline einschließlich Cache-Veraltung, Providerausfall,
+Budgeterschöpfung und Verweigerung eines unzulässigen Fallbacks.
+
+F. Kontrollierte Verbesserung aus Korrekturen
+Korrekturen zunächst als nachvollziehbare Kandidaten für Präferenz, Vorlage, Verfahren, Routing
+oder Modellanpassung erfassen. Persönliche Vorlieben bleiben persönlich. Gedächtnisänderung,
+Prompt-/Verfahrensänderung und Training sind getrennte Vorgänge. Private Rohdaten werden nicht
+automatisch zu Trainingsmaterial. Abschnitt 9 mit eingefrorenen Evals, Promotion und Rollback
+bleibt verbindlich.
+Abnahme: ein korrigierter Fehler wird auf unabhängigen Fällen seltener, ohne neue kritische
+Regression; Candidate, Baseline und Entscheidung erhalten einen Receipt.
+
+G. Vereinbarte Eigenständigkeit
+Handlungsspielräume pro Workspace und Aufgabe definieren: erlaubte Werkzeuge, Repositorys,
+Dateibereiche, Datenweitergabe, Modellaufrufe, Kosten und externe Mutationen. Innerhalb des
+vereinbarten Rahmens Routinearbeit ausführen. Außerhalb davon den konkreten Schritt vorbereiten
+und die erforderliche Entscheidung einholen. Ein Arbeitsauftrag erweitert keine Tokenscopes.
+Abnahme: erlaubte Aufgaben laufen weiter; unzulässige Aktion, erschöpftes Budget und
+entzogene Berechtigung werden vor der Wirkung gestoppt und nachvollziehbar ausgewiesen.
+
+0.11.3 GitHub- und Cloudflare-Kompatibilität
+
+Der Nutzer hat in dieser Sitzung klargestellt: mit "CloudChat" war Cloudflare gemeint.
+Daraus entsteht kein zusätzlicher Dienst und keine neue Chat-Plattform.
+
+GitHub bleibt die Source of Truth für Code, Masterplan und überprüfbare Änderungen im
+Repository Reznap87/TankAICore. Jede Umsetzung wird als eng begrenzter Task mit bestehendem
+Modulowner, PR, Tests und Receipt geführt. main-HEAD, PR-HEAD und tatsächlich deployter Commit
+werden getrennt dokumentiert. Pflichtchecks test und cloudflare bleiben erforderlich.
+Neue Entwicklungsaufgaben lesen zuerst den aktuellen Masterplan und offene Owner, damit
+abgeschlossene Arbeiten und laufende PRs nicht dupliziert werden.
+
+Cloudflare bleibt der bestehende Web-/Worker-/Container-Pfad. Der Masterplan dokumentiert
+bereits einen verifizierten Infrastruktur-Deploy; "noch kein Server" beschreibt deshalb den
+noch offenen dedizierten Runner-/Modellhost, nicht das Fehlen jeder Hosting-Infrastruktur.
+Ein neuer Anbieter ist eine ergänzende, begründet auszuwählende Laufzeit, kein automatischer
+Ersatz des Cloudflare-Pfads. Aktuelle Live-Readiness wird weiterhin durch aktuelle Receipts
+bestimmt; dieser Planungsnachtrag führt keinen neuen externen Healthcheck aus.
+
+API-Provider und selbst betriebene Modellendpunkte werden ausschließlich über serverseitige,
+validierte Adapter eingebunden. Authentifizierung, Ownership, Capability-Discovery,
+API-Versionen, Idempotenz, Retry-/Ergebnisverträge und Limits bleiben kompatibel.
+Das External Agent Gateway dient externen Arbeitsaufträgen; ein Inferenzendpoint bleibt ein
+Modelladapter. Beide Rollen dürfen nicht zu einer ungeschützten universellen Ausführung
+zusammenfallen. Keine GPU-Ausführung im normalen Worker und kein Runtime-Socket im Webprozess.
+
+Für jedes Inkrement: Python-/Core-Vertrag prüfen, TypeScript-/Worker-Vertrag prüfen,
+Container-Build und Web-Smoke nach bestehender CI ausführen sowie den betroffenen
+Adapter-/Gateway-Pfad testen. Eine inkompatible API- oder Schemaänderung benötigt eine
+ausdrückliche Versionierungs- und Migrationsentscheidung; ältere freigegebene Clients dürfen
+nicht stillschweigend brechen.
+
+0.11.4 Hostingstrategie für API-KI und eigene Modelle
+
+Drei Betriebsbereiche getrennt dimensionieren:
+1. Cloudflare-Web-/API-Zugang mit TankAI Core und dauerhaftem Zustands-/Dateispeicher.
+2. Isolierter Development-Runner mit persistentem Dateisystem und rootless Runtime nach 0.10.
+3. Eigene Modellinferenz auf geeignetem CPU-/GPU-Host; Training als separater späterer Job.
+
+Der bereits vorhandene lokale Qwen2.5-Coder-/llama.cpp-Compose-Pfad ist der erste belegte
+Integrationsansatz für selbst betriebene Modelle. Er wird vor einer neuen GPU-Architektur
+wiederverwendet und auf einem geeigneten Host geprüft. Repository-Implementierung beweist
+keinen aktiven Modellserver und keine ausreichende Hardware.
+
+Anbieterauswahl erst anhand eines benannten Modells und typischer Aufgaben: RAM/VRAM,
+Kontextlänge, Parallelität, Startzeit, Tokens pro Sekunde, Verfügbarkeit, Datenregion, Lizenz,
+Speicher, Administration, Wiederherstellung und Gesamtkosten messen. CPU-Inferenz für passende
+kleine Modelle bleibt möglich. GPU nach Bedarf bei unregelmäßiger Last prüfen; dauerhaft
+bereite GPU erst bei gemessenem Latenz-/Auslastungsvorteil. Kaltstart und Modellladezeit zählen
+zum Nutzererlebnis und zur Rechnung.
+
+Hetzner/OVHcloud sind Kandidaten für selbst verwaltete Hosts; verwaltete App-Plattformen und
+GPU-Angebote wie Runpod, Modal oder Scaleway sind Vergleichskandidaten. Es gibt keine
+Anbieterentscheidung durch diesen Nachtrag. Preise werden vor Buchung aktuell geprüft.
+Getrennte Budgets für Basisbetrieb, API-Nutzung, GPU-Inferenz und Training führen.
+Serverless beschreibt die Betriebsverantwortung, nicht die Abwesenheit von Servern.
+Ein Speicherort in der EU begrenzt nicht automatisch die Datenwege externer KI-Aufrufe.
+
+0.11.5 Priorisierte Umsetzung und überprüfbare Übergänge
+
+P0 — Bestehendes Produktionsgate fortführen.
+Owner: Issue #25 / ops.production.live_provider_readiness. Abgeschlossene PRs #26 bis #29
+nicht erneut implementieren. Hauptmodell, unabhängigen Critic und optionalen Search-Pfad
+auswählen, Budgets festlegen und vorhandenen Readiness-Vertrag anwenden. Ergebnis bleibt
+EXTERN BLOCKIERT, bis die externen Entscheidungen und Receipts vorliegen.
+Dieser Dokumentationsauftrag aktiviert weder Provider noch Queue noch Deploy.
+
+P1 — Ersten durchgängigen Nutzenfall und Vergleichskorpus festlegen.
+Nächster unabhängiger Produkt-Task: product.cooperative_ai.acceptance_baseline.
+Verantwortungsbereich: bestehender Commander-/Eval-Pfad; vor Vergabe vorhandene Owner prüfen.
+Einen kleinen repräsentativen Korpus vor Candidate-Entwicklung einfrieren: Ideenentwicklung,
+dokumentgestützte Analyse und begrenzte Code-/Prototypaufgabe. Abnahmekriterien, erlaubte
+Werkzeuge, Datenklassen und Kosten-/Zeitobergrenzen pro Fall festlegen.
+Artefakt: versionierter Korpus und Baseline-Receipt mit Fehlern und Messwerten.
+Lokale Simulation darf Vertragsprüfungen liefern, aber keinen echten Qualitätsgewinn belegen.
+
+P2 — Zielklärung und Ideenlabor in bestehendem Commander ausbauen.
+Task: product.commander.goal_and_alternatives. Abnahme gemäß 0.11.2 A/C auf dem eingefrorenen
+Korpus; unnötige Modellaufrufe und zusätzliche Latenz mitmessen. Kein zweiter Commander.
+
+P3 — Projektentscheidungen und Fortsetzung verlässlich verbinden.
+Task: product.memory.decision_continuity. Bestehende Speicher-/Goal-Verträge verwenden;
+Migration nur bei belegtem Bedarf. Abnahme gemäß 0.11.2 B/D einschließlich Neustart,
+Korrektur, Löschung und Isolation. Kein zweites Gedächtnissystem.
+
+P4 — Externe APIs und eigene Inferenz über denselben Steuerungspfad nachweisen.
+Task: product.model_mesh.hybrid_acceptance. Bestehende Adapter und lokalen Qwen-Pfad
+inventarisieren, fehlende Integrationsprüfung ergänzen, gleiche begrenzte Aufgaben über beide
+Pfade ausführen und Fehler-/Budgetverhalten vergleichen. Live-Abnahme hängt von P0 bzw. einem
+nachgewiesen bereiten eigenen Modellhost ab. Kein Hostingkauf allein zur Planerfüllung.
+
+P5 — Vollständigen Arbeitsablauf mit Wiederaufnahme belegen.
+Task: product.cooperative_ai.end_to_end. Beispiel: von einer gesprochenen oder geschriebenen
+Geschäftsidee über belegte Recherche und nachvollziehbare Kalkulation zu einem prüfbaren,
+lokal oder privat vorführbaren Prototyp. Spracheingabe ist ein gesondert zu prüfender Adapter;
+Text bleibt der erste Abnahmeweg. Bestehende Tool-/Gateway-/Queue-Verträge benutzen.
+Artefakt, Ausführung, unabhängige Prüfung, Gesamtkosten und Wiederaufnahme nach Unterbrechung
+nachweisen. Öffentliche Veröffentlichung ist ein separater Schritt.
+
+P6 — Kontrollierte Verbesserung und eigene Modellfamilie ausbauen.
+Task: product.improvement.verified_feedback. Nur freigegebene Signale nutzen; erst Verfahren
+und Routing verbessern, dann eigene Router-/Critic-/Core-Modelle nach Abschnitt 10 bewerten.
+Trainingsbedarf aus gemessenen Schwächen ableiten. Keine automatische Selbstverbesserung oder
+allgemeine Überlegenheit aus einzelnen Beispielen behaupten.
+
+P1 ist unabhängig vom externen Rest von P0 vorbereitbar. P2/P3 dürfen mit Vertrags- und
+Simulationsprüfungen beginnen; echte Nutzen- und Hybridnachweise warten auf geeignete
+Laufzeiten. Sicherheitsreparaturen bleiben priorisierbar. Nach bestandenen Sicherheitsgates
+soll die nächste unabhängige Produktarbeit auf diese Nutzenfolge zurückführen.
+Vor jedem Task bestehende Implementierung, Owner und offene PRs prüfen; die IDs oben sind
+Planungseinträge und kein Nachweis angelegter Issues oder bereits laufender Arbeit.
+
+0.11.6 Messbarer Erfolg und Autorisierungsgrenze
+
+Fortschritt wird pro eingefrorenem Korpus ausgewiesen: tatsächlich abgeschlossene Aufgaben,
+unabhängig bewertete Ergebnisqualität, unbelegte Aussagen, verletzte Anforderungen,
+Wiederaufnahmeerfolg, kritische Isolation-/Berechtigungsfehler, Latenz und Gesamtkosten pro
+erfolgreicher Aufgabe. Schwellenwerte werden vor dem jeweiligen Candidate festgelegt.
+Die relevante Baseline ist ein einfacher geeigneter Einzelmodellpfad unter denselben
+Randbedingungen. Zusätzliche Rollen müssen ihren Nutzen gegenüber dieser Baseline zeigen.
+
+Dieser Nutzerauftrag autorisiert die Masterplan-Ergänzung und ihre konkrete PR-Vorbereitung.
+Er legt die Entwicklungsrichtung fest, ersetzt aber keinen technischen Implementierungsnachweis.
+Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
+Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
+Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
+Der Reality Contract 5.7.39 und seine historischen Receipts werden durch diesen
+Planungsnachtrag nicht rückwirkend umgeschrieben.
 
 0.12 Reality-Contract-Versionshistorie
 
