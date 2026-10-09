@@ -10,15 +10,18 @@ import json
 import re
 import secrets
 import shutil
+import socket
 import stat
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from http.client import HTTPResponse
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 DOCKER = shutil.which("docker") or "docker"
@@ -657,6 +660,33 @@ def unsupported_method_contract(base: str) -> None:
     )
 
 
+def http_parser_error_contract(base: str) -> None:
+    url = urlsplit(base)
+    require(url.scheme == "http", "parser smoke requires local HTTP")
+    cases = (
+        (b"GET /client-controlled extra HTTP/1.1\r\n\r\n", 400),
+        (b"GET /client-controlled HTTP/9.0\r\n\r\n", 505),
+    )
+    for raw_request, expected_status in cases:
+        with socket.create_connection((url.hostname, url.port or 80), timeout=10) as connection:
+            connection.sendall(raw_request)
+            response = HTTPResponse(connection)
+            response.begin()
+            body = response.read(HTTP_LIMIT + 1)
+            require(response.status == expected_status, "parser error status differs")
+            public_json_headers(response.headers, "HTTP parser error")
+            security_headers(response.headers, CSP_SCRIPT_NONE)
+            require(
+                response.headers.get_all("Connection") == ["close"],
+                "parser error connection not closed",
+            )
+            require(
+                json.loads(body) == {"error": "HTTP-Anfrage abgewiesen"},
+                "parser error response differs",
+            )
+            response.close()
+
+
 def registration_disabled(base: str) -> None:
     code, headers, payload = request_json(
         base,
@@ -1169,6 +1199,7 @@ def smoke(
     security_headers(headers, CSP_SCRIPT_NONE)
     health_contract(headers, health, version)
     unsupported_method_contract(base)
+    http_parser_error_contract(base)
     html_contract(base)
     unauthenticated_me(base)
     registration_disabled(base)

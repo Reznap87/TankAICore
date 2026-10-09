@@ -495,7 +495,17 @@ class Handler(BaseHTTPRequestHandler):
                     suppress_body=self.command == "HEAD",
                 )
             return
-        super().send_error(code, message, explain)
+        # Parser errors must not reflect request lines, versions or header values.
+        # Parsing may fail before HTTP/1.x is assigned (e.g. an invalid version).
+        if self.request_version == "HTTP/0.9":
+            self.request_version = "HTTP/1.0"
+        self.close_connection = True
+        self._json(
+            {"error": "HTTP-Anfrage abgewiesen"},
+            code,
+            headers={"Connection": "close"},
+            suppress_body=self.command == "HEAD",
+        )
 
     def _security_headers(
         self,

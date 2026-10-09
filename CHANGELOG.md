@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### HTTP-Parser-Fehlervertrag v1
+
+- Fehlerhafte HTTP-Anfragen liefern neutrales JSON statt eingabespiegelnder HTML-Fehlerseiten.
+- Statuscodes `400`, `414`, `431` und `505` bleiben erhalten; Sicherheitsheader und
+  Request-ID gelten auch vor dem Routing. Fehlerhafte Versionen erhalten eine lesbare
+  HTTP/1.0-Antwort, `HEAD` keinen Body; die Verbindung wird geschlossen.
+- Regressionen decken Syntax, lange Requestzeilen/Header, Versionen und HEAD ab; der
+  Produktions-Container-Smoke prüft Syntax- und Versionsfehler.
+
 ### Cross-Origin-Embedder-Policy v1
 
 - Alle HTML-, JSON-, `304`-, Asset- und Methodenfehlerantworten setzen zusätzlich
