@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "baseline_id": "tankai-cooperative-mock-baseline-v1",
+  "corpus_id": "tankai-cooperative-acceptance-v1",
+  "corpus_sha256": "8badde3d517fcd3491c0adb6f8ccf16998970393952393fa01c5056bbc5d98c3",
+  "observed_at": "2026-10-10T06:55:00Z",
+  "execution_mode": "simulation",
+  "system_identity": "TankAI mock:deterministic-mock, tools disabled, max_retries=0",
+  "external_calls_made": false,
+  "observations": [
+    {
+      "case_id": "coop-v1-idea-workshop",
+      "result_status": "simulated",
+      "criteria_passed": ["run_contract"],
+      "criteria_failed": [
+        "three_distinct_options",
+        "reasoned_recommendation",
+        "critical_uncertainty",
+        "bounded_experiment"
+      ],
+      "failures": [
+        "Die generische Mock-Antwort enthält keine Varianten, keine Abwägung und keinen Kleinversuch.",
+        "Alle drei geplanten Arbeitsschritte wurden vom internen Critic abgelehnt; das Ergebnis ist nicht release-ready."
+      ],
+      "metrics": {
+        "duration_seconds": 0.002,
+        "llm_calls": 10,
+        "external_cost_usd": 0,
+        "output_chars": 411,
+        "source_count": 0,
+        "receipt_count": 11
+      }
+    },
+    {
+      "case_id": "coop-v1-document-analysis",
+      "result_status": "simulated",
+      "criteria_passed": ["internal_data_boundary"],
+      "criteria_failed": [
+        "facts_separated",
+        "privacy_conflict",
+        "delivery_dependency",
+        "bounded_decision"
+      ],
+      "failures": [
+        "Die generische Mock-Antwort trennt Fakten und Annahmen nicht und erkennt die beiden dokumentierten Blocker nicht.",
+        "Alle drei geplanten Arbeitsschritte wurden vom internen Critic abgelehnt; das Ergebnis ist nicht release-ready."
+      ],
+      "metrics": {
+        "duration_seconds": 0.001,
+        "llm_calls": 10,
+        "external_cost_usd": 0,
+        "output_chars": 382,
+        "source_count": 0,
+        "receipt_count": 11
+      }
+    },
+    {
+      "case_id": "coop-v1-code-prototype",
+      "result_status": "simulated",
+      "criteria_passed": ["run_contract"],
+      "criteria_failed": [
+        "stable_deduplication",
+        "input_unchanged",
+        "strict_integer_validation",
+        "required_tests"
+      ],
+      "failures": [
+        "Die generische Mock-Antwort enthält weder Implementierung noch ausführbare Tests.",
+        "Alle drei geplanten Arbeitsschritte wurden vom internen Critic abgelehnt; das Ergebnis ist nicht release-ready."
+      ],
+      "metrics": {
+        "duration_seconds": 0.001,
+        "llm_calls": 10,
+        "external_cost_usd": 0,
+        "output_chars": 417,
+        "source_count": 0,
+        "receipt_count": 11
+      }
+    }
+  ]
+}

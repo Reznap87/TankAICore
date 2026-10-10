@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.39
+Version: 5.7.40
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 9. Oktober 2026
+Statusdatum: 10. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 9. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 10. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.39-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.40-Inkrements:
 
-46eb625d51c88d545fa50b216e7794716be12bbb
+6087b118b35555db98da65fddde35b67e2555797
 
 Zugehöriger Repository-Git-Tree:
 
-dd2bfb0f4254cd938593cc5a281e9c85dc701aa7
+6ab94d6737aea1f28ff064ed40d91c6e9a75bd8f
 
 Commit-Titel:
 
-security: require CORP-compatible embedding (#74)
+docs: prioritize cooperative TankAI and hybrid model roadmap (#76)
 
-Dieser Stand ist der Ausgangsstand des HTTP-Parser-Härtungsinkrements. Ein
+Dieser Stand ist der Ausgangsstand des kooperativen Acceptance-Baseline-Inkrements. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,13 +99,13 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 46eb625d51c88d545fa50b216e7794716be12bbb mit Git-Tree
-dd2bfb0f4254cd938593cc5a281e9c85dc701aa7,
+geschützter main-Ausgangsstand 6087b118b35555db98da65fddde35b67e2555797 mit Git-Tree
+6ab94d6737aea1f28ff064ed40d91c6e9a75bd8f,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-HTTP-Parser-Härtungsinkrement nicht wiederholt,
+Acceptance-Baseline-Inkrement nicht wiederholt,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -643,6 +643,26 @@ Pflichtjobs test und cloudflare einschließlich Container-Build und Smoke bestan
 TankAI Core CI Run #140, Run 37738900650, auf main-Commit
 46eb625d51c88d545fa50b216e7794716be12bbb: completed/success; beide Pflichtjobs bestanden.
 
+PR #75 ergänzte den neutralen HTTP-Parser-Fehlervertrag ohne Produktionsmutation.
+
+TankAI Core CI Run #141, Run 37893616647, auf dem finalen PR-#75-Head
+7cfb2367e458fffa3bdbe12f21f3edbba8e0f64a: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Produktions-Container-Build und Container-Smoke.
+
+TankAI Core CI Run #142, Run 37893746144, auf main-Commit
+67712b7541c342d24f7f9db1f159367681ee5905: completed/success; beide Pflichtjobs bestanden.
+
+PR #76 priorisierte dokumentarisch den kooperativen TankAI- und hybriden Modellpfad und
+benannte den Acceptance-Korpus als nächsten unabhängigen Produkt-Task; Runtime-, Provider- und
+Deploymentverträge blieben unverändert.
+
+TankAI Core CI Run #143, Run 37914474875, auf dem finalen PR-#76-Head
+10414c33961cc1d75accd3579b3b74f54a30ac32: completed/success; die Jobs test und cloudflare
+bestanden einschließlich Produktions-Container-Build und Container-Smoke.
+
+TankAI Core CI Run #144, Run 37914640948, auf main-Commit
+6087b118b35555db98da65fddde35b67e2555797: completed/success; beide Pflichtjobs bestanden.
+
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
 Git-Tree f318d8ca72500b03f19635af0834c36d151ab232,
@@ -934,6 +954,14 @@ Queue und Stundenlimit sind retryable; nur das deterministisch berechenbare Stun
 eine begrenzte Wartezeit samt `Retry-After`. Fehlercodes, HTTP-Status, Meldungen und sämtliche
 Zugriffskontrollen bleiben unverändert.
 
+product.cooperative_ai.acceptance_baseline.v1 -> IMPLEMENTED; ein vor Candidate-Entwicklung
+eingefrorener, versionierter Korpus deckt Ideenentwicklung, dokumentgestützte Analyse und einen
+begrenzten Code-Prototyp ab. Jeder Fall bindet Definition of Done, Datenklasse, erlaubte
+Werkzeuge und Zeit-, Aufruf-, Kosten- sowie Ausgabegrenzen. 15 gewichtete Kriterien und der
+kanonische SHA-256-Hash binden das Mock-Baseline-Receipt an exakt diesen Korpus. Die Simulation
+verfehlt 12 Kriterien und erreicht `0.1778`; sie kennzeichnet dies ausdrücklich als
+`simulation-baseline-only`, belegt keinen Qualitätsgewinn und führte keine externen Aufrufe aus.
+
 security.web.per_response_csp_nonce.v1 -> IMPLEMENTED; jede HTML-Antwort erhält einen frischen,
 URL-sicheren Nonce, der exakt mit dem einzigen eingebetteten Skript übereinstimmt. JSON-,
 `304`- und statische Asset-Antworten veröffentlichen keinen Nonce und sperren Skripte mit
@@ -1135,7 +1163,8 @@ markieren, solange ein sicherer ausführbarer Task existiert.
 0.10 Unmittelbare Ausführungsreihenfolge
 
 Für unabhängige Produktentwicklung gilt zusätzlich die priorisierte Nutzenfolge in 0.11.5;
-P1 ist der nächste vorbereitbare Produkt-Task. Die folgenden Betriebs- und Produktionsgates
+P1 ist repositoryseitig abgeschlossen, P2 ist der nächste vorbereitbare Produkt-Task. Die
+folgenden Betriebs- und Produktionsgates
 bleiben bestehen und werden dadurch weder übersprungen noch erneut implementiert.
 
 1. Die in PRs #26 bis #29 abgeschlossenen repositoryseitigen Live-Provider-Verträge nicht
@@ -1377,14 +1406,17 @@ auswählen, Budgets festlegen und vorhandenen Readiness-Vertrag anwenden. Ergebn
 EXTERN BLOCKIERT, bis die externen Entscheidungen und Receipts vorliegen.
 Dieser Dokumentationsauftrag aktiviert weder Provider noch Queue noch Deploy.
 
-P1 — Ersten durchgängigen Nutzenfall und Vergleichskorpus festlegen.
-Nächster unabhängiger Produkt-Task: product.cooperative_ai.acceptance_baseline.
+P1 — Ersten durchgängigen Nutzenfall und Vergleichskorpus festlegen. REPOSITORYSEITIG UMGESETZT.
+Capability: product.cooperative_ai.acceptance_baseline.v1.
 Verantwortungsbereich: bestehender Commander-/Eval-Pfad; vor Vergabe vorhandene Owner prüfen.
 Einen kleinen repräsentativen Korpus vor Candidate-Entwicklung einfrieren: Ideenentwicklung,
 dokumentgestützte Analyse und begrenzte Code-/Prototypaufgabe. Abnahmekriterien, erlaubte
 Werkzeuge, Datenklassen und Kosten-/Zeitobergrenzen pro Fall festlegen.
 Artefakt: versionierter Korpus und Baseline-Receipt mit Fehlern und Messwerten.
 Lokale Simulation darf Vertragsprüfungen liefern, aber keinen echten Qualitätsgewinn belegen.
+Umgesetzt sind drei Fälle, 15 gewichtete Kriterien, feste Limits, Hashbindung und ein
+maschinenlesbarer Mock-Receipt mit 12 verfehlten Kriterien und Score `0.1778`. P2 muss gegen
+denselben Korpus gemessen werden; der Baseline-Hash darf nicht stillschweigend verändert werden.
 
 P2 — Zielklärung und Ideenlabor in bestehendem Commander ausbauen.
 Task: product.commander.goal_and_alternatives. Abnahme gemäß 0.11.2 A/C auf dem eingefrorenen
@@ -1415,7 +1447,8 @@ und Routing verbessern, dann eigene Router-/Critic-/Core-Modelle nach Abschnitt 
 Trainingsbedarf aus gemessenen Schwächen ableiten. Keine automatische Selbstverbesserung oder
 allgemeine Überlegenheit aus einzelnen Beispielen behaupten.
 
-P1 ist unabhängig vom externen Rest von P0 vorbereitbar. P2/P3 dürfen mit Vertrags- und
+P1 ist unabhängig vom externen Rest von P0 abgeschlossen. P2 ist der nächste unabhängige
+Produkt-Task. P2/P3 dürfen mit Vertrags- und
 Simulationsprüfungen beginnen; echte Nutzen- und Hybridnachweise warten auf geeignete
 Laufzeiten. Sicherheitsreparaturen bleiben priorisierbar. Nach bestandenen Sicherheitsgates
 soll die nächste unabhängige Produktarbeit auf diese Nutzenfolge zurückführen.
@@ -1431,15 +1464,25 @@ erfolgreicher Aufgabe. Schwellenwerte werden vor dem jeweiligen Candidate festge
 Die relevante Baseline ist ein einfacher geeigneter Einzelmodellpfad unter denselben
 Randbedingungen. Zusätzliche Rollen müssen ihren Nutzen gegenüber dieser Baseline zeigen.
 
-Dieser Nutzerauftrag autorisiert die Masterplan-Ergänzung und ihre konkrete PR-Vorbereitung.
-Er legt die Entwicklungsrichtung fest, ersetzt aber keinen technischen Implementierungsnachweis.
+Der heutige Entwicklungsauftrag autorisiert die repositoryseitige P1-Baseline mit Tests und
+Dokumentation. Er aktiviert weder Modelle noch externe Laufzeiten und ersetzt keinen späteren
+Qualitätsnachweis für P2.
 Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
 Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
 Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
-Der Reality Contract 5.7.39 und seine historischen Receipts werden durch diesen
+Der Reality Contract 5.7.40 und seine historischen Receipts werden durch diesen
 Planungsnachtrag nicht rückwirkend umgeschrieben.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.39, 9. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 46eb625d51c88d545fa50b216e7794716be12bbb / Tree
+dd2bfb0f4254cd938593cc5a281e9c85dc701aa7 gebunden. PR #75 ergänzte den neutralen
+HTTP-Parser-Fehlervertrag; CI Runs #141 und #142 bestanden einschließlich
+Produktions-Container-Build und Smoke. PR #76 priorisierte anschließend dokumentarisch den
+kooperativen TankAI- und hybriden Modellpfad; CI Runs #143 und #144 bestanden. Kein offener PR,
+Issue #25 blieb extern blockiert; keine Produktionsmutation.
 
 5.7.38, 8. Oktober 2026:
 

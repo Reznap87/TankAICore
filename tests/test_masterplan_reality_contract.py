@@ -10,11 +10,11 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.39" in current
-    assert "Statusdatum: 9. Oktober 2026" in current
-    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 9. Oktober 2026" in current
-    assert "46eb625d51c88d545fa50b216e7794716be12bbb" in current
-    assert "dd2bfb0f4254cd938593cc5a281e9c85dc701aa7" in current
+    assert "Version: 5.7.40" in current
+    assert "Statusdatum: 10. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 10. Oktober 2026" in current
+    assert "6087b118b35555db98da65fddde35b67e2555797" in current
+    assert "6ab94d6737aea1f28ff064ed40d91c6e9a75bd8f" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -86,7 +86,13 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #138" in current
     assert "TankAI Core CI Run #139" in current
     assert "TankAI Core CI Run #140" in current
+    assert "TankAI Core CI Run #141" in current
+    assert "TankAI Core CI Run #142" in current
+    assert "TankAI Core CI Run #143" in current
+    assert "TankAI Core CI Run #144" in current
     assert "PR #74" in current
+    assert "PR #75" in current
+    assert "PR #76" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -173,6 +179,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "development.external_agent_admission_policy.v1 -> IMPLEMENTED" in current
     assert "development.external_agent_cancel_idempotency.v1 -> IMPLEMENTED" in current
     assert "development.external_agent_retry_contract.v1 -> IMPLEMENTED" in current
+    assert "product.cooperative_ai.acceptance_baseline.v1 -> IMPLEMENTED" in current
     assert "security.web.per_response_csp_nonce.v1 -> IMPLEMENTED" in current
     assert "security.web.nonce_bound_inline_styles.v1 -> IMPLEMENTED" in current
     assert "security.web.cross_origin_response_isolation.v1 -> IMPLEMENTED" in current

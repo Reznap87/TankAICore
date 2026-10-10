@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "corpus_id": "tankai-cooperative-acceptance-v1",
+  "frozen_on": "2026-10-10",
+  "purpose": "Vor Candidate-Änderungen eingefrorener P1-Vergleich für Zielklärung, dokumentgestützte Analyse und einen begrenzten Code-Prototyp.",
+  "cases": [
+    {
+      "case_id": "coop-v1-idea-workshop",
+      "category": "idea_development",
+      "goal": "Entwickle für eine kleine Stadtbibliothek einen umsetzbaren Weg, mehr junge Erwachsene für monatliche Veranstaltungen zu gewinnen.",
+      "definition_of_done": "Drei unterscheidbare Varianten, eine begründete Empfehlung, die wichtigste Unsicherheit und ein innerhalb von zwei Wochen messbarer Kleinversuch liegen vor.",
+      "constraints": [
+        "Kein zusätzliches Personal und höchstens 150 EUR Versuchsbudget",
+        "Keine personenbezogenen Daten und keine bezahlte Online-Werbung",
+        "Die ausdrücklichen Randbedingungen dürfen nicht durch Alternativen ersetzt werden"
+      ],
+      "input_artifacts": [],
+      "allowed_tools": ["calculator"],
+      "data_class": "public",
+      "limits": {
+        "max_duration_seconds": 90,
+        "max_llm_calls": 12,
+        "max_external_cost_usd": 0.2,
+        "max_output_chars": 8000
+      },
+      "acceptance_criteria": [
+        {"criterion_id": "three_distinct_options", "description": "Mindestens drei in Mechanismus oder Zielgruppe unterscheidbare Varianten werden erklärt.", "evaluator": "human", "weight": 3},
+        {"criterion_id": "reasoned_recommendation", "description": "Eine Empfehlung vergleicht Nutzen, Aufwand und Randbedingungen nachvollziehbar.", "evaluator": "human", "weight": 3},
+        {"criterion_id": "critical_uncertainty", "description": "Die entscheidende noch unbelegte Annahme wird ausdrücklich benannt.", "evaluator": "human", "weight": 2},
+        {"criterion_id": "bounded_experiment", "description": "Der vorgeschlagene Versuch ist innerhalb von zwei Wochen und 150 EUR messbar.", "evaluator": "human", "weight": 3},
+        {"criterion_id": "run_contract", "description": "Der Lauf bleibt innerhalb der festgelegten Zeit-, Aufruf-, Kosten- und Ausgabegrenzen.", "evaluator": "contract", "weight": 2}
+      ]
+    },
+    {
+      "case_id": "coop-v1-document-analysis",
+      "category": "document_analysis",
+      "goal": "Analysiere die beigefügte interne Projektnotiz und entscheide, ob der Pilot wie geplant starten kann.",
+      "definition_of_done": "Fakten, Widersprüche, offene Annahmen und eine klar begrenzte Startentscheidung sind getrennt und auf die Notiz zurückgeführt.",
+      "constraints": [
+        "Nur die beigefügte Notiz als Tatsachenquelle verwenden",
+        "Nicht genannte Kosten, Termine oder Freigaben nicht erfinden",
+        "Interne Inhalte dürfen nicht an externe Werkzeuge gesendet werden"
+      ],
+      "input_artifacts": [
+        {
+          "artifact_id": "pilot-note",
+          "media_type": "text/markdown",
+          "content": "# Pilotnotiz\nStartziel: 3. November. Budgetrahmen: 4.000 EUR. Der Raum ist reserviert. Die Datenschutzprüfung ist laut Abschnitt A abgeschlossen; Abschnitt C nennt dieselbe Prüfung jedoch als offen. Lieferzeit der benötigten Geräte: drei bis fünf Wochen. Eine Bestellung ist noch nicht freigegeben. Der Pilot benötigt die Geräte am ersten Tag."
+        }
+      ],
+      "allowed_tools": ["none"],
+      "data_class": "internal",
+      "limits": {
+        "max_duration_seconds": 60,
+        "max_llm_calls": 12,
+        "max_external_cost_usd": 0,
+        "max_output_chars": 6000
+      },
+      "acceptance_criteria": [
+        {"criterion_id": "facts_separated", "description": "Belegte Fakten werden getrennt von Annahmen und Empfehlungen dargestellt.", "evaluator": "human", "weight": 3},
+        {"criterion_id": "privacy_conflict", "description": "Der Widerspruch zum Status der Datenschutzprüfung wird erkannt.", "evaluator": "human", "weight": 3},
+        {"criterion_id": "delivery_dependency", "description": "Die ungeklärte Bestellung und Lieferzeit werden als Startabhängigkeit erkannt.", "evaluator": "human", "weight": 3},
+        {"criterion_id": "bounded_decision", "description": "Die Startentscheidung nennt konkrete Bedingungen statt unbelegter Sicherheit.", "evaluator": "human", "weight": 3},
+        {"criterion_id": "internal_data_boundary", "description": "Der Lauf verwendet für interne Daten keine externen Werkzeuge oder Provider.", "evaluator": "contract", "weight": 4}
+      ]
+    },
+    {
+      "case_id": "coop-v1-code-prototype",
+      "category": "code_prototype",
+      "goal": "Erstelle eine reine Python-Funktion, die eine Liste von Ganzzahlen stabil dedupliziert und die Reihenfolge des ersten Auftretens erhält.",
+      "definition_of_done": "Implementierung, Typannotationen, kurze Erklärung und ausführbare Tests für leere, doppelte, negative und bereits eindeutige Eingaben liegen vor.",
+      "constraints": [
+        "Nur Python-Standardbibliothek verwenden",
+        "Eingabeliste nicht verändern",
+        "Ungültige Elemente mit TypeError abweisen, bool gilt nicht als Ganzzahl"
+      ],
+      "input_artifacts": [],
+      "allowed_tools": ["code_runner"],
+      "data_class": "public",
+      "limits": {
+        "max_duration_seconds": 90,
+        "max_llm_calls": 12,
+        "max_external_cost_usd": 0.15,
+        "max_output_chars": 8000
+      },
+      "acceptance_criteria": [
+        {"criterion_id": "stable_deduplication", "description": "Die Implementierung entfernt Duplikate stabil und erhält das erste Auftreten.", "evaluator": "contract", "weight": 4},
+        {"criterion_id": "input_unchanged", "description": "Die übergebene Eingabeliste bleibt nach dem Funktionsaufruf unverändert.", "evaluator": "contract", "weight": 3},
+        {"criterion_id": "strict_integer_validation", "description": "Nicht-ganzzahlige Elemente einschließlich bool lösen TypeError aus.", "evaluator": "contract", "weight": 4},
+        {"criterion_id": "required_tests", "description": "Ausführbare Tests decken leere, doppelte, negative und eindeutige Eingaben ab.", "evaluator": "contract", "weight": 3},
+        {"criterion_id": "run_contract", "description": "Der Lauf bleibt innerhalb der festgelegten Zeit-, Aufruf-, Kosten- und Ausgabegrenzen.", "evaluator": "contract", "weight": 2}
+      ]
+    }
+  ]
+}

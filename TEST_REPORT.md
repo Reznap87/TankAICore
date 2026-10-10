@@ -1,8 +1,30 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 9. Oktober 2026
+**Statusdatum:** 10. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Kooperative Acceptance-Baseline v1 — Nachweis 10. Oktober 2026
+
+- Genau drei eingefrorene P1-Fälle für Ideenentwicklung, dokumentgestützte Analyse und einen
+  begrenzten Code-Prototyp: PASS
+- Datenklassen, erlaubte Werkzeuge, Definition of Done und feste Zeit-, LLM-Aufruf-, Kosten-
+  und Ausgabegrenzen pro Fall: PASS
+- 15 eindeutige gewichtete Kriterien; Kategorie-, Duplikat-, Grenz- und Hashvalidierung: PASS
+- Mock-Baseline ist an Korpus-SHA-256
+  `8badde3d517fcd3491c0adb6f8ccf16998970393952393fa01c5056bbc5d98c3` gebunden: PASS
+- Ausgangsergebnis: 12 Kriterien verfehlt, 3 Fälle mit Lücken, gewichteter Score `0.1778`;
+  maschinenlesbar als `simulation-baseline-only`, daher kein Qualitätsgewinn behauptet
+- Externe Aufrufe und Kosten: 0; interne Dokumentdaten bleiben ohne externe Werkzeuge: PASS
+- Gezielte Regressionen: 7 PASS
+- `python -m pytest -q`: 236 PASS; `python -m tankai --selftest`: 24 PASS
+- Python-Compile, Dependency-Check, TypeScript-`--noEmit`, Wrangler-Typprüfung,
+  Worker-only-Dry-Run und Artefaktprüfung: PASS
+- Isoliertes `npm ci --ignore-scripts`; vollständiger und Produktionsabhängigkeits-Audit:
+  PASS / 0 bekannte Funde
+- Vollständiger Container-Dry-Run, Produktions-Container-Build und Smoke bleiben mangels
+  lokaler Docker-CLI Pflicht-CI-Gates vor einem Merge
+- Keine Secrets, Berechtigungen, Provider, Produktion oder Deployments verändert
 
 ## Unreleased: HTTP-Parser-Fehlervertrag v1 — Nachweis 9. Oktober 2026
 
