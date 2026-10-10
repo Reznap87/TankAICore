@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Kooperative Acceptance-Baseline v1
+
+- Ein eingefrorener P1-Korpus bindet vor Candidate-Entwicklung je einen Ideen-, Dokument- und
+  Codefall an Definition of Done, Datenklasse, erlaubte Werkzeuge sowie Zeit-, Aufruf-, Kosten-
+  und Ausgabegrenzen.
+- 15 gewichtete Abnahmekriterien und ein kanonischer SHA-256-Hash verhindern unbemerkte
+  Zielverschiebung; ein Validator verwirft unvollständige Kategorien, Duplikate, Grenzverstöße
+  und ein nicht zum Korpus passendes Baseline-Receipt.
+- Die aktuelle reine Mock-Simulation verfehlt 12 Kriterien und erreicht einen gewichteten Score
+  von `0.1778`. Das ist der ehrliche Ausgangspunkt für P2 und kein behaupteter Qualitätsgewinn.
+- Keine externen Modell-, Werkzeug- oder Provideraufrufe, keine Kosten und keine Produktions-
+  oder Deploymentänderung.
+
 ### HTTP-Parser-Fehlervertrag v1
 
 - Fehlerhafte HTTP-Anfragen liefern neutrales JSON statt eingabespiegelnder HTML-Fehlerseiten.

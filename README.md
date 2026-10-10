@@ -35,7 +35,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 229 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 236 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
@@ -58,6 +58,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Discovery-Conditional-GET | `ETag`/`If-None-Match` für Capability-, Repository- und Schema-Discovery nach vollständiger Zugriffsprüfung |
 | External-Agent-Jobzustandsvertrag | Maschinenlesbare Zustände, terminales Polling-Ende und zustands-/scopegebundene Abbruch-Discovery |
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
+| Kooperative Acceptance-Baseline | Eingefrorener P1-Korpus mit Ideen-, Dokument- und Codefall, festen Budgets, 15 gewichteten Kriterien und hashgebundenem Mock-Baseline-Receipt |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
 | Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, COOP/COEP/CORP-Isolation, produktionsgebundenes HSTS, serverseitige Request-Korrelation, sichere `405`-Methodenabwehr und DOM-Erzeugung |
@@ -67,6 +68,21 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Produktionsreife | Kontrollierter Single-Host-Betrieb möglich; reale Runtime-E2E-Prüfung, Multi-Host-Koordination, Image-Signaturprüfung, Credential-Broker und Monitoring fehlen |
 
 ## Was 1.10.0 zusätzlich umsetzt
+
+### Kooperative Acceptance-Baseline prüfen
+
+Der P1-Vergleichskorpus liegt unter `evaluation/`. Er friert vor Commander-Änderungen drei
+begrenzte Nutzenfälle mit Datenklasse, erlaubten Werkzeugen, Definition of Done sowie Zeit-,
+Aufruf-, Kosten- und Ausgabegrenzen ein. Das zugehörige Mock-Receipt ist über den kanonischen
+SHA-256-Hash an exakt diesen Korpus gebunden:
+
+```bash
+python -m tankai.evaluation.cooperative_acceptance
+```
+
+Die erste Simulation besteht nur 3 von 15 Kriterien (gewichteter Score
+`0.1778`) und ist ausdrücklich kein Qualitätsnachweis. Sie dokumentiert reproduzierbar die
+Ausgangslücken für P2; externe Provider, Werkzeuge und Kosten bleiben dabei deaktiviert.
 
 - `ProjectState` Schema 6 ergänzt ein persistentes Capability-Register mit stabiler Capability-ID, Modul-ID, Owner, Status, Source-Referenz, Abhängigkeiten, Schnittstellenvertrag und Abnahmetests.
 - Tasks können über `capability_id` und die expliziten Aktionen `CREATE`, `EXTEND`, `FIX`, `TEST`, `REVIEW` oder `INTEGRATE` an genau eine Capability gebunden werden.
