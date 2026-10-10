@@ -1473,6 +1473,81 @@ Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 ble
 Der Reality Contract 5.7.40 und seine historischen Receipts werden durch diesen
 Planungsnachtrag nicht rückwirkend umgeschrieben.
 
+0.11.7 Verbindliches Start-Testbudget
+Planungsrevision: 2026-10-11.1. Nutzerauftrag: Testbudget festlegen.
+Status: Budgetentscheidung dokumentiert; technische Durchsetzung und Live-Aktivierung bleiben
+vor dem ersten kostenpflichtigen Aufruf nachzuweisen.
+
+Zweck: erster begrenzter TankAI-Livepilot mit externem Hauptmodell und unabhängigem Critic.
+Keine automatische Verlängerung, kein automatisches Nachladen, keine Erhöhung durch Agenten.
+
+Budget:
+- Gesamter Pilot: höchstens 10,00 EUR.
+- Laufzeit: sieben aufeinanderfolgende 24-Stunden-Zeiträume ab dem ersten ausdrücklich
+  freigegebenen Live-Aufruf; Start und Ende als UTC-Zeitpunkte im Pilot-Receipt festhalten.
+- Tagesgrenze: höchstens 2,00 EUR pro 24-Stunden-Zeitraum ab Pilotstart.
+- Auftragsgrenze: höchstens 0,20 EUR für Hauptmodell, sämtliche Spezialisten, Critic,
+  Synthese, Wiederholungen und Fallbacks zusammen.
+- Warnung bei 5,00 EUR kumuliert; bei ausgeschöpftem oder nicht sicher bestimmbaren Restbudget
+  keine weiteren kostenpflichtigen Aufrufe.
+- Nur Owner-Testbetrieb: ein Auftrag gleichzeitig, höchstens 20 Aufträge je 24 Stunden und
+  höchstens 50 im gesamten Pilot. Kosten-/Zeitgrenzen können den Pilot früher beenden.
+
+Die 10,00 EUR sind ein Gesamtbetrag für zurechenbare API-Nutzung einschließlich anfallender
+Steuern sowie konservativ berücksichtigter Währungs-/Zahlungsaufschläge. Abrechnungswährung,
+Steuerbehandlung, aktuelle Modellpreise und konservative EUR-Umrechnung vor dem Start
+festlegen. Falls Kostenbestandteile nicht belastbar begrenzbar sind, bleibt der Livepilot
+gesperrt. Keine feste Zahl garantierter Aufgaben aus dem Budget ableiten.
+
+Bereits bestehende Hosting-/Domainkosten gehören nicht zu diesem zusätzlichen Testbudget.
+Neue Hostingbuchungen, GPU-Miete, Training, kostenpflichtige Such-/Audio-/Bild-/Videodienste und
+externe bezahlte Werkzeuge sind nicht enthalten und werden durch diese Entscheidung nicht
+freigegeben. Der erste Pilot nutzt Texteingabe und freigegebene bereitgestellte Inhalte.
+
+Technische Zielgrenzen:
+- höchstens fünf Modellaufrufe je Auftrag, einschließlich fehlgeschlagener Versuche,
+  Wiederholungen und Fallbacks; unabhängige Ergebnisprüfung innerhalb dieser Obergrenze,
+- höchstens 2.048 Ausgabetokens je Modellaufruf; bei geringerem Restbudget entsprechend weniger,
+- konservativ höchstens 12.000 Eingabetokens je Aufruf inklusive Systemtext, Verlauf,
+  Werkzeugergebnissen und bereitgestellten Inhalten; ohne sichere Tokenzählung/-obergrenze
+  keinen kostenpflichtigen Aufruf starten,
+- höchstens 30 Sekunden Request-Timeout je Modellaufruf und 120 Sekunden Gesamtfrist je
+  Auftrag; ein Timeout kann dennoch abrechenbare Providerarbeit verursacht haben,
+- vorhandene serverseitige Aufruf-/Rate-Limits verwenden und für den Pilot verschärfen.
+  Die öffentlich dokumentierten Konfigurationsnamen sind TANKAI_LLM_MAX_CALLS_PER_RUN,
+  TANKAI_LLM_MAX_TOKENS und TANKAI_LLM_TIMEOUT_SECONDS. Dieser Nachtrag setzt keine
+  Produktionswerte und behauptet keinen bereits vorhandenen Eingabetoken- oder Euro-Guard.
+
+Vor jedem kostenpflichtigen Request dessen maximale Kosten anhand des gültigen Modelltarifs
+einschließlich aller abrechenbaren Tokenarten und Gebühren konservativ bestimmen. Diese Kosten
+atomar gegen Auftrags-, Tages- und Gesamtbudget reservieren. Erst bei ausreichendem Restbudget
+den Request senden. Concurrent Runs, Critic, Retry und Provider-Fallback müssen dieselbe
+persistente Budgetführung nutzen. Nach bestätigter Abrechnung korrigieren; bei Timeout,
+unbekanntem Verbrauch oder unklarem Abrechnungsstatus die Reservierung konservativ beibehalten.
+Neustart, Modellwechsel und Benutzerwechsel dürfen den gemeinsamen Pilotdeckel nicht umgehen.
+Anbieterwarnungen und reine Aufruflimits gelten nicht als Nachweis eines harten Euro-Stopps.
+Ein Stopp verhindert neue Requests; laufende Providerarbeit wird nicht als kostenlos behauptet.
+
+Umsetzung und Abnahme:
+Owner bleibt Issue #25 für Live-Provider-Readiness. Den vorhandenen Budget-/Providerpfad vor
+jeder Änderung inventarisieren. Fehlende monetäre Reservierung/Abrechnung ist ein konkreter
+Vorgate-Task innerhalb dieses Pfads, keine neue unabhängige Queue oder zweite Providerarchitektur.
+Mit lokalen deterministischen Tarifen und simulierten Verbrauchsdaten prüfen: Tages- und
+Gesamtgrenze, gemeinsames Hauptmodell-/Criticbudget, gleichzeitige Requests, Timeout, Retry,
+Fallback, Restart und veralteter/fehlender Tarif. Live-Readiness erst bei bestandenem Nachweis.
+Vorhandene Aufruf-/Zeitfensterlimits allein erfüllen diese monetäre Abnahme nicht.
+
+Bei geeigneter Konfiguration zunächst die Readiness-Prüfung ohne bezahlte Requests ausführen.
+Ein erster Live-Smoke darf höchstens 0,20 EUR kosten und zählt vollständig zum Pilotbudget;
+danach drei vorab definierte Aufgaben aus dem Vergleichskorpus bewerten. Pro Auftrag
+Modell-IDs, Tokenverbrauch soweit bestätigt, konservative und bestätigte Kosten, Prüfresultat
+und verbleibendes Budget ohne Geheimnisse protokollieren. Nach Pilotende Nutzung auswerten
+und eine Fortsetzung gesondert entscheiden.
+
+Diese Budgetfestlegung ist keine Aktivierung eines Providers, keine Secretänderung, kein
+Deployment und keine Freigabe zum unmittelbaren Verbrauch der 10,00 EUR. Sie legt die
+finanziellen und technischen Grenzen für die anschließend konkret freizugebende Livephase fest.
+
 0.12 Reality-Contract-Versionshistorie
 
 5.7.39, 9. Oktober 2026:
