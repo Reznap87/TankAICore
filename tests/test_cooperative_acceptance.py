@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from tankai.evaluation.cooperative_acceptance import (
     DEFAULT_BASELINE,
     DEFAULT_CORPUS,
+    AcceptanceBaseline,
     AcceptanceCorpus,
     baseline_receipt,
     corpus_digest,
@@ -109,3 +110,65 @@ def test_baseline_cli_emits_machine_readable_receipt() -> None:
     assert receipt["case_count"] == 3
     assert receipt["criteria_failed"] == 12
     assert receipt["external_calls_made"] is False
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("duplicate_case", "jeden Fall genau einmal"),
+        ("unknown_case", "jeden Fall genau einmal"),
+        ("missing_criterion", "Kriterien"),
+        ("unknown_criterion", "Kriterien"),
+        ("duration_seconds", "Zeitlimit"),
+        ("llm_calls", "LLM-Limit"),
+        ("external_cost_usd", "Kostenlimit"),
+        ("output_chars", "Ausgabelimit"),
+        ("simulation_cost", "ohne externe Aufrufe"),
+    ],
+)
+def test_direct_receipt_rejects_invalid_baseline(change: str, message: str) -> None:
+    corpus = load_corpus()
+    document = json.loads(DEFAULT_BASELINE.read_text(encoding="utf-8"))
+    first = document["observations"][0]
+    if change == "duplicate_case":
+        document["observations"].append(first.copy())
+    elif change == "unknown_case":
+        first["case_id"] = "coop-v1-unknown"
+    elif change == "missing_criterion":
+        first["criteria_failed"].pop()
+    elif change == "unknown_criterion":
+        first["criteria_failed"][0] = "unknown_criterion"
+    elif change == "simulation_cost":
+        first["metrics"]["external_cost_usd"] = 0.01
+    else:
+        limits = {
+            "duration_seconds": 91,
+            "llm_calls": 13,
+            "external_cost_usd": 0.21,
+            "output_chars": 8001,
+        }
+        first["metrics"][change] = limits[change]
+    baseline = AcceptanceBaseline.model_validate(document)
+
+    with pytest.raises(ValueError, match=message):
+        baseline_receipt(corpus, baseline)
+
+
+def test_receipt_rechecks_mutable_criterion_lists() -> None:
+    corpus = load_corpus()
+    baseline = load_baseline(corpus=corpus)
+    baseline.observations[0].criteria_failed.append(
+        baseline.observations[0].criteria_passed[0]
+    )
+
+    with pytest.raises(ValueError, match="Kriterien"):
+        baseline_receipt(corpus, baseline)
+
+
+def test_loader_rejects_cost_without_external_calls(tmp_path) -> None:
+    document = json.loads(DEFAULT_BASELINE.read_text(encoding="utf-8"))
+    document["observations"][0]["metrics"]["external_cost_usd"] = 0.01
+    changed = tmp_path / "simulation-cost.json"
+    changed.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="ohne externe Aufrufe"):
+        load_baseline(changed, load_corpus())

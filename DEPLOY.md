@@ -206,6 +206,31 @@ Der Job bleibt an das GitHub-Environment `production` und die exklusive Concurre
 
 Der API-Token muss auf exakt das konfigurierte Konto begrenzt sein und mindestens `Workers Scripts Edit` sowie `Containers Edit` besitzen. Der getrennte Read-only-Preflight führt vor jeder Freigabe `wrangler containers list` aus. Damit werden ein ungültiger Token, eine falsche Account-ID oder fehlender Container-Lesezugriff erkannt, bevor ein Deployment Worker- oder Containerartefakte verändert. Ein bestandener Lesecheck ersetzt nicht die manuelle Prüfung der benötigten Schreibrechte.
 
+### 8.2 Cloudflare-Laufzeitdaten vor dauerhaftem Betrieb absichern
+
+Der lokale Compose-Pfad verwendet einen persistenten Datenträger. Das beweist keine
+Persistenz im Cloudflare-Container: Dessen Dateisystem ist standardmäßig flüchtig und
+startet nach Schlafen/Neustart frisch aus dem Image.
+[Cloudflare dokumentiert diesen Lebenszyklus](https://developers.cloudflare.com/containers/concepts/architecture/).
+
+Die geprüfte Worker-Konfiguration setzt `sleepAfter="5m"` und
+`TANKAI_RUN_STORE=/tmp/tankai_runs.jsonl`; das Docker-Image setzt Auth-/Datenpfade unter
+`/app/data`. Die Durable-Object-Bindung allein persistiert diese Containerdateien nicht.
+Ein lokaler Dateipfad, ein SQLite-Name oder ein Release-Quellcodebackup ist kein Nachweis
+dauerhafter Laufzeitdaten.
+
+Vor bezahltem Pilot oder dauerhaftem Nutzerbetrieb den konkreten persistenten Speicherpfad
+für Authentifizierung, Nutzer-/Workspace-Daten und gemeinsame Budgetführung prüfen.
+Mit einem kontrollierten Restart und einer konsistenten Wiederherstellung nachweisen, dass
+Identitäten, Berechtigungen, bestätigte Daten und konservativ reservierte Kosten erhalten
+bleiben. Kein Reset darf Budget oder Zugriffskontrolle umgehen. Laufende Reservierungen bei
+unklarem Providerverbrauch beibehalten. Die Single-Host-SQLite-/Fence-Verträge dürfen dabei
+nicht ungeprüft auf einen verteilten oder FUSE-Dateipfad übertragen werden.
+
+Der [Projektprüfbericht vom 11. Oktober 2026](docs/PROJECT_AUDIT_2026-10-11.md)
+beschreibt die derzeitigen Nachweislücken. Diese Anleitung richtet keinen externen Speicher
+ein und bestätigt keine aktuelle Cloudflare-Produktionskonfiguration.
+
 ## 9. Persistente Development-Queue und Admission-Control
 
 Die Queue ist standardmäßig deaktiviert. Für kontrollierte Online-Codeausführung werden Webdienst, Queue-Administration und Runner getrennt betrieben:

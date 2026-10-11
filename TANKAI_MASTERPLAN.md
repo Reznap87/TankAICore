@@ -1201,9 +1201,13 @@ bleiben bestehen und werden dadurch weder übersprungen noch erneut implementier
 
 1. Die in PRs #26 bis #29 abgeschlossenen repositoryseitigen Live-Provider-Verträge nicht
    wiederholen. Issue #25 bleibt für die externen Konfigurations- und Autorisierungsschritte offen.
+   Zusätzlich müssen die in 0.11.7 und 0.11.8 benannten internen Pilot-Vorgates für Geldbudget,
+   Persistenz und Quellenmodus geschlossen werden; vorhandene Aufruflimits ersetzen sie nicht.
 
 2. Erst nach einer ausdrücklichen Provider-/Modellentscheidung die benötigten serverseitigen
-   Provider-, Critic- und optionalen Search-Secret-Namen auf Anwesenheit prüfen und danach einen
+   Provider- und Critic-Secret-Namen auf Anwesenheit prüfen. Die aktuelle Readiness-Prüfung
+   verlangt zusätzlich Brave oder Tavily mit passendem Search-Secret; ein Pilot ohne bezahlte
+   Suche benötigt zuerst den in 0.11.8 beschriebenen geprüften Quellenmodus. Danach einen
    manuellen Readiness-Receipt erzeugen; keine Secret-Werte ausgeben.
 
 3. Parallel zum extern blockierten Provider-Gate den Single-Host-Development-Runner ausschließlich
@@ -1584,6 +1588,48 @@ und eine Fortsetzung gesondert entscheiden.
 Diese Budgetfestlegung ist keine Aktivierung eines Providers, keine Secretänderung, kein
 Deployment und keine Freigabe zum unmittelbaren Verbrauch der 10,00 EUR. Sie legt die
 finanziellen und technischen Grenzen für die anschließend konkret freizugebende Livephase fest.
+
+0.11.8 Leistbarkeit, ehrliche Qualitätsmessung und Projektprüfung
+Prüfrevision: 2026-10-11.2. Nutzerauftrag: vorhandenen Stand prüfen, Fehler beheben und
+leistbare, nützliche Intelligenz für möglichst viele Menschen als Richtung absichern.
+
+Ergänzender Prüfbericht: [docs/PROJECT_AUDIT_2026-10-11.md](docs/PROJECT_AUDIT_2026-10-11.md).
+Geprüfter main-Ausgangsstand: caccc601e6b04a8cc7bb5b5a24a47e514e1d290e,
+Tree dd8a71ee775658509e2158cad236993c65c11a53; CI Run 38118605910 mit test und cloudflare
+completed/success. Dieser aktuelle Auditbezug ersetzt keinen Production-Runtime-Nachweis
+und ändert die oben als historische Ausgangsbezüge gekennzeichneten SHAs nicht.
+
+Leitentscheidung: Die fachlichen Kernkriterien für Zieltreue, überprüfbare Ergebnisse,
+Fehlerkennzeichnung und Datenrechte gelten für alle Nutzerangebote. Leistbarkeit wird durch
+gemessene Kosten je erfolgreich erledigter Aufgabe, passende Fähigkeitswahl und geprüfte
+Wiederverwendung entwickelt. Konkrete Endkundenpreise, Freikontingente und Nutzungslimits
+bleiben bis zu belastbaren Stückkosten offen. Kein Versprechen unbegrenzter Maximalleistung.
+
+AUD-01: Den providerfreien Baseline-Receipt an dieselbe vollständige Fall-, Kriterien- und
+Budgetprüfung wie den Loader binden. Simulationskosten ohne externe Aufrufe verwerfen.
+Die unveränderte Mock-Baseline bleibt 3/15 Kriterien, 12 verfehlt, gewichteter Score 0.1778;
+das belegt den Ausgangspunkt, keine reale Modellintelligenz. Reparaturstatus und CI im PR prüfen.
+
+AUD-02: Der bestehende P2-Owner liefert den vollständigen Candidate mit nutzbaren Artefakten
+und Vergleich gegen denselben eingefrorenen Korpus. Ein JSON-Vertrag mit Varianten allein
+beweist weder bessere Ideen noch fertige Arbeit. Qualität und Kosten gemeinsam abnehmen.
+
+AUD-03 bis AUD-06: Vor dem bezahlten Pilot unter Issue #25 gemeinsame persistente monetäre
+Reservierung einschließlich tatsächlicher Retry-/Fallback-Versuche, Cloudflare-Persistenz
+mit Restart-/Restore-Nachweis, einen zum Pilot passenden Quellen-/Suchmodus und aktuelle
+Konto-/Deploy-/Preflight-Belege schließen. Diese fehlenden Vorgates sind konkrete Arbeit;
+sie dürfen nicht allein als externe Providerentscheidung behandelt werden. Abgeschlossene
+Verträge aus PRs #26 bis #29 bleiben abgeschlossen.
+
+Der Korpusdeckel von zwölf Aufrufen ist kein Pilotdeckel. Der Live-Candidate muss zusätzlich
+die strengere Pilotpolicy aus 0.11.7 einhalten, einschließlich höchstens fünf tatsächlicher
+Modellversuche insgesamt. Den eingefrorenen Korpus und die Baseline nicht nachträglich ändern.
+
+Die Website antwortete bei der lesenden Prüfung mit HTTP 200 und production_ready=false.
+Die aktuelle Cloudflare-Verbindung zeigte weder die Domainzone noch den erwarteten Worker.
+Keine aktuelle Bestätigung des Runtime-SHA oder der dortigen Secretkonfiguration ableiten.
+Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und offene Abnahme.
+Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
 
 0.12 Reality-Contract-Versionshistorie
 
