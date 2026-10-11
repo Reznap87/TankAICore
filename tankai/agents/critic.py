@@ -27,6 +27,11 @@ class Critic(BaseAgent):
             "Du bist der Critic. Deine Aufgabe ist es, Pläne und Ergebnisse "
             "streng aber fair zu prüfen. Suche nach Lücken, unbelegten Claims, "
             "fehlender Ausrichtung auf die Definition of Done und unklaren Schritten. "
+            "Prüfe bei komplexen Gestaltungszielen außerdem, ob die Zielklärung echte "
+            "Alternativen, die entscheidende Unsicherheit, eine begründete Empfehlung und "
+            "einen kleinsten überprüfbaren Versuch enthält. Ein Fallback ist dafür kein "
+            "vollständiges Ideenlabor. Bei direkten Aufgaben verlange keine künstlichen "
+            "Alternativen. "
             "Antworte ausschließlich mit validem JSON."
         )
 
@@ -37,6 +42,8 @@ Definition of Done: {goal.definition_of_done}
 Constraints: {goal.constraints}
 
 Plan-Rationale: {plan.rationale}
+Strukturierte Zielklärung:
+{self._format_goal_analysis(plan)}
 Schritte:
 {self._format_steps(plan)}
 
@@ -108,6 +115,33 @@ Antworte im JSON-Format:
             lines.append(
                 f"{i}. [{s.specialist_type}] {s.description} "
                 f"→ erwartet: {s.expected_output}"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_goal_analysis(plan: Plan) -> str:
+        analysis = plan.goal_analysis
+        if analysis is None:
+            return "Nicht vorhanden"
+        lines = [
+            f"Ergebnis: {analysis.desired_outcome}",
+            f"Analyse-Status: {analysis.analysis_status}",
+            f"Verlangtes Vorgehen: {analysis.requested_method or '(keines)'}",
+            f"Alternativen sinnvoll: {analysis.alternatives_warranted}",
+            f"Begründung: {analysis.alternatives_reason}",
+        ]
+        for option in analysis.options:
+            lines.append(
+                f"Option {option.option_id} ({option.title}): {option.approach}; "
+                f"Nutzen: {option.benefit}; Nachteil: {option.tradeoff}"
+            )
+        if analysis.alternatives_warranted:
+            lines.extend(
+                [
+                    f"Entscheidende Unsicherheit: {analysis.critical_uncertainty}",
+                    f"Empfehlung: {analysis.recommended_option_id}",
+                    f"Kleinster Versuch: {analysis.smallest_experiment}",
+                ]
             )
         return "\n".join(lines)
 

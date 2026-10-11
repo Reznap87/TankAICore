@@ -1,8 +1,28 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 10. Oktober 2026
+**Statusdatum:** 11. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Zielklärung und Ideenlabor v1 — Nachweis 11. Oktober 2026
+
+- Strukturierte Zielanalyse entsteht im bestehenden Planner-Aufruf; kein zusätzlicher
+  Modellaufruf und kein zweiter Commander: PASS
+- Komplexer Fall: drei begrenzte Optionen, Nutzen/Nachteil, entscheidende Unsicherheit,
+  Empfehlung und kleinster Versuch: PASS
+- Direkter Fall: keine künstlichen Alternativen: PASS
+- Unvollständige oder widersprüchliche Workshops werden vollständig verworfen und mit
+  `analysis_status=fallback` ausgewiesen: PASS
+- Critic-, Synthesizer-, Receipt- und CLI-JSON-Weitergabe: PASS
+- Gezielte Zielanalyse-, Research- und Aufrufbudget-Regressionen: 23 PASS
+- `python -m pytest -q`: 241 PASS; `python -m tankai --selftest`: 24 PASS
+- Python-Compile und Dependency-Check: PASS; `git diff --check`: PASS
+- Isoliertes `npm ci --ignore-scripts`, Wrangler-Typen, TypeScript-`--noEmit`, Worker-only-
+  Dry-Run mit `--containers-rollout=none` und Artefaktprüfung: PASS
+- Vollständiger npm-Audit und Produktionsabhängigkeits-Audit: 0 bekannte Funde
+- Vollständiger Container-Dry-Run, Produktions-Container-Build und Smoke bleiben mangels
+  lokaler Docker-/Podman-CLI Pflicht-CI-Gates vor einem Merge
+- Keine Secrets, Berechtigungen, Provider, Abrechnung, Produktion oder Deployments verändert
 
 ## Unreleased: Kooperative Acceptance-Baseline v1 — Nachweis 10. Oktober 2026
 

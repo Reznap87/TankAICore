@@ -10,11 +10,11 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.40" in current
-    assert "Statusdatum: 10. Oktober 2026" in current
-    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 10. Oktober 2026" in current
-    assert "6087b118b35555db98da65fddde35b67e2555797" in current
-    assert "6ab94d6737aea1f28ff064ed40d91c6e9a75bd8f" in current
+    assert "Version: 5.7.41" in current
+    assert "Statusdatum: 11. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 11. Oktober 2026" in current
+    assert "e012cb9706a475a8db35a69e6d01d06c9cf91f96" in current
+    assert "a89915c52d90f81dd308b12c64d01b76b7edb1cc" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -90,9 +90,15 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #142" in current
     assert "TankAI Core CI Run #143" in current
     assert "TankAI Core CI Run #144" in current
+    assert "TankAI Core CI Run #145" in current
+    assert "TankAI Core CI Run #146" in current
+    assert "TankAI Core CI Run #147" in current
+    assert "TankAI Core CI Run #148" in current
     assert "PR #74" in current
     assert "PR #75" in current
     assert "PR #76" in current
+    assert "PR #77" in current
+    assert "PR #78" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
@@ -180,6 +186,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "development.external_agent_cancel_idempotency.v1 -> IMPLEMENTED" in current
     assert "development.external_agent_retry_contract.v1 -> IMPLEMENTED" in current
     assert "product.cooperative_ai.acceptance_baseline.v1 -> IMPLEMENTED" in current
+    assert "product.commander.goal_and_alternatives.v1 -> IMPLEMENTED" in current
     assert "security.web.per_response_csp_nonce.v1 -> IMPLEMENTED" in current
     assert "security.web.nonce_bound_inline_styles.v1 -> IMPLEMENTED" in current
     assert "security.web.cross_origin_response_isolation.v1 -> IMPLEMENTED" in current

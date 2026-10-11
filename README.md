@@ -11,6 +11,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Bereich | Stand |
 |---|---|
 | PLAN → ROUTE → VERIFY → LEARN | Implementiert |
+| Zielklärung und Ideenlabor | Strukturierter Planner-Vertrag für Ergebnis, verlangtes Vorgehen, begründete Optionen, Unsicherheit, Empfehlung und kleinsten Versuch; kein zusätzlicher Modellaufruf |
 | Planner-Reparatur nach Critic-Feedback | Implementiert |
 | Specialist-Retry mit Critic-Feedback | Implementiert |
 | Episodic / Semantic / Procedural Memory | Implementiert |
@@ -35,7 +36,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 236 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 241 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
@@ -59,6 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Jobzustandsvertrag | Maschinenlesbare Zustände, terminales Polling-Ende und zustands-/scopegebundene Abbruch-Discovery |
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Kooperative Acceptance-Baseline | Eingefrorener P1-Korpus mit Ideen-, Dokument- und Codefall, festen Budgets, 15 gewichteten Kriterien und hashgebundenem Mock-Baseline-Receipt |
+| P2 Zielanalyse | Begrenzte, validierte `goal_analysis` in Plan und CLI-JSON; direkte Aufgaben bleiben ohne künstliche Alternativen, unvollständige Workshops werden als Fallback markiert |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
 | Web-UI | Frischer CSP-Nonce für Skript und Styles pro HTML-Antwort, skript-/stylefreie API-/Asset-CSP ohne `unsafe-inline`, COOP/COEP/CORP-Isolation, produktionsgebundenes HSTS, serverseitige Request-Korrelation, sichere `405`-Methodenabwehr und DOM-Erzeugung |
@@ -83,6 +85,17 @@ python -m tankai.evaluation.cooperative_acceptance
 Die erste Simulation besteht nur 3 von 15 Kriterien (gewichteter Score
 `0.1778`) und ist ausdrücklich kein Qualitätsnachweis. Sie dokumentiert reproduzierbar die
 Ausgangslücken für P2; externe Provider, Werkzeuge und Kosten bleiben dabei deaktiviert.
+
+### Zielklärung und Ideenlabor
+
+Der bestehende Planner erzeugt im selben Modellaufruf eine validierte `goal_analysis`. Für
+geeignete komplexe Ziele enthält sie zwei bis drei unterscheidbare Optionen mit Nutzen und
+Nachteil, die entscheidende Unsicherheit, eine Empfehlung und den kleinsten messbaren Versuch.
+Direkte Aufgaben setzen `alternatives_warranted=false` und erzeugen keine künstlichen Varianten.
+Ein unvollständiger oder widersprüchlicher Workshop wird vollständig verworfen und mit
+`analysis_status=fallback` sichtbar gemacht. Critic, Synthesizer, Receipts und der JSON-Export
+verwenden denselben Vertrag. Dadurch steigt weder die Anzahl der Planner-Aufrufe noch der
+gemeinsame LLM-Aufrufdeckel.
 
 - `ProjectState` Schema 6 ergänzt ein persistentes Capability-Register mit stabiler Capability-ID, Modul-ID, Owner, Status, Source-Referenz, Abhängigkeiten, Schnittstellenvertrag und Abnahmetests.
 - Tasks können über `capability_id` und die expliziten Aktionen `CREATE`, `EXTEND`, `FIX`, `TEST`, `REVIEW` oder `INTEGRATE` an genau eine Capability gebunden werden.

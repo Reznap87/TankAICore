@@ -212,6 +212,11 @@ def main(argv: list[str] | None = None) -> int:
             ],
             "plan": {
                 "rationale": result.plan.rationale if result.plan else "",
+                "goal_analysis": (
+                    result.plan.goal_analysis.model_dump(mode="json")
+                    if result.plan and result.plan.goal_analysis
+                    else None
+                ),
                 "steps": [
                     {
                         "type": s.specialist_type,

@@ -310,7 +310,10 @@ class TankAI:
                 # 3. SYNTHESIZE
         critiques_summary = self._summarize_critiques(all_critiques)
         final_answer, synth_receipt = self.synthesizer.run(
-            goal, step_results, critiques_summary
+            goal,
+            step_results,
+            critiques_summary,
+            goal_analysis=plan.goal_analysis,
         )
         final_answer = self._append_source_catalog(final_answer)
         synth_receipt.output_summary = final_answer[:300]

@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 def utcnow() -> datetime:
@@ -84,12 +84,65 @@ class PlanStep(BaseModel):
     receipts: list[str] = Field(default_factory=list)  # Receipt-IDs
 
 
+class ApproachOption(BaseModel):
+    """Eine begründete, überprüfbar unterschiedliche Lösungsoption."""
+
+    option_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{1,31}$")
+    title: str = Field(min_length=1, max_length=120)
+    approach: str = Field(min_length=1, max_length=1000)
+    benefit: str = Field(min_length=1, max_length=500)
+    tradeoff: str = Field(min_length=1, max_length=500)
+
+
+class GoalAnalysis(BaseModel):
+    """Zielklärung und optionales Ideenlabor ohne zusätzlichen Modellaufruf."""
+
+    desired_outcome: str = Field(min_length=1, max_length=2000)
+    analysis_status: Literal["direct", "workshop", "fallback"] = "direct"
+    requested_method: Optional[str] = Field(default=None, max_length=1000)
+    alternatives_warranted: bool = False
+    alternatives_reason: str = Field(min_length=1, max_length=1000)
+    options: list[ApproachOption] = Field(default_factory=list, max_length=3)
+    critical_uncertainty: Optional[str] = Field(default=None, max_length=1000)
+    recommended_option_id: Optional[str] = Field(default=None, max_length=32)
+    smallest_experiment: Optional[str] = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_idea_workshop(self) -> "GoalAnalysis":
+        if not self.alternatives_warranted:
+            if self.analysis_status == "workshop":
+                raise ValueError("Workshop-Status benötigt Alternativen")
+            if self.options or any(
+                (
+                    self.critical_uncertainty,
+                    self.recommended_option_id,
+                    self.smallest_experiment,
+                )
+            ):
+                raise ValueError("Direkte Ziele dürfen kein partielles Ideenlabor enthalten")
+            return self
+
+        if self.analysis_status != "workshop":
+            raise ValueError("Ideenlabor benötigt Workshop-Status")
+        if not 2 <= len(self.options) <= 3:
+            raise ValueError("Ideenlabor benötigt zwei bis drei Optionen")
+        option_ids = [item.option_id for item in self.options]
+        if len(set(option_ids)) != len(option_ids):
+            raise ValueError("Optionen benötigen eindeutige IDs")
+        if self.recommended_option_id not in set(option_ids):
+            raise ValueError("Empfehlung muss auf eine vorhandene Option verweisen")
+        if not self.critical_uncertainty or not self.smallest_experiment:
+            raise ValueError("Ideenlabor benötigt Unsicherheit und kleinsten Versuch")
+        return self
+
+
 class Plan(BaseModel):
     """Der vom Planner erstellte Plan."""
     id: str = Field(default_factory=lambda: str(uuid4()))
     goal_id: str
     steps: list[PlanStep]
     rationale: str
+    goal_analysis: Optional[GoalAnalysis] = None
     created_at: datetime = Field(default_factory=utcnow)
     version: int = 1
 

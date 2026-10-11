@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.llm import BaseLLM
-from ..core.models import Goal, Role
+from ..core.models import Goal, GoalAnalysis, Role
 from .base import BaseAgent
 
 
@@ -20,6 +20,7 @@ class Synthesizer(BaseAgent):
         goal: Goal,
         step_results: list[tuple[str, str]],  # (step_description, result)
         critiques_summary: str = "",
+        goal_analysis: GoalAnalysis | None = None,
     ) -> tuple[str, Any]:
         """
         Erzeugt die finale Antwort.
@@ -37,10 +38,31 @@ class Synthesizer(BaseAgent):
             f"### Schritt: {desc}\n{res}" for desc, res in step_results
         )
 
+        planning_context = ""
+        if goal_analysis is not None:
+            options = "\n".join(
+                f"- {item.option_id}: {item.title} — {item.approach} "
+                f"(Nutzen: {item.benefit}; Nachteil: {item.tradeoff})"
+                for item in goal_analysis.options
+            ) or "- keine; direkte Bearbeitung"
+            planning_context = f"""
+Strukturierte Zielklärung:
+- Gewünschtes Ergebnis: {goal_analysis.desired_outcome}
+- Analyse-Status: {goal_analysis.analysis_status}
+- Ausdrücklich verlangtes Vorgehen: {goal_analysis.requested_method or '(keines)'}
+- Alternativen sinnvoll: {goal_analysis.alternatives_warranted}
+- Begründung: {goal_analysis.alternatives_reason}
+{options}
+- Entscheidende Unsicherheit: {goal_analysis.critical_uncertainty or '(keine)'}
+- Empfohlene Option: {goal_analysis.recommended_option_id or '(keine)'}
+- Kleinster Versuch: {goal_analysis.smallest_experiment or '(keiner)'}
+"""
+
         prompt = f"""Erstelle die finale Antwort.
 
 Ziel: {goal.description}
 Definition of Done: {goal.definition_of_done}
+{planning_context}
 
 Geprüfte Zwischenergebnisse:
 {results_text}
