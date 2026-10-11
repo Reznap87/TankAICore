@@ -154,12 +154,11 @@ def corpus_digest(corpus: AcceptanceCorpus) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def load_baseline(
-    path: Path = DEFAULT_BASELINE,
-    corpus: AcceptanceCorpus | None = None,
-) -> AcceptanceBaseline:
-    corpus = corpus or load_corpus()
-    baseline = AcceptanceBaseline.model_validate(_read_json(path))
+def _validate_baseline_contract(
+    corpus: AcceptanceCorpus,
+    baseline: AcceptanceBaseline,
+) -> None:
+    """Validate every scoring boundary, including direct receipt callers."""
     if baseline.corpus_id != corpus.corpus_id:
         raise ValueError("Baseline verweist auf einen anderen Korpus")
     if baseline.corpus_sha256 != corpus_digest(corpus):
@@ -170,8 +169,8 @@ def load_baseline(
         raise ValueError("Baseline muss jeden Fall genau einmal beobachten")
     for case_id, observation in observations.items():
         criterion_ids = {item.criterion_id for item in cases[case_id].acceptance_criteria}
-        observed_ids = set(observation.criteria_passed) | set(observation.criteria_failed)
-        if observed_ids != criterion_ids:
+        observed = observation.criteria_passed + observation.criteria_failed
+        if set(observed) != criterion_ids or len(observed) != len(criterion_ids):
             raise ValueError(f"Baseline-Kriterien für {case_id} sind unvollständig")
         limits = cases[case_id].limits
         metrics = observation.metrics
@@ -183,6 +182,19 @@ def load_baseline(
             raise ValueError(f"Baseline überschreitet Kostenlimit für {case_id}")
         if metrics.output_chars > limits.max_output_chars:
             raise ValueError(f"Baseline überschreitet Ausgabelimit für {case_id}")
+        if not baseline.external_calls_made and metrics.external_cost_usd != 0:
+            raise ValueError(
+                f"Baseline ohne externe Aufrufe darf keine externen Kosten für {case_id} melden"
+            )
+
+
+def load_baseline(
+    path: Path = DEFAULT_BASELINE,
+    corpus: AcceptanceCorpus | None = None,
+) -> AcceptanceBaseline:
+    corpus = corpus or load_corpus()
+    baseline = AcceptanceBaseline.model_validate(_read_json(path))
+    _validate_baseline_contract(corpus, baseline)
     return baseline
 
 
@@ -190,8 +202,7 @@ def baseline_receipt(
     corpus: AcceptanceCorpus,
     baseline: AcceptanceBaseline,
 ) -> dict[str, object]:
-    if baseline.corpus_id != corpus.corpus_id or baseline.corpus_sha256 != corpus_digest(corpus):
-        raise ValueError("Baseline ist nicht an diesen Korpus gebunden")
+    _validate_baseline_contract(corpus, baseline)
     cases = {item.case_id: item for item in corpus.cases}
     passed_weight = 0
     total_weight = 0
