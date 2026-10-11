@@ -10,7 +10,7 @@ import re
 from typing import Any, Optional
 
 from ..core.llm import BaseLLM
-from ..core.models import Goal, Plan, PlanStep, Role
+from ..core.models import ApproachOption, Goal, GoalAnalysis, Plan, PlanStep, Role
 from .base import BaseAgent
 
 
@@ -32,6 +32,11 @@ class Planner(BaseAgent):
         system = (
             "Du bist der Planner in einem Multi-Agenten-System. "
             "Du zerlegst Ziele in 2–5 klare, überprüfbare Schritte. "
+            "Du klärst im selben Aufruf zuerst gewünschtes Ergebnis und ausdrücklich "
+            "verlangtes Vorgehen. Nur bei einer nicht-trivialen Gestaltungsentscheidung "
+            "vergleichst du zwei bis drei wirklich unterschiedliche Optionen und benennst "
+            "entscheidende Unsicherheit, Empfehlung und kleinsten aussagekräftigen Versuch. "
+            "Bei direkten oder trivialen Aufgaben erzeugst du keine künstlichen Alternativen. "
             "Jeder Schritt braucht einen specialist_type "
             "(research, analysis, code, writing, other) "
             "und eine expected_output-Beschreibung. "
@@ -72,6 +77,25 @@ Antworte im JSON-Format:
 {{
   "rationale": "...",
   "reused_pattern": true/false,
+  "goal_analysis": {{
+    "desired_outcome": "gewünschtes Ergebnis, nicht bloß die Tätigkeit",
+    "analysis_status": "direct|workshop",
+    "requested_method": "ausdrücklich verlangtes Vorgehen oder null",
+    "alternatives_warranted": true/false,
+    "alternatives_reason": "warum ein Vergleich nützt oder bewusst entfällt",
+    "options": [
+      {{
+        "option_id": "option-a",
+        "title": "...",
+        "approach": "...",
+        "benefit": "...",
+        "tradeoff": "..."
+      }}
+    ],
+    "critical_uncertainty": "entscheidende unbelegte Annahme oder null",
+    "recommended_option_id": "option-a oder null",
+    "smallest_experiment": "kleinster messbarer Versuch oder null"
+  }},
   "steps": [
     {{
       "description": "...",
@@ -80,10 +104,13 @@ Antworte im JSON-Format:
     }}
   ]
 }}
+
+Wenn alternatives_warranted false ist, müssen options leer und critical_uncertainty,
+recommended_option_id sowie smallest_experiment null sein.
 """
 
         raw = self.llm.complete(prompt, system=system)
-        plan = self._parse_plan(raw, goal.id)
+        plan = self._parse_plan(raw, goal)
 
         reused = False
         try:
@@ -104,11 +131,19 @@ Antworte im JSON-Format:
                 "reused_pattern": reused,
                 "had_procedural_context": bool(procedural_context),
                 "had_critic_feedback": bool(critic_feedback),
+                "goal_analysis_present": plan.goal_analysis is not None,
+                "goal_analysis_status": (
+                    plan.goal_analysis.analysis_status if plan.goal_analysis else "missing"
+                ),
+                "alternatives_warranted": bool(
+                    plan.goal_analysis and plan.goal_analysis.alternatives_warranted
+                ),
+                "alternative_count": len(plan.goal_analysis.options) if plan.goal_analysis else 0,
             },
         )
         return plan, receipt
 
-    def _parse_plan(self, raw: str, goal_id: str) -> Plan:
+    def _parse_plan(self, raw: str, goal: Goal) -> Plan:
         """Versucht JSON aus der LLM-Antwort zu extrahieren."""
         try:
             match = re.search(r"\{[\s\S]*\}", raw)
@@ -166,8 +201,70 @@ Antworte im JSON-Format:
         if data.get("reused_pattern") is True:
             rationale = f"[Pattern wiederverwendet] {rationale}"
 
+        goal_analysis = self._parse_goal_analysis(data.get("goal_analysis"), goal)
+
         return Plan(
-            goal_id=goal_id,
+            goal_id=goal.id,
             steps=steps,
             rationale=rationale,
+            goal_analysis=goal_analysis,
         )
+
+    @staticmethod
+    def _parse_goal_analysis(raw: object, goal: Goal) -> GoalAnalysis:
+        """Parse the bounded P2 contract; invalid workshops safely degrade to direct work."""
+        fallback = GoalAnalysis(
+            desired_outcome=goal.description[:2000],
+            analysis_status="fallback",
+            requested_method=None,
+            alternatives_warranted=False,
+            alternatives_reason=(
+                "Kein vollständiges strukturiertes Ideenlabor geliefert; "
+                "das ausdrückliche Ziel wird direkt bearbeitet."
+            ),
+        )
+        if not isinstance(raw, dict):
+            return fallback
+        try:
+            options_raw = raw.get("options", [])
+            if (
+                not isinstance(options_raw, list)
+                or len(options_raw) > 3
+                or any(not isinstance(item, dict) for item in options_raw)
+            ):
+                return fallback
+            options = [
+                ApproachOption.model_validate(item)
+                for item in options_raw
+            ]
+            return GoalAnalysis(
+                desired_outcome=str(raw.get("desired_outcome") or goal.description)[:2000],
+                analysis_status=(
+                    "workshop" if raw.get("alternatives_warranted") is True else "direct"
+                ),
+                requested_method=(
+                    str(raw["requested_method"])[:1000]
+                    if raw.get("requested_method") is not None
+                    else None
+                ),
+                alternatives_warranted=raw.get("alternatives_warranted") is True,
+                alternatives_reason=str(raw.get("alternatives_reason") or "Nicht begründet")[:1000],
+                options=options,
+                critical_uncertainty=(
+                    str(raw["critical_uncertainty"])[:1000]
+                    if raw.get("critical_uncertainty") is not None
+                    else None
+                ),
+                recommended_option_id=(
+                    str(raw["recommended_option_id"])[:32]
+                    if raw.get("recommended_option_id") is not None
+                    else None
+                ),
+                smallest_experiment=(
+                    str(raw["smallest_experiment"])[:1000]
+                    if raw.get("smallest_experiment") is not None
+                    else None
+                ),
+            )
+        except (TypeError, ValueError):
+            return fallback

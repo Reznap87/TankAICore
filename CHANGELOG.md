@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Zielklärung und Ideenlabor v1
+
+- Der bestehende Planner trennt im selben Modellaufruf gewünschtes Ergebnis und ausdrücklich
+  verlangtes Vorgehen und kann bei geeigneten komplexen Aufgaben zwei bis drei begründete
+  Lösungsoptionen erzeugen.
+- Ein validierter Vertrag bindet Nutzen, Nachteil, entscheidende Unsicherheit, Empfehlung und
+  kleinsten messbaren Versuch. Direkte Aufgaben bleiben ohne künstliche Alternativen;
+  unvollständige Workshops fallen vollständig und sichtbar auf direkte Zielbearbeitung zurück.
+- Critic und Synthesizer erhalten dieselbe Zielanalyse; Receipts und CLI-JSON legen Status und
+  Optionszahl offen. Es entsteht kein zweiter Commander und kein zusätzlicher Modellaufruf.
+- Keine Provider-, Secret-, Berechtigungs-, Abrechnungs-, Deployment- oder
+  Produktionsänderung.
+
 ### Kooperative Acceptance-Baseline v1
 
 - Ein eingefrorener P1-Korpus bindet vor Candidate-Entwicklung je einen Ideen-, Dokument- und
