@@ -36,7 +36,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Container-Reaper | Labelgebundene Erkennung und kontrollierte Entfernung stale Worker-Container anhand von Mandant, Workspace, Repository, Job und Fence-Epoche |
 | Release-Backup | Deterministische, secret-geprüfte ZIP-Snapshots mit internem Manifest, Metadaten und externer SHA-256-Prüfung |
 | Publikationsledger | Hashverkettete Drive-Artefakt- und GitHub-Commit-Receipts mit lokaler Integritätsprüfung |
-| CI-Vertrag / belegte Baseline | Python-Compile, 241 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
+| CI-Vertrag / belegte Baseline | Python-Compile, 258 Pytests, 24 Self-Tests, Workflow-Policy, Wrangler-Typen/Typecheck/Dry-Run, Worker-Artefakt und Produktions-Container-Build; der aktuelle lokale Nachweis steht im `TEST_REPORT.md` |
 | Produktionsdeploy | Separater manueller Workflow auf `main`; exakte `DEPLOY`-Bestätigung, Bindung an das GitHub-Environment `production` und serielle Concurrency erforderlich; externe Environment-Schutzregeln vor Deploy verifizieren |
 | Rootless-Runtime-Gate | Docker-/Podman-Sicherheitsprofil wird für Online-Queue-Worker mechanisch auf Linux + rootless geprüft |
 | Single-Host-Runner-Doctor | Rein lesender JSON-Receipt für Linux/WSL2, nicht-root Nutzer, Ressourcen, lokales Speicherlayout, rootless Runtime und Cgroup v2 |
@@ -60,6 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Jobzustandsvertrag | Maschinenlesbare Zustände, terminales Polling-Ende und zustands-/scopegebundene Abbruch-Discovery |
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Kooperative Acceptance-Baseline | Eingefrorener P1-Korpus mit Ideen-, Dokument- und Codefall, festen Budgets, 15 gewichteten Kriterien und hashgebundenem Mock-Baseline-Receipt |
+| Kooperativer Candidate-Receipt | Vollständiger providerfreier Drei-Fall-Lauf mit gehashten Ergebnisartefakten, denselben Kriterien und ehrlicher Baseline-Differenz; aktuell noch ohne Qualitätsgewinn |
 | P2 Zielanalyse | Begrenzte, validierte `goal_analysis` in Plan und CLI-JSON; direkte Aufgaben bleiben ohne künstliche Alternativen, unvollständige Workshops werden als Fallback markiert |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
@@ -85,6 +86,27 @@ python -m tankai.evaluation.cooperative_acceptance
 Die erste Simulation besteht nur 3 von 15 Kriterien (gewichteter Score
 `0.1778`) und ist ausdrücklich kein Qualitätsnachweis. Sie dokumentiert reproduzierbar die
 Ausgangslücken für P2; externe Provider, Werkzeuge und Kosten bleiben dabei deaktiviert.
+
+Der aktuelle providerfreie Candidate führt denselben vollständigen TankAI-Loop für alle drei
+Fälle aus und bewahrt die tatsächlichen Endartefakte samt SHA-256, Laufzeit, Aufrufzahl,
+Receipts und Kosten. Der eingecheckte Lauf verbessert die Baseline noch nicht: Score `0.1778`,
+Delta `0.0`, kein erfolgreicher Fall und zehn simulierte Modellaufrufe je Fall. Damit ist der
+Befund reproduzierbar, aber ausdrücklich weder ein Qualitäts- noch ein Pilotnachweis:
+
+```bash
+python -m tankai.evaluation.cooperative_acceptance \
+  --candidate evaluation/cooperative_acceptance_v1_candidate.json
+```
+
+Ein neuer lokaler Mock-Lauf kann separat erzeugt werden. Er aktiviert keinen Provider und
+schreibt nur bei ausdrücklich angegebenem Zielpfad:
+
+```bash
+python -m tankai.evaluation.cooperative_acceptance \
+  --run-mock-candidate \
+  --source-revision 12fd2658d353aef168f519b5599ddaae8e546729 \
+  --write-candidate /tmp/tankai-candidate.json
+```
 
 ### Zielklärung und Ideenlabor
 

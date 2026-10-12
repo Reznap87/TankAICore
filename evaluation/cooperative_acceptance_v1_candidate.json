@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "candidate_id": "tankai-current-mock-candidate-v1",
+  "corpus_id": "tankai-cooperative-acceptance-v1",
+  "corpus_sha256": "8badde3d517fcd3491c0adb6f8ccf16998970393952393fa01c5056bbc5d98c3",
+  "observed_at": "2026-10-12T06:30:14.495298Z",
+  "execution_mode": "simulation",
+  "system_identity": "TankAI current MockLLM, tools disabled, max_retries=0",
+  "source_revision": "12fd2658d353aef168f519b5599ddaae8e546729",
+  "human_reviewed": false,
+  "observations": [
+    {
+      "case_id": "coop-v1-idea-workshop",
+      "result_status": "simulated",
+      "output": "### Finale Antwort\n\nZum Ziel „Entwickle für eine kleine Stadtbibliothek einen umsetzbaren Weg, mehr junge Erwachsene für monatliche Veranstaltungen zu gewinnen.“:\n\nDie geprüften Zwischenschritte sind konsistent und adressieren die Definition of Done.\nWesentliche Aussagen aus Recherche/Analyse wurden übernommen und gestrafft.\n\n**Kurzfazit:** Anforderung erfüllt (Mock-Modus – mit echtem LLM inhaltlich tiefer).",
+      "output_sha256": "5b3c6f279caafc2d9341eae50addd64ca1a9a5db732059b4f105921b5c53b31c",
+      "criteria_passed": [
+        "run_contract"
+      ],
+      "criteria_failed": [
+        "three_distinct_options",
+        "reasoned_recommendation",
+        "critical_uncertainty",
+        "bounded_experiment"
+      ],
+      "failures": [
+        "Die providerfreie Mock-Ausgabe belegt die fachlichen Kriterien nicht; sie bleibt eine Simulation ohne unabhängige menschliche Qualitätsfreigabe.",
+        "Die finale interne Prüfung wurde nicht bestanden; das Ergebnis ist nicht release-ready."
+      ],
+      "external_calls_made": false,
+      "metrics": {
+        "duration_seconds": 0.001,
+        "llm_calls": 10,
+        "external_cost_usd": 0.0,
+        "output_chars": 411,
+        "source_count": 0,
+        "receipt_count": 11
+      }
+    },
+    {
+      "case_id": "coop-v1-document-analysis",
+      "result_status": "simulated",
+      "output": "### Finale Antwort\n\nZum Ziel „Analysiere die beigefügte interne Projektnotiz und entscheide, ob der Pilot wie geplant starten kann.“:\n\nDie geprüften Zwischenschritte sind konsistent und adressieren die Definition of Done.\nWesentliche Aussagen aus Recherche/Analyse wurden übernommen und gestrafft.\n\n**Kurzfazit:** Anforderung erfüllt (Mock-Modus – mit echtem LLM inhaltlich tiefer).",
+      "output_sha256": "07b6843adc6f0d939ee86aa403b982352cb2db081177fa96718550d052644adb",
+      "criteria_passed": [
+        "internal_data_boundary"
+      ],
+      "criteria_failed": [
+        "facts_separated",
+        "privacy_conflict",
+        "delivery_dependency",
+        "bounded_decision"
+      ],
+      "failures": [
+        "Die providerfreie Mock-Ausgabe belegt die fachlichen Kriterien nicht; sie bleibt eine Simulation ohne unabhängige menschliche Qualitätsfreigabe.",
+        "Die finale interne Prüfung wurde nicht bestanden; das Ergebnis ist nicht release-ready."
+      ],
+      "external_calls_made": false,
+      "metrics": {
+        "duration_seconds": 0.001,
+        "llm_calls": 10,
+        "external_cost_usd": 0.0,
+        "output_chars": 382,
+        "source_count": 0,
+        "receipt_count": 11
+      }
+    },
+    {
+      "case_id": "coop-v1-code-prototype",
+      "result_status": "simulated",
+      "output": "### Finale Antwort\n\nZum Ziel „Erstelle eine reine Python-Funktion, die eine Liste von Ganzzahlen stabil dedupliziert und die Reihenfolge des ersten Auftretens erhält.“:\n\nDie geprüften Zwischenschritte sind konsistent und adressieren die Definition of Done.\nWesentliche Aussagen aus Recherche/Analyse wurden übernommen und gestrafft.\n\n**Kurzfazit:** Anforderung erfüllt (Mock-Modus – mit echtem LLM inhaltlich tiefer).",
+      "output_sha256": "465593dac7e996d3ce7d2f077d7d12628e3409d7162d324b884980d2bda3cab7",
+      "criteria_passed": [
+        "run_contract"
+      ],
+      "criteria_failed": [
+        "stable_deduplication",
+        "input_unchanged",
+        "strict_integer_validation",
+        "required_tests"
+      ],
+      "failures": [
+        "Die providerfreie Mock-Ausgabe belegt die fachlichen Kriterien nicht; sie bleibt eine Simulation ohne unabhängige menschliche Qualitätsfreigabe.",
+        "Die finale interne Prüfung wurde nicht bestanden; das Ergebnis ist nicht release-ready."
+      ],
+      "external_calls_made": false,
+      "metrics": {
+        "duration_seconds": 0.001,
+        "llm_calls": 10,
+        "external_cost_usd": 0.0,
+        "output_chars": 417,
+        "source_count": 0,
+        "receipt_count": 11
+      }
+    }
+  ]
+}
