@@ -1,8 +1,29 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 11. Oktober 2026
+**Statusdatum:** 12. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: providerfreier Candidate-Receipt v1 — Nachweis 12. Oktober 2026
+
+- Aktueller TankAI-Mock tatsächlich über alle drei unveränderten Korpusfälle ausgeführt: PASS
+- Drei vollständige Endartefakte mit SHA-256, Kriterienbelegung, Laufzeit, Aufrufen,
+  Kosten und Receiptzahl gebunden: PASS
+- Candidate- und Baseline-Korpus-SHA-256 stimmen exakt überein: PASS
+- Interne Dokumentdaten bleiben ohne externe Aufrufe; gemeldete externe Kosten: 0
+- Ehrliches Ergebnis: 12 von 15 Kriterien verfehlt, null erfolgreiche Fälle, Score `0.1778`,
+  Delta `0.0`, zehn simulierte Aufrufe je Fall und `pilot_eligible=false`
+- Manipulierte Artefakte, unvollständige Kriterien, Grenzüberschreitungen und externe Aufrufe
+  im internen Dokumentfall werden fail-closed abgewiesen: PASS
+- Acceptance-/Planner-Regressionen: 29 PASS
+- `python -m pytest -q`: 258 PASS; `python -m tankai --selftest`: 24 PASS
+- Python-Compile und `git diff --check`: PASS
+- Isoliertes `npm ci --ignore-scripts`, Wrangler-Typen, TypeScript-`--noEmit`, Worker-only-
+  Dry-Run mit `--containers-rollout=none` und Artefaktprüfung: PASS
+- Vollständiger npm-Audit und Produktionsabhängigkeits-Audit: 0 bekannte Funde
+- Vollständiger Container-Dry-Run, Produktions-Container-Build und Smoke bleiben mangels
+  lokaler Docker-/Podman-CLI Pflicht-CI-Gates vor einem Merge
+- Keine Secrets, Berechtigungen, Provider, Abrechnung, Produktion oder Deployments verändert
 
 ## Unreleased: Zielklärung und Ideenlabor v1 — Nachweis 11. Oktober 2026
 

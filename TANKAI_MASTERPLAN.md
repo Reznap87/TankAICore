@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.41
+Version: 5.7.42
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 11. Oktober 2026
+Statusdatum: 12. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 11. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 12. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.41-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.42-Inkrements:
 
-e012cb9706a475a8db35a69e6d01d06c9cf91f96
+12fd2658d353aef168f519b5599ddaae8e546729
 
 Zugehöriger Repository-Git-Tree:
 
-a89915c52d90f81dd308b12c64d01b76b7edb1cc
+178ea39982a87a6c08242c97f79ab6c26660938a
 
 Commit-Titel:
 
-docs: define bounded 10 EUR live pilot budget (#78)
+fix(evaluation): validate baseline contracts at every receipt boundary (#80)
 
-Dieser Stand ist der Ausgangsstand des ersten Zielklärungs-/Ideenlabor-Inkrements. Ein
+Dieser Stand ist der Ausgangsstand der providerfreien Candidate-Messung. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -99,8 +99,8 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand e012cb9706a475a8db35a69e6d01d06c9cf91f96 mit Git-Tree
-a89915c52d90f81dd308b12c64d01b76b7edb1cc,
+geschützter main-Ausgangsstand 12fd2658d353aef168f519b5599ddaae8e546729 mit Git-Tree
+178ea39982a87a6c08242c97f79ab6c26660938a,
 
 kein offener Pull Request und genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
@@ -683,6 +683,24 @@ bestanden einschließlich Produktions-Container-Build und Container-Smoke.
 
 TankAI Core CI Run #148, Run 38095167731, auf main-Commit
 e012cb9706a475a8db35a69e6d01d06c9cf91f96: completed/success; beide Pflichtjobs bestanden.
+
+PR #79 ergänzte die begrenzte Zielanalyse im bestehenden Planner-Aufruf, ohne zusätzlichen
+Modellaufruf, Provideraktivierung oder Produktionsmutation.
+
+TankAI Core CI Run #149, Run 38118528000, auf dem finalen PR-#79-Head: completed/success;
+die Jobs test und cloudflare bestanden einschließlich Produktions-Container-Build und Smoke.
+
+TankAI Core CI Run #150, Run 38118605910, auf main-Commit
+caccc601e6b04a8cc7bb5b5a24a47e514e1d290e: completed/success; beide Pflichtjobs bestanden.
+
+PR #80 band alle Baseline-Receipt-Grenzen an dieselbe vollständige Korpus-, Kriterien- und
+Budgetprüfung und dokumentierte die offenen Pilot-Vorgates, ohne sie fälschlich zu schließen.
+
+TankAI Core CI Run #151, Run 38141745885, auf dem finalen PR-#80-Head: completed/success;
+die Jobs test und cloudflare bestanden einschließlich Produktions-Container-Build und Smoke.
+
+TankAI Core CI Run #152, Run 38141861040, auf main-Commit
+12fd2658d353aef168f519b5599ddaae8e546729: completed/success; beide Pflichtjobs bestanden.
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -1454,14 +1472,18 @@ Umgesetzt sind drei Fälle, 15 gewichtete Kriterien, feste Limits, Hashbindung u
 maschinenlesbarer Mock-Receipt mit 12 verfehlten Kriterien und Score `0.1778`. P2 muss gegen
 denselben Korpus gemessen werden; der Baseline-Hash darf nicht stillschweigend verändert werden.
 
-P2 — Zielklärung und Ideenlabor in bestehendem Commander ausbauen. TEILWEISE UMGESETZT.
+P2 — Zielklärung und Ideenlabor in bestehendem Commander ausbauen. ERSTER CANDIDATE GEMESSEN.
 Task: product.commander.goal_and_alternatives. Abnahme gemäß 0.11.2 A/C auf dem eingefrorenen
 Korpus; unnötige Modellaufrufe und zusätzliche Latenz mitmessen. Kein zweiter Commander.
 Umgesetzt ist der validierte Planner-Vertrag für Ergebnis, verlangtes Vorgehen, zwei bis drei
 Optionen, Nutzen, Nachteil, entscheidende Unsicherheit, Empfehlung und kleinsten Versuch im
 bereits vorhandenen Planner-Aufruf. Direkte Aufgaben erzeugen keine künstlichen Alternativen;
-unvollständige Workshops werden als Fallback markiert. Offen bleiben die vollständige
-Candidate-Ausführung und Bewertung aller drei eingefrorenen Fälle gegen die P1-Baseline.
+unvollständige Workshops werden als Fallback markiert. Der aktuelle providerfreie Mock-Candidate
+durchläuft alle drei eingefrorenen Fälle vollständig, bindet seine Endartefakte per SHA-256 und
+vergleicht dieselben 15 Kriterien gegen die P1-Baseline. Er verbessert den Score nicht:
+`0.1778`, Delta `0.0`, null erfolgreiche Fälle und zehn simulierte Aufrufe je Fall. Damit ist
+die Messlücke geschlossen, aber nicht die Qualitätslücke. Offen bleibt ein Candidate mit
+nutzbaren, unabhängig bewerteten Ergebnissen innerhalb des strengeren Pilotbudgets.
 
 P3 — Projektentscheidungen und Fortsetzung verlässlich verbinden.
 Task: product.memory.decision_continuity. Bestehende Speicher-/Goal-Verträge verwenden;
@@ -1511,7 +1533,7 @@ späteren Qualitätsnachweis für den vollständigen P2-Candidate.
 Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
 Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
 Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
-Der Reality Contract 5.7.41 und seine historischen Receipts werden durch diesen
+Der Reality Contract 5.7.42 und seine historischen Receipts werden durch diesen
 Planungsnachtrag nicht rückwirkend umgeschrieben.
 
 0.11.7 Verbindliches Start-Testbudget
@@ -1614,6 +1636,14 @@ AUD-02: Der bestehende P2-Owner liefert den vollständigen Candidate mit nutzbar
 und Vergleich gegen denselben eingefrorenen Korpus. Ein JSON-Vertrag mit Varianten allein
 beweist weder bessere Ideen noch fertige Arbeit. Qualität und Kosten gemeinsam abnehmen.
 
+AUD-02-Zwischenstand am 12. Oktober 2026: Der aktuelle TankAI-Mock wurde tatsächlich über alle
+drei Fälle ausgeführt. Der versionierte Candidate bewahrt die drei Endartefakte mit SHA-256,
+vollständiger Kriterienbelegung, Laufzeit, zehn simulierten Aufrufen, Receiptzahl und null
+externen Kosten. Der Vergleich ergibt unverändert `0.1778`, Delta `0.0`, null erfolgreiche
+Fälle und `pilot_eligible=false`. Dieser negative Befund ist ein reproduzierbarer
+Ausführungsnachweis, aber kein Qualitätsgewinn. P2 bleibt bis zu einem fachlich erfolgreichen,
+unabhängig bewerteten Candidate offen; den Korpus oder die Baseline nicht erleichtern.
+
 AUD-03 bis AUD-06: Vor dem bezahlten Pilot unter Issue #25 gemeinsame persistente monetäre
 Reservierung einschließlich tatsächlicher Retry-/Fallback-Versuche, Cloudflare-Persistenz
 mit Restart-/Restore-Nachweis, einen zum Pilot passenden Quellen-/Suchmodus und aktuelle
@@ -1632,6 +1662,16 @@ Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und off
 Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.42, 12. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 12fd2658d353aef168f519b5599ddaae8e546729 / Tree
+178ea39982a87a6c08242c97f79ab6c26660938a gebunden; PR #80 und CI Runs #151/#152 als
+erfolgreichen Baseline-Reparaturnachweis aufgenommen. Den aktuellen providerfreien TankAI-Mock
+gegen alle drei eingefrorenen Fälle ausgeführt und die tatsächlichen Endartefakte, Hashes,
+Kriterien, Aufrufe, Receipts und Kosten in einem fail-closed Candidate-Vertrag gebunden. Der
+Candidate verbessert die Baseline nicht und bleibt ausdrücklich nicht pilotfähig; keine
+Provideraktivierung, Kosten, Secretänderung oder Produktionsmutation.
 
 5.7.41, 11. Oktober 2026:
 

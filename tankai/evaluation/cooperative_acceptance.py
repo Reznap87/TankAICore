@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS = ROOT / "evaluation" / "cooperative_acceptance_v1.json"
 DEFAULT_BASELINE = ROOT / "evaluation" / "cooperative_acceptance_v1_baseline.json"
+DEFAULT_CANDIDATE = ROOT / "evaluation" / "cooperative_acceptance_v1_candidate.json"
 REQUIRED_CATEGORIES = {
     "idea_development",
     "document_analysis",
@@ -136,6 +137,47 @@ class AcceptanceBaseline(StrictModel):
     observations: list[BaselineObservation] = Field(min_length=3, max_length=20)
 
 
+class CandidateObservation(StrictModel):
+    case_id: str
+    result_status: Literal["completed", "failed", "simulated"]
+    output: str = Field(min_length=1, max_length=50_000)
+    output_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    criteria_passed: list[str]
+    criteria_failed: list[str]
+    failures: list[str]
+    external_calls_made: bool
+    metrics: BaselineMetrics
+
+    @model_validator(mode="after")
+    def internally_consistent_observation(self) -> "CandidateObservation":
+        observed = self.criteria_passed + self.criteria_failed
+        if len(set(observed)) != len(observed):
+            raise ValueError("Candidate-Kriterien dürfen nicht doppelt vorkommen")
+        if self.criteria_failed and not self.failures:
+            raise ValueError("Fehlgeschlagene Candidate-Kriterien benötigen eine Begründung")
+        encoded = self.output.encode("utf-8")
+        if hashlib.sha256(encoded).hexdigest() != self.output_sha256:
+            raise ValueError("Candidate-Artefakt-Hash stimmt nicht")
+        if len(self.output) != self.metrics.output_chars:
+            raise ValueError("Candidate-Ausgabelänge stimmt nicht")
+        if not self.external_calls_made and self.metrics.external_cost_usd != 0:
+            raise ValueError("Candidate ohne externe Aufrufe darf keine externen Kosten melden")
+        return self
+
+
+class AcceptanceCandidate(StrictModel):
+    schema_version: Literal[1]
+    candidate_id: Literal["tankai-current-mock-candidate-v1"]
+    corpus_id: Literal["tankai-cooperative-acceptance-v1"]
+    corpus_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observed_at: datetime
+    execution_mode: Literal["simulation"]
+    system_identity: str = Field(min_length=5, max_length=200)
+    source_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
+    human_reviewed: bool
+    observations: list[CandidateObservation] = Field(min_length=3, max_length=20)
+
+
 def _read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -198,6 +240,54 @@ def load_baseline(
     return baseline
 
 
+def _validate_candidate_contract(
+    corpus: AcceptanceCorpus,
+    candidate: AcceptanceCandidate,
+) -> None:
+    if candidate.corpus_id != corpus.corpus_id:
+        raise ValueError("Candidate verweist auf einen anderen Korpus")
+    if candidate.corpus_sha256 != corpus_digest(corpus):
+        raise ValueError("Candidate-Korpus-Hash stimmt nicht")
+    cases = {item.case_id: item for item in corpus.cases}
+    observations = {item.case_id: item for item in candidate.observations}
+    if set(observations) != set(cases) or len(observations) != len(candidate.observations):
+        raise ValueError("Candidate muss jeden Fall genau einmal beobachten")
+    for case_id, observation in observations.items():
+        case = cases[case_id]
+        criterion_ids = {item.criterion_id for item in case.acceptance_criteria}
+        observed = observation.criteria_passed + observation.criteria_failed
+        if set(observed) != criterion_ids or len(observed) != len(criterion_ids):
+            raise ValueError(f"Candidate-Kriterien für {case_id} sind unvollständig")
+        human_ids = {
+            item.criterion_id for item in case.acceptance_criteria if item.evaluator == "human"
+        }
+        if not candidate.human_reviewed and human_ids & set(observation.criteria_passed):
+            raise ValueError(
+                f"Candidate ohne menschliche Prüfung darf keine Human-Kriterien für {case_id} bestehen"
+            )
+        metrics = observation.metrics
+        if metrics.duration_seconds > case.limits.max_duration_seconds:
+            raise ValueError(f"Candidate überschreitet Zeitlimit für {case_id}")
+        if metrics.llm_calls > case.limits.max_llm_calls:
+            raise ValueError(f"Candidate überschreitet LLM-Limit für {case_id}")
+        if metrics.external_cost_usd > case.limits.max_external_cost_usd:
+            raise ValueError(f"Candidate überschreitet Kostenlimit für {case_id}")
+        if metrics.output_chars > case.limits.max_output_chars:
+            raise ValueError(f"Candidate überschreitet Ausgabelimit für {case_id}")
+        if case.data_class == "internal" and observation.external_calls_made:
+            raise ValueError(f"Interner Candidate-Fall {case_id} darf keine externen Aufrufe melden")
+
+
+def load_candidate(
+    path: Path = DEFAULT_CANDIDATE,
+    corpus: AcceptanceCorpus | None = None,
+) -> AcceptanceCandidate:
+    corpus = corpus or load_corpus()
+    candidate = AcceptanceCandidate.model_validate(_read_json(path))
+    _validate_candidate_contract(corpus, candidate)
+    return candidate
+
+
 def baseline_receipt(
     corpus: AcceptanceCorpus,
     baseline: AcceptanceBaseline,
@@ -234,14 +324,177 @@ def baseline_receipt(
     }
 
 
+def candidate_receipt(
+    corpus: AcceptanceCorpus,
+    baseline: AcceptanceBaseline,
+    candidate: AcceptanceCandidate,
+) -> dict[str, object]:
+    _validate_baseline_contract(corpus, baseline)
+    _validate_candidate_contract(corpus, candidate)
+    cases = {item.case_id: item for item in corpus.cases}
+    total_weight = sum(
+        criterion.weight for case in corpus.cases for criterion in case.acceptance_criteria
+    )
+
+    def weighted_passed(observations: list[BaselineObservation] | list[CandidateObservation]) -> int:
+        return sum(
+            {
+                criterion.criterion_id: criterion.weight
+                for criterion in cases[observation.case_id].acceptance_criteria
+            }[criterion_id]
+            for observation in observations
+            for criterion_id in observation.criteria_passed
+        )
+
+    baseline_score = round(weighted_passed(baseline.observations) / total_weight, 4)
+    candidate_score = round(weighted_passed(candidate.observations) / total_weight, 4)
+    successful_cases = sum(not item.criteria_failed for item in candidate.observations)
+    total_cost = round(
+        sum(item.metrics.external_cost_usd for item in candidate.observations), 6
+    )
+    pilot_call_limit_met = all(item.metrics.llm_calls <= 5 for item in candidate.observations)
+    return {
+        "receipt_version": 1,
+        "candidate_id": candidate.candidate_id,
+        "baseline_id": baseline.baseline_id,
+        "corpus_id": corpus.corpus_id,
+        "corpus_sha256": candidate.corpus_sha256,
+        "case_count": len(corpus.cases),
+        "criteria_total": sum(len(item.acceptance_criteria) for item in corpus.cases),
+        "criteria_failed": sum(len(item.criteria_failed) for item in candidate.observations),
+        "successful_cases": successful_cases,
+        "baseline_weighted_score": baseline_score,
+        "candidate_weighted_score": candidate_score,
+        "score_delta": round(candidate_score - baseline_score, 4),
+        "improves_baseline": candidate_score > baseline_score,
+        "external_calls_made": any(
+            item.external_calls_made for item in candidate.observations
+        ),
+        "total_external_cost_usd": total_cost,
+        "cost_per_successful_case_usd": (
+            round(total_cost / successful_cases, 6) if successful_cases else None
+        ),
+        "pilot_call_limit_met": pilot_call_limit_met,
+        "pilot_eligible": False,
+        "source_revision": candidate.source_revision,
+        "human_reviewed": candidate.human_reviewed,
+        "artifact_sha256": {
+            item.case_id: item.output_sha256 for item in candidate.observations
+        },
+        "quality_claim": "simulation-candidate-only",
+    }
+
+
+def run_mock_candidate(
+    corpus: AcceptanceCorpus,
+    *,
+    source_revision: str,
+) -> AcceptanceCandidate:
+    """Execute the current TankAI loop without providers and retain its actual artifacts."""
+    from tankai.core.llm import MockLLM
+    from tankai.core.loop import TankAI
+
+    observations: list[CandidateObservation] = []
+    for case in corpus.cases:
+        goal = case.goal
+        if case.input_artifacts:
+            artifacts = "\n\n".join(item.content for item in case.input_artifacts)
+            goal = f"{goal}\n\nBereitgestellte Artefakte:\n{artifacts}"
+        tank = TankAI(
+            llm=MockLLM(),
+            critic_llm=MockLLM(),
+            max_retries=0,
+            max_llm_calls_per_run=case.limits.max_llm_calls,
+            verbose=False,
+            enable_tools=False,
+            run_store_path=None,
+        )
+        result = tank.run(goal, case.definition_of_done, case.constraints)
+        output = result.final_answer
+        passed: list[str] = []
+        failed: list[str] = []
+        failures: list[str] = []
+        for criterion in case.acceptance_criteria:
+            if criterion.criterion_id == "run_contract":
+                passed.append(criterion.criterion_id)
+            elif criterion.criterion_id == "internal_data_boundary":
+                passed.append(criterion.criterion_id)
+            else:
+                failed.append(criterion.criterion_id)
+        if failed:
+            failures.append(
+                "Die providerfreie Mock-Ausgabe belegt die fachlichen Kriterien nicht; "
+                "sie bleibt eine Simulation ohne unabhängige menschliche Qualitätsfreigabe."
+            )
+        if not result.verification_passed:
+            failures.append(
+                "Die finale interne Prüfung wurde nicht bestanden; das Ergebnis ist nicht release-ready."
+            )
+        observations.append(
+            CandidateObservation(
+                case_id=case.case_id,
+                result_status="simulated",
+                output=output,
+                output_sha256=hashlib.sha256(output.encode("utf-8")).hexdigest(),
+                criteria_passed=passed,
+                criteria_failed=failed,
+                failures=failures,
+                external_calls_made=False,
+                metrics=BaselineMetrics(
+                    duration_seconds=result.duration_seconds,
+                    llm_calls=tank.llm_call_budget.snapshot()["used"],
+                    external_cost_usd=0,
+                    output_chars=len(output),
+                    source_count=len(result.source_ids),
+                    receipt_count=len(result.receipts),
+                ),
+            )
+        )
+    return AcceptanceCandidate(
+        schema_version=1,
+        candidate_id="tankai-current-mock-candidate-v1",
+        corpus_id=corpus.corpus_id,
+        corpus_sha256=corpus_digest(corpus),
+        observed_at=datetime.now(timezone.utc),
+        execution_mode="simulation",
+        system_identity="TankAI current MockLLM, tools disabled, max_retries=0",
+        source_revision=source_revision,
+        human_reviewed=False,
+        observations=observations,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="TankAI cooperative acceptance baseline")
+    parser = argparse.ArgumentParser(description="TankAI cooperative acceptance evaluation")
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
+    parser.add_argument("--candidate", type=Path)
+    parser.add_argument("--run-mock-candidate", action="store_true")
+    parser.add_argument("--write-candidate", type=Path)
+    parser.add_argument("--source-revision")
     args = parser.parse_args(argv)
     corpus = load_corpus(args.corpus)
     baseline = load_baseline(args.baseline, corpus)
-    print(json.dumps(baseline_receipt(corpus, baseline), ensure_ascii=False, indent=2))
+    if args.run_mock_candidate and args.candidate:
+        parser.error("--candidate und --run-mock-candidate schließen sich aus")
+    if args.write_candidate and not args.run_mock_candidate:
+        parser.error("--write-candidate erfordert --run-mock-candidate")
+    if args.run_mock_candidate and not args.source_revision:
+        parser.error("--run-mock-candidate erfordert --source-revision")
+    if args.run_mock_candidate:
+        candidate = run_mock_candidate(corpus, source_revision=args.source_revision)
+        if args.write_candidate:
+            args.write_candidate.write_text(
+                json.dumps(candidate.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        receipt = candidate_receipt(corpus, baseline, candidate)
+    elif args.candidate:
+        candidate = load_candidate(args.candidate, corpus)
+        receipt = candidate_receipt(corpus, baseline, candidate)
+    else:
+        receipt = baseline_receipt(corpus, baseline)
+    print(json.dumps(receipt, ensure_ascii=False, indent=2))
     return 0
 
 

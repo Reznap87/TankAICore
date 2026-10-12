@@ -9,13 +9,17 @@ from pydantic import ValidationError
 
 from tankai.evaluation.cooperative_acceptance import (
     DEFAULT_BASELINE,
+    DEFAULT_CANDIDATE,
     DEFAULT_CORPUS,
     AcceptanceBaseline,
     AcceptanceCorpus,
     baseline_receipt,
+    candidate_receipt,
     corpus_digest,
     load_baseline,
+    load_candidate,
     load_corpus,
+    run_mock_candidate,
 )
 
 
@@ -172,3 +176,100 @@ def test_loader_rejects_cost_without_external_calls(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="ohne externe Aufrufe"):
         load_baseline(changed, load_corpus())
+
+
+def test_checked_in_candidate_retains_artifacts_and_honest_comparison() -> None:
+    corpus = load_corpus()
+    baseline = load_baseline(corpus=corpus)
+    candidate = load_candidate(corpus=corpus)
+    receipt = candidate_receipt(corpus, baseline, candidate)
+
+    assert candidate.corpus_sha256 == corpus_digest(corpus)
+    assert all(item.output for item in candidate.observations)
+    assert all(item.metrics.llm_calls == 10 for item in candidate.observations)
+    assert receipt["candidate_weighted_score"] == 0.1778
+    assert receipt["baseline_weighted_score"] == 0.1778
+    assert receipt["score_delta"] == 0.0
+    assert receipt["improves_baseline"] is False
+    assert receipt["successful_cases"] == 0
+    assert receipt["pilot_call_limit_met"] is False
+    assert receipt["pilot_eligible"] is False
+    assert receipt["source_revision"] == "12fd2658d353aef168f519b5599ddaae8e546729"
+    assert receipt["human_reviewed"] is False
+    assert receipt["quality_claim"] == "simulation-candidate-only"
+
+
+def test_current_mock_execution_reproduces_checked_in_candidate_artifacts() -> None:
+    corpus = load_corpus()
+    expected = load_candidate(corpus=corpus)
+    current = run_mock_candidate(
+        corpus,
+        source_revision="12fd2658d353aef168f519b5599ddaae8e546729",
+    )
+
+    assert {
+        item.case_id: item.output_sha256 for item in current.observations
+    } == {
+        item.case_id: item.output_sha256 for item in expected.observations
+    }
+    assert [item.criteria_passed for item in current.observations] == [
+        item.criteria_passed for item in expected.observations
+    ]
+    assert [item.criteria_failed for item in current.observations] == [
+        item.criteria_failed for item in expected.observations
+    ]
+
+
+def test_candidate_rejects_tampered_artifact(tmp_path) -> None:
+    document = json.loads(DEFAULT_CANDIDATE.read_text(encoding="utf-8"))
+    document["observations"][0]["output"] += " manipuliert"
+    changed = tmp_path / "tampered-candidate.json"
+    changed.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="Artefakt-Hash"):
+        load_candidate(changed, load_corpus())
+
+
+def test_internal_candidate_case_rejects_external_calls(tmp_path) -> None:
+    document = json.loads(DEFAULT_CANDIDATE.read_text(encoding="utf-8"))
+    internal = next(
+        item for item in document["observations"] if item["case_id"] == "coop-v1-document-analysis"
+    )
+    internal["external_calls_made"] = True
+    changed = tmp_path / "external-internal-candidate.json"
+    changed.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Interner Candidate-Fall"):
+        load_candidate(changed, load_corpus())
+
+
+def test_unreviewed_candidate_cannot_claim_human_criteria(tmp_path) -> None:
+    document = json.loads(DEFAULT_CANDIDATE.read_text(encoding="utf-8"))
+    idea = document["observations"][0]
+    claimed = idea["criteria_failed"].pop(0)
+    idea["criteria_passed"].append(claimed)
+    changed = tmp_path / "unreviewed-human-claim.json"
+    changed.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="keine Human-Kriterien"):
+        load_candidate(changed, load_corpus())
+
+
+def test_candidate_cli_emits_machine_readable_comparison() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tankai.evaluation.cooperative_acceptance",
+            "--candidate",
+            str(DEFAULT_CANDIDATE),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    receipt = json.loads(completed.stdout)
+    assert receipt["candidate_id"] == "tankai-current-mock-candidate-v1"
+    assert receipt["score_delta"] == 0.0
+    assert receipt["pilot_eligible"] is False
