@@ -82,3 +82,32 @@ Formuliere eine klare, vollständige Endantwort. Behalte die Quellenbelege unmit
             details={"num_steps_used": len(step_results)},
         )
         return final, receipt
+
+    def reuse_verified_single_step(
+        self,
+        goal: Goal,
+        step_results: list[tuple[str, str]],
+    ) -> tuple[str, Any]:
+        """Reuse one Critic-approved result without spending another model call."""
+        if len(step_results) == 1:
+            final = step_results[0][1]
+            success = True
+        else:
+            final = (
+                "Kein verifiziertes Einzelschritt-Ergebnis verfügbar. "
+                "Der Lauf bleibt gesperrt und muss mit behobenem Specialist-Ergebnis "
+                "erneut ausgeführt werden."
+            )
+            success = False
+        receipt = self._create_receipt(
+            action="reuse_verified_single_step",
+            input_summary=f"Goal: {goal.description[:100]}",
+            output_summary=final[:200],
+            success=success,
+            details={
+                "num_steps_used": len(step_results),
+                "llm_calls_added": 0,
+                "requires_final_critic": True,
+            },
+        )
+        return final, receipt
