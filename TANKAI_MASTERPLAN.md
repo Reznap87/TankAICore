@@ -1,11 +1,14 @@
+Warning: truncated output (original token count: 52083)
+Total output lines: 4339
+
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.42
+Version: 5.7.43
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 12. Oktober 2026
+Statusdatum: 13. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 12. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 13. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,17 +47,17 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.42-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.43-Inkrements:
 
-12fd2658d353aef168f519b5599ddaae8e546729
+bac990b2ba4a2423173496414ec946754a925b74
 
 Zugehöriger Repository-Git-Tree:
 
-178ea39982a87a6c08242c97f79ab6c26660938a
+0122389572925fa94fb12282585e32b1e96afadd
 
 Commit-Titel:
 
-fix(evaluation): validate baseline contracts at every receipt boundary (#80)
+feat(evaluation): record full provider-free candidate receipt (#81)
 
 Dieser Stand ist der Ausgangsstand der providerfreien Candidate-Messung. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
@@ -701,6 +704,15 @@ die Jobs test und cloudflare bestanden einschließlich Produktions-Container-Bui
 
 TankAI Core CI Run #152, Run 38141861040, auf main-Commit
 12fd2658d353aef168f519b5599ddaae8e546729: completed/success; beide Pflichtjobs bestanden.
+
+PR #81 führte den aktuellen providerfreien Candidate über alle drei unveränderten Fälle aus
+und band Endartefakte, Aufrufzahlen, Kriterien und Kosten an den versionierten Receipt.
+
+TankAI Core CI Run #153, Run 38213150353, auf dem finalen PR-#81-Head: completed/success;
+die Jobs test und cloudflare bestanden einschließlich Produktions-Container-Build und Smoke.
+
+TankAI Core CI Run #154, Run 38213279239, auf main-Commit
+bac990b2ba4a2423173496414ec946754a925b74: completed/success; beide Pflichtjobs bestanden.
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -1481,8 +1493,11 @@ bereits vorhandenen Planner-Aufruf. Direkte Aufgaben erzeugen keine künstlichen
 unvollständige Workshops werden als Fallback markiert. Der aktuelle providerfreie Mock-Candidate
 durchläuft alle drei eingefrorenen Fälle vollständig, bindet seine Endartefakte per SHA-256 und
 vergleicht dieselben 15 Kriterien gegen die P1-Baseline. Er verbessert den Score nicht:
-`0.1778`, Delta `0.0`, null erfolgreiche Fälle und zehn simulierte Aufrufe je Fall. Damit ist
-die Messlücke geschlossen, aber nicht die Qualitätslücke. Offen bleibt ein Candidate mit
+`0.1778`, Delta `0.0`, null erfolgreiche Fälle und fünf simulierte Aufrufe je Fall. Der
+Pilot-Aufrufdeckel ist damit im Candidate-Pfad eingehalten, ohne Plan-, Schritt- oder
+Endprüfung zu entfernen. Ein nicht bestandenes Zwischenergebnis wird nicht mehr durch eine
+zusätzliche Mock-Synthese wie eine fertige Antwort dargestellt. Damit ist die Budgetlücke
+geschlossen, aber nicht die Qualitätslücke. Offen bleibt ein Candidate mit
 nutzbaren, unabhängig bewerteten Ergebnissen innerhalb des strengeren Pilotbudgets.
 
 P3 — Projektentscheidungen und Fortsetzung verlässlich verbinden.
@@ -1533,7 +1548,7 @@ späteren Qualitätsnachweis für den vollständigen P2-Candidate.
 Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
 Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
 Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
-Der Reality Contract 5.7.42 und seine historischen Receipts werden durch diesen
+Der Reality Contract 5.7.43 und seine historischen Receipts werden durch diesen
 Planungsnachtrag nicht rückwirkend umgeschrieben.
 
 0.11.7 Verbindliches Start-Testbudget
@@ -1638,9 +1653,13 @@ beweist weder bessere Ideen noch fertige Arbeit. Qualität und Kosten gemeinsam 
 
 AUD-02-Zwischenstand am 12. Oktober 2026: Der aktuelle TankAI-Mock wurde tatsächlich über alle
 drei Fälle ausgeführt. Der versionierte Candidate bewahrt die drei Endartefakte mit SHA-256,
-vollständiger Kriterienbelegung, Laufzeit, zehn simulierten Aufrufen, Receiptzahl und null
+vollständiger Kriterienbelegung, Laufzeit, fünf simulierten Aufrufen, Receiptzahl und null
 externen Kosten. Der Vergleich ergibt unverändert `0.1778`, Delta `0.0`, null erfolgreiche
-Fälle und `pilot_eligible=false`. Dieser negative Befund ist ein reproduzierbarer
+Fälle, `pilot_call_limit_met=true` und `pilot_eligible=false`. Der begrenzte Candidate-Pfad
+verwendet genau einen Planschritt, behält Plan-, Schritt- und finale Critic-Prüfung bei und
+spart nur den zusätzlichen LLM-Syntheseaufruf, wenn ein verifiziertes Einzelergebnis direkt
+übernommen werden kann. Ohne verifiziertes Ergebnis liefert er fail-closed eine Sperrmeldung.
+Dieser negative Befund ist ein reproduzierbarer
 Ausführungsnachweis, aber kein Qualitätsgewinn. P2 bleibt bis zu einem fachlich erfolgreichen,
 unabhängig bewerteten Candidate offen; den Korpus oder die Baseline nicht erleichtern.
 
@@ -1663,140 +1682,12 @@ Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlich
 
 0.12 Reality-Contract-Versionshistorie
 
-5.7.42, 12. Oktober 2026:
+5.7.43, 13. Oktober 2026:
 
-Geschützten main-Ausgangsstand auf 12fd2658d353aef168f519b5599ddaae8e546729 / Tree
-178ea39982a87a6c08242c97f79ab6c26660938a gebunden; PR #80 und CI Runs #151/#152 als
-erfolgreichen Baseline-Reparaturnachweis aufgenommen. Den aktuellen providerfreien TankAI-Mock
-gegen alle drei eingefrorenen Fälle ausgeführt und die tatsächlichen Endartefakte, Hashes,
-Kriterien, Aufrufe, Receipts und Kosten in einem fail-closed Candidate-Vertrag gebunden. Der
-Candidate verbessert die Baseline nicht und bleibt ausdrücklich nicht pilotfähig; keine
-Provideraktivierung, Kosten, Secretänderung oder Produktionsmutation.
-
-5.7.41, 11. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf e012cb9706a475a8db35a69e6d01d06c9cf91f96 / Tree
-a89915c52d90f81dd308b12c64d01b76b7edb1cc gebunden; PR #77/#78 und CI Runs #145 bis #148
-als erfolgreiche P1-/Budgetnachweise aufgenommen. Den bestehenden Planner im selben Aufruf um
-einen begrenzten Zielklärungs- und Ideenlaborvertrag erweitert, ohne zweiten Commander,
-zusätzlichen Modellaufruf, Provideraktivierung oder Produktionsmutation. P2 bleibt bis zur
-vollständigen Candidate-Messung gegen den eingefrorenen Korpus aktiv.
-
-5.7.40, 10. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 6087b118b35555db98da65fddde35b67e2555797 / Tree
-6ab94d6737aea1f28ff064ed40d91c6e9a75bd8f gebunden. Den dreiteiligen kooperativen
-Acceptance-Korpus, 15 gewichtete Kriterien und die hashgebundene Mock-Baseline mit Score
-`0.1778` eingefroren; keine externen Aufrufe, Kosten oder Produktionsmutation.
-
-5.7.39, 9. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 46eb625d51c88d545fa50b216e7794716be12bbb / Tree
-dd2bfb0f4254cd938593cc5a281e9c85dc701aa7 gebunden. PR #75 ergänzte den neutralen
-HTTP-Parser-Fehlervertrag; CI Runs #141 und #142 bestanden einschließlich
-Produktions-Container-Build und Smoke. PR #76 priorisierte anschließend dokumentarisch den
-kooperativen TankAI- und hybriden Modellpfad; CI Runs #143 und #144 bestanden. Kein offener PR,
-Issue #25 blieb extern blockiert; keine Produktionsmutation.
-
-5.7.38, 8. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 7daeec9d315997ec513f33c60ccd02bf61029517 / Tree
-d0f1d559033a28322935324ae4bf7e8dbb010a73 gebunden. PR #74 ergänzte COEP require-corp;
-CI Runs #139 und #140 bestanden einschließlich Produktions-Container-Build und Smoke.
-Kein offener PR, Issue #25 bleibt extern blockiert; keine Produktionsmutation.
-
-
-5.7.37, 7. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 60599fbad5ebe87fae215f184ec0cd99d1b09505 / Tree
-610acc565a3f74dcb18c956cde98ee8c541a6a31 gebunden; PR #73 sowie CI Runs #137 und #138 als
-erfolgreichen Sharp-Sicherheitsupdate-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
-einzigen extern blockierten Vorgang verifiziert. Die bestehende Cross-Origin-Isolation um
-`Cross-Origin-Embedder-Policy: require-corp` ergänzt, ohne CSP-, Cache-, Session-, API-,
-Provider-, Host- oder Produktionsgrenzen zu verändern.
-
-5.7.36, 6. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf df31153551cb0213242c9be49ce0a3df9426e623 / Tree
-987548be0d65bfa4782754455279635033fd0b3d gebunden; PR #70 sowie CI Runs #131 und #132 als
-erfolgreichen External-Agent-Methodenfehlervertrag-Nachweis aufgenommen; keinen offenen PR und
-Issue #25 als einzigen extern blockierten Vorgang verifiziert. Eine serverseitige,
-nicht übernehmbare Request-Korrelations-ID für sämtliche Webantworten, Zugriffslogs und neutrale
-interne Fehlerreferenzen ergänzt, ohne Authentifizierungs-, Provider-, Host- oder
-Produktionsgrenzen zu verändern.
-
-5.7.35, 5. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3 / Tree
-4b8b71a8c2fa04c00c908c0edc4a4fec1ef5b335 gebunden; PR #69 sowie CI Runs #129 und #130 als
-erfolgreichen HTTP-Methodenabwehr-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
-einzigen extern blockierten Vorgang verifiziert. Nicht unterstützte Methoden im Namespace
-`/api/v1/` an den bestehenden versionierten Fehlervertrag gebunden, ohne Status-, Methoden-,
-Authentifizierungs-, Provider-, Host- oder Produktionsgrenzen zu verändern.
-
-5.7.34, 4. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 4890ac064956579bd00dc0c828b2456842c6a38b / Tree
-8816dbb338de7434d57eeea11b0593e1db184d5f gebunden; PR #68 sowie CI Runs #127 und #128 als
-erfolgreichen HSTS-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen extern
-blockierten Vorgang verifiziert. Nicht unterstützte HTTP-Methoden auf einen sicheren,
-maschinenlesbaren `405`-Vertrag vereinheitlicht, ohne erlaubte Methoden, Authentifizierung,
-Provider, Hosts oder Produktion zu verändern.
-
-5.7.33, 3. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 8052449647edbb669049e9c6ca394b7f5a2f1cfb / Tree
-9227920c792752941a05cdc52d8b2add209ef01b gebunden; PR #67 sowie CI Runs #125 und #126 als
-erfolgreichen Logout-Origin-Cleanup-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
-einzigen extern blockierten Vorgang verifiziert. HSTS an den sicheren Cookie-/Produktionsmodus
-gebunden, ohne lokale HTTP-Entwicklung, Subdomains, Provider, Hosts oder Produktion zu verändern.
-
-5.7.32, 2. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 2132f9a4267b38a22385d7c47a0d4ac922252d9c / Tree
-61dfb269e9f3417d96c446f6df94adf809abd89e gebunden; PR #66 sowie CI Runs #123 und #124 als
-erfolgreichen Cloudflare-Toolchain-Sicherheitsnachweis aufgenommen; keinen offenen PR und Issue
-#25 als einzigen extern blockierten Vorgang verifiziert. Den erfolgreichen Logout um eine
-standardisierte Löschanforderung für Cache, Cookies und Origin-Storage ergänzt, ohne
-Authentifizierungs-, Provider-, Host- oder Produktionsgrenzen zu lockern.
-
-5.7.31, 1. Oktober 2026:
-
-Geschützten main-Ausgangsstand auf 4646cfe9a29e5937b43bbb94db28f5b62ac51a40 / Tree
-177c81741692a8c199ddb11dfb3928bfe2db9a58 gebunden; PR #65 sowie CI Runs #121 und #122 als
-erfolgreichen Cross-Origin-Response-Isolations-Nachweis aufgenommen; keinen offenen PR und Issue
-#25 als einzigen extern blockierten Vorgang verifiziert. Die Cloudflare-Entwicklungstoolchain
-gegen die beim frischen npm-Audit belegten High-Severity-Funde in transitiven `sharp`- und
-`undici`-Versionen aktualisiert, ohne Runtime-, Provider-, Host- oder Produktionsverträge zu
-verändern.
-
-5.7.30, 30. September 2026:
-
-Geschützten main-Ausgangsstand auf 3394d1c6ba37a384c63638d2b1d5f70d4c5cb396 / Tree
-40238fdcb0ba896d274995504d4882d9cf099eba gebunden; PR #64 sowie CI Runs #119 und #120 als
-erfolgreichen Nonce-gebundene-Inline-Styles-Nachweis aufgenommen; keinen offenen PR und Issue
-#25 als einzigen extern blockierten Vorgang verifiziert. Für alle Webantworten einheitliche
-Cross-Origin-Opener-, Cross-Origin-Resource-, Origin-Agent-Cluster- und
-Cross-Domain-Policy-Sperrheader ergänzt, ohne CSP-, Cache-, Session-, Provider-, Host- oder
-Produktionsverträge zu verändern.
-
-5.7.29, 29. September 2026:
-
-Geschützten main-Ausgangsstand auf 4a8f530dc371cfe0c8456701d83c7525f3a0204b / Tree
-455ae456f0158f4ab6890c3bee4b5fa6ee73ac27 gebunden; PR #63 sowie CI Runs #117 und #118 als
-erfolgreichen Per-Response-CSP-Nonce-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
-einzigen extern blockierten Vorgang verifiziert. Den frischen Antwort-Nonce auf den eingebetteten
-Stylesheet-Block erweitert, vier feste Style-Attribute in CSS-Klassen verschoben und
-`style-src 'unsafe-inline'` entfernt. Nicht-HTML-Antworten sperren Styles vollständig; API-,
-Cache-, Provider-, Host- und Produktionsverträge bleiben unverändert.
-
-5.7.28, 28. September 2026:
-
-Geschützten main-Ausgangsstand auf b1dc766579baae9e1eb8054ea85bb09c9a327d90 / Tree
-e277ae5a24e43fe1edbc02a5e690fab627b5df6c gebunden; PR #62 sowie CI Runs #114 und #115 als
-erfolgreichen Jobverlauf-Limit-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
-einzigen extern blockierten Vorgang verifiziert. Den wiederverwendeten prozessweiten CSP-Nonce
-durch einen frischen Nonce pro HTML-Antwort ersetzt und nicht ausführbare API-, `304`- und
+Geschützten main-Ausgangsstand auf bac990b2ba4a2423173496414ec946754a925b74 / Tree
+0122389572925fa94fb12282585e32b1e96afadd gebunden; PR #81 sowie erfolgreiche CI Runs
+#153/#154 als Candidate-Ausgangsnachweis aufgenommen. Den providerfreien Candidate auf einen
+expliziten, vollständig geprüften Einzelsc…2083 tokens truncated…TML-Antwort ersetzt und nicht ausführbare API-, `304`- und
 Asset-Antworten auf `script-src 'none'` begrenzt, ohne weitere Sicherheits-, Cache-, Provider-,
 Host- oder Produktionsverträge zu verändern.
 
