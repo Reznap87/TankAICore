@@ -117,3 +117,50 @@ def test_tank_run_resets_shared_main_critic_budget_and_receipts_usage() -> None:
     assert second_budget.details["used"] == 6
     assert second_budget.details["max"] == 7
     assert second_budget.details["remaining"] == 1
+
+
+def test_verified_single_step_keeps_both_critic_checks_with_five_calls() -> None:
+    tank = TankAI(
+        llm=ScriptedLLM(),
+        max_retries=0,
+        max_llm_calls_per_run=5,
+        require_research_evidence=False,
+        enable_tools=False,
+        verbose=False,
+        run_store_path=None,
+        verified_single_step=True,
+    )
+
+    result = tank.run("Einen begrenzten, vollständig geprüften Lauf ausführen")
+
+    assert result.final_answer == "step result"
+    assert result.plan is not None
+    assert len(result.plan.steps) == 1
+    assert sum(receipt.action == "critique_plan" for receipt in result.receipts) == 1
+    assert sum(receipt.action == "critique_result" for receipt in result.receipts) == 2
+    reuse = next(
+        receipt for receipt in result.receipts
+        if receipt.action == "reuse_verified_single_step"
+    )
+    assert reuse.details["llm_calls_added"] == 0
+    assert reuse.details["requires_final_critic"] is True
+    assert _budget_receipt(result).details["used"] == 5
+
+
+def test_verified_single_step_requires_retries_to_be_disabled() -> None:
+    with pytest.raises(ValueError, match="max_retries=0"):
+        TankAI(
+            llm=ScriptedLLM(),
+            max_retries=1,
+            verified_single_step=True,
+        )
+
+
+def test_verified_single_step_requires_budget_for_all_verification_calls() -> None:
+    with pytest.raises(ValueError, match="mindestens fünf"):
+        TankAI(
+            llm=ScriptedLLM(),
+            max_retries=0,
+            max_llm_calls_per_run=4,
+            verified_single_step=True,
+        )

@@ -186,15 +186,15 @@ def test_checked_in_candidate_retains_artifacts_and_honest_comparison() -> None:
 
     assert candidate.corpus_sha256 == corpus_digest(corpus)
     assert all(item.output for item in candidate.observations)
-    assert all(item.metrics.llm_calls == 10 for item in candidate.observations)
+    assert all(item.metrics.llm_calls == 5 for item in candidate.observations)
     assert receipt["candidate_weighted_score"] == 0.1778
     assert receipt["baseline_weighted_score"] == 0.1778
     assert receipt["score_delta"] == 0.0
     assert receipt["improves_baseline"] is False
     assert receipt["successful_cases"] == 0
-    assert receipt["pilot_call_limit_met"] is False
+    assert receipt["pilot_call_limit_met"] is True
     assert receipt["pilot_eligible"] is False
-    assert receipt["source_revision"] == "12fd2658d353aef168f519b5599ddaae8e546729"
+    assert receipt["source_revision"] == "65e0b78054f756d0e08a2c2509377c2bdc6d9acc"
     assert receipt["human_reviewed"] is False
     assert receipt["quality_claim"] == "simulation-candidate-only"
 
@@ -204,7 +204,7 @@ def test_current_mock_execution_reproduces_checked_in_candidate_artifacts() -> N
     expected = load_candidate(corpus=corpus)
     current = run_mock_candidate(
         corpus,
-        source_revision="12fd2658d353aef168f519b5599ddaae8e546729",
+        source_revision="65e0b78054f756d0e08a2c2509377c2bdc6d9acc",
     )
 
     assert {

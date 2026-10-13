@@ -60,7 +60,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | External-Agent-Jobzustandsvertrag | Maschinenlesbare Zustände, terminales Polling-Ende und zustands-/scopegebundene Abbruch-Discovery |
 | External-Agent-Ergebnis-Receipt | Versioniertes JSON-Schema und fail-closed gefilterte Worker-Ergebnisse ohne Hostpfade, Ausführungsprotokolle oder interne Fehlerdetails |
 | Kooperative Acceptance-Baseline | Eingefrorener P1-Korpus mit Ideen-, Dokument- und Codefall, festen Budgets, 15 gewichteten Kriterien und hashgebundenem Mock-Baseline-Receipt |
-| Kooperativer Candidate-Receipt | Vollständiger providerfreier Drei-Fall-Lauf mit gehashten Ergebnisartefakten, denselben Kriterien und ehrlicher Baseline-Differenz; aktuell noch ohne Qualitätsgewinn |
+| Kooperativer Candidate-Receipt | Vollständiger providerfreier Drei-Fall-Lauf mit gehashten Ergebnisartefakten, denselben Kriterien, ehrlicher Baseline-Differenz und höchstens fünf Modellaufrufen je Fall; aktuell noch ohne Qualitätsgewinn |
 | P2 Zielanalyse | Begrenzte, validierte `goal_analysis` in Plan und CLI-JSON; direkte Aufgaben bleiben ohne künstliche Alternativen, unvollständige Workshops werden als Fallback markiert |
 | Merge-Gates | Unabhängiger Review, QA, optional Security und Rebase-Pflicht |
 | Git-Integration | Exklusiver Rebase, Fast-Forward-Merge, Post-Merge-Tests, Rollback und Crash-Journal |
@@ -90,8 +90,12 @@ Ausgangslücken für P2; externe Provider, Werkzeuge und Kosten bleiben dabei de
 Der aktuelle providerfreie Candidate führt denselben vollständigen TankAI-Loop für alle drei
 Fälle aus und bewahrt die tatsächlichen Endartefakte samt SHA-256, Laufzeit, Aufrufzahl,
 Receipts und Kosten. Der eingecheckte Lauf verbessert die Baseline noch nicht: Score `0.1778`,
-Delta `0.0`, kein erfolgreicher Fall und zehn simulierte Modellaufrufe je Fall. Damit ist der
-Befund reproduzierbar, aber ausdrücklich weder ein Qualitäts- noch ein Pilotnachweis:
+Delta `0.0`, kein erfolgreicher Fall und fünf simulierte Modellaufrufe je Fall. Der begrenzte
+Pfad plant genau einen Schritt, prüft Plan, Specialist-Ergebnis und Endergebnis weiterhin mit
+dem Critic und verwendet ein bestandenes Einzelschritt-Ergebnis ohne weiteren Synthese-Aufruf.
+Beim aktuellen Mock schlägt die unabhängige Prüfung erwartungsgemäß fehl; statt einer scheinbar
+fertigen Antwort wird daher ein gesperrtes Ergebnis gespeichert. Der Befund ist reproduzierbar,
+aber ausdrücklich weder ein Qualitäts- noch ein Pilotnachweis:
 
 ```bash
 python -m tankai.evaluation.cooperative_acceptance \
@@ -104,7 +108,7 @@ schreibt nur bei ausdrücklich angegebenem Zielpfad:
 ```bash
 python -m tankai.evaluation.cooperative_acceptance \
   --run-mock-candidate \
-  --source-revision 12fd2658d353aef168f519b5599ddaae8e546729 \
+  --source-revision 65e0b78054f756d0e08a2c2509377c2bdc6d9acc \
   --write-candidate /tmp/tankai-candidate.json
 ```
 

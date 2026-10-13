@@ -23,15 +23,23 @@ class Planner(BaseAgent):
         goal: Goal,
         procedural_context: Optional[str] = None,
         critic_feedback: Optional[str] = None,
+        max_steps: int = 5,
     ) -> tuple[Plan, Any]:
         """
         Erstellt einen Plan für das gegebene Ziel.
         procedural_context: formatierte erfolgreiche Plan-Muster aus dem LTM.
         Gibt (Plan, Receipt) zurück.
         """
+        if max_steps < 1 or max_steps > 5:
+            raise ValueError("max_steps muss zwischen 1 und 5 liegen")
+        step_instruction = (
+            "genau einen klaren, überprüfbaren Schritt"
+            if max_steps == 1
+            else f"2–{max_steps} klare, überprüfbare Schritte"
+        )
         system = (
             "Du bist der Planner in einem Multi-Agenten-System. "
-            "Du zerlegst Ziele in 2–5 klare, überprüfbare Schritte. "
+            f"Du zerlegst Ziele in {step_instruction}. "
             "Du klärst im selben Aufruf zuerst gewünschtes Ergebnis und ausdrücklich "
             "verlangtes Vorgehen. Nur bei einer nicht-trivialen Gestaltungsentscheidung "
             "vergleichst du zwei bis drei wirklich unterschiedliche Optionen und benennst "
@@ -71,6 +79,7 @@ Ziel: {goal.description}
 Definition of Done: {goal.definition_of_done}
 
 Constraints: {goal.constraints or "keine"}
+Maximale Anzahl Planschritte: {max_steps}
 {memory_block}
 {feedback_block}
 Antworte im JSON-Format:
@@ -110,7 +119,7 @@ recommended_option_id sowie smallest_experiment null sein.
 """
 
         raw = self.llm.complete(prompt, system=system)
-        plan = self._parse_plan(raw, goal)
+        plan = self._parse_plan(raw, goal, max_steps=max_steps)
 
         reused = False
         try:
@@ -139,11 +148,12 @@ recommended_option_id sowie smallest_experiment null sein.
                     plan.goal_analysis and plan.goal_analysis.alternatives_warranted
                 ),
                 "alternative_count": len(plan.goal_analysis.options) if plan.goal_analysis else 0,
+                "max_steps": max_steps,
             },
         )
         return plan, receipt
 
-    def _parse_plan(self, raw: str, goal: Goal) -> Plan:
+    def _parse_plan(self, raw: str, goal: Goal, *, max_steps: int = 5) -> Plan:
         """Versucht JSON aus der LLM-Antwort zu extrahieren."""
         try:
             match = re.search(r"\{[\s\S]*\}", raw)
@@ -172,8 +182,12 @@ recommended_option_id sowie smallest_experiment null sein.
         raw_steps = data.get("steps", [])
         if not isinstance(raw_steps, list):
             raw_steps = []
+        if len(raw_steps) > max_steps:
+            raise ValueError(
+                f"Planner lieferte {len(raw_steps)} Schritte; erlaubt sind höchstens {max_steps}"
+            )
         steps = []
-        for item in raw_steps[:5]:
+        for item in raw_steps[:max_steps]:
             if not isinstance(item, dict):
                 continue
             description = str(item.get("description") or "").strip()

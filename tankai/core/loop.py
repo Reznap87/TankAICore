@@ -65,6 +65,7 @@ class TankAI:
         enable_tools: bool = True,
         strict_web_research: bool = False,
         run_store_path: str | None = "tankai_runs.jsonl",
+        verified_single_step: bool = False,
     ) -> None:
         main_llm = llm if llm is not None else get_llm()
         raw_critic_llm = critic_llm if critic_llm is not None else main_llm
@@ -93,6 +94,11 @@ class TankAI:
         self.verbose = verbose
         self.parallel = parallel
         self.run_store = RunStore(run_store_path) if run_store_path else None
+        self.verified_single_step = bool(verified_single_step)
+        if self.verified_single_step and self.max_retries != 0:
+            raise ValueError("verified_single_step erfordert max_retries=0")
+        if self.verified_single_step and max_llm_calls_per_run < 5:
+            raise ValueError("verified_single_step erfordert mindestens fünf LLM-Aufrufe")
 
         # Tools
         self.tools = ToolRegistry()
@@ -175,7 +181,9 @@ class TankAI:
                     )
 
         plan, plan_receipt = self.planner.run(
-            goal, procedural_context=procedural_context or None
+            goal,
+            procedural_context=procedural_context or None,
+            max_steps=1 if self.verified_single_step else 5,
         )
         self.receipts.append(plan_receipt)
         self._log_plan(plan)
@@ -204,6 +212,7 @@ class TankAI:
                 goal,
                 procedural_context=procedural_context or None,
                 critic_feedback=feedback,
+                max_steps=1 if self.verified_single_step else 5,
             )
             plan.version = repair_attempt + 2
             self.receipts.append(plan_receipt)
@@ -309,12 +318,17 @@ class TankAI:
 
                 # 3. SYNTHESIZE
         critiques_summary = self._summarize_critiques(all_critiques)
-        final_answer, synth_receipt = self.synthesizer.run(
-            goal,
-            step_results,
-            critiques_summary,
-            goal_analysis=plan.goal_analysis,
-        )
+        if self.verified_single_step:
+            final_answer, synth_receipt = self.synthesizer.reuse_verified_single_step(
+                goal, step_results
+            )
+        else:
+            final_answer, synth_receipt = self.synthesizer.run(
+                goal,
+                step_results,
+                critiques_summary,
+                goal_analysis=plan.goal_analysis,
+            )
         final_answer = self._append_source_catalog(final_answer)
         synth_receipt.output_summary = final_answer[:300]
         self.receipts.append(synth_receipt)

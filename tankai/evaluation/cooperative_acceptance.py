@@ -404,10 +404,11 @@ def run_mock_candidate(
             llm=MockLLM(),
             critic_llm=MockLLM(),
             max_retries=0,
-            max_llm_calls_per_run=case.limits.max_llm_calls,
+            max_llm_calls_per_run=min(case.limits.max_llm_calls, 5),
             verbose=False,
             enable_tools=False,
             run_store_path=None,
+            verified_single_step=True,
         )
         result = tank.run(goal, case.definition_of_done, case.constraints)
         output = result.final_answer
@@ -457,7 +458,10 @@ def run_mock_candidate(
         corpus_sha256=corpus_digest(corpus),
         observed_at=datetime.now(timezone.utc),
         execution_mode="simulation",
-        system_identity="TankAI current MockLLM, tools disabled, max_retries=0",
+        system_identity=(
+            "TankAI current MockLLM, tools disabled, max_retries=0, "
+            "verified_single_step=true"
+        ),
         source_revision=source_revision,
         human_reviewed=False,
         observations=observations,

@@ -166,6 +166,18 @@ class MockLLM(BaseLLM):
 
     def _mock_plan(self, prompt: str) -> str:
         reused = "plan-muster" in prompt.lower() or "procedural memory" in prompt.lower() or "erfolgreiche plan" in prompt.lower()
+        if "maximale anzahl planschritte: 1" in prompt.lower():
+            return """{
+  "rationale": "Das Ziel wird für den begrenzten, vollständig geprüften Pilotpfad in einem Schritt bearbeitet.",
+  "reused_pattern": false,
+  "steps": [
+    {
+      "description": "Ziel vollständig bearbeiten und ein überprüfbares Ergebnis erstellen",
+      "specialist_type": "analysis",
+      "expected_output": "Vollständiges Ergebnis gegen die Definition of Done"
+    }
+  ]
+}"""
         if reused:
             return """{
   "rationale": "Erfolgreiches Plan-Muster aus dem Procedural Memory übernommen und leicht an das aktuelle Ziel angepasst (Research → Analysis → Writing).",

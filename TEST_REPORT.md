@@ -1,8 +1,29 @@
 # TankAI 1.10.0-module-ownership — Testbericht
 
-**Statusdatum:** 12. Oktober 2026
+**Statusdatum:** 13. Oktober 2026
 
 **Releasevertrag:** `TankAI-Core-1.10.0-module-ownership` · `ProjectState` Schema 6
+
+## Unreleased: Pilot-Candidate mit fünf Modellaufrufen — Nachweis 13. Oktober 2026
+
+- Expliziter Candidate-Pfad mit genau einem Planschritt und deaktivierten Retries: PASS
+- Plan-Critic, Specialist-Critic und finaler Critic bleiben innerhalb von genau fünf
+  Modellaufrufen erhalten: PASS
+- Nur ein erfolgreich verifiziertes Einzelergebnis darf ohne weiteren LLM-Syntheseaufruf
+  übernommen werden; ohne verifiziertes Ergebnis entsteht fail-closed eine Sperrmeldung: PASS
+- Alle drei unveränderten Korpusfälle tatsächlich erneut ausgeführt und ihre neuen
+  Ergebnisartefakte per SHA-256 gebunden: PASS
+- Ehrliches Ergebnis: 12 von 15 Kriterien verfehlt, null erfolgreiche Fälle, Score `0.1778`,
+  Delta `0.0`, fünf simulierte Aufrufe je Fall, `pilot_call_limit_met=true` und
+  `pilot_eligible=false`
+- Gezielte Aufrufbudget-, Planner- und Acceptance-Regressionen: 36 PASS
+- `python -m pytest -q`: 261 PASS; `python -m tankai --selftest`: 24 PASS
+- Python-Compile, `python -m pip check`, TypeScript-`--noEmit`, vollständiger npm-Audit und
+  Produktionsabhängigkeits-Audit: PASS / 0 bekannte Funde
+- Wrangler-Typen und Worker-only-Dry-Run mit `--containers-rollout=none`: PASS; vollständiger
+  lokaler Container-Dry-Run, Produktions-Container-Build und Smoke bleiben mangels
+  Docker-/Podman-CLI Pflicht-CI-Gates vor einem Merge
+- Keine Secrets, Berechtigungen, Provider, Abrechnung, Produktion oder Deployments verändert
 
 ## Unreleased: providerfreier Candidate-Receipt v1 — Nachweis 12. Oktober 2026
 

@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.42
+Version: 5.7.43
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 12. Oktober 2026
+Statusdatum: 13. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 12. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 13. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,17 +44,17 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.42-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.43-Inkrements:
 
-12fd2658d353aef168f519b5599ddaae8e546729
+bac990b2ba4a2423173496414ec946754a925b74
 
 Zugehöriger Repository-Git-Tree:
 
-178ea39982a87a6c08242c97f79ab6c26660938a
+0122389572925fa94fb12282585e32b1e96afadd
 
 Commit-Titel:
 
-fix(evaluation): validate baseline contracts at every receipt boundary (#80)
+feat(evaluation): record full provider-free candidate receipt (#81)
 
 Dieser Stand ist der Ausgangsstand der providerfreien Candidate-Messung. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
@@ -701,6 +701,15 @@ die Jobs test und cloudflare bestanden einschließlich Produktions-Container-Bui
 
 TankAI Core CI Run #152, Run 38141861040, auf main-Commit
 12fd2658d353aef168f519b5599ddaae8e546729: completed/success; beide Pflichtjobs bestanden.
+
+PR #81 führte den aktuellen providerfreien Candidate über alle drei unveränderten Fälle aus
+und band Endartefakte, Aufrufzahlen, Kriterien und Kosten an den versionierten Receipt.
+
+TankAI Core CI Run #153, Run 38213150353, auf dem finalen PR-#81-Head: completed/success;
+die Jobs test und cloudflare bestanden einschließlich Produktions-Container-Build und Smoke.
+
+TankAI Core CI Run #154, Run 38213279239, auf main-Commit
+bac990b2ba4a2423173496414ec946754a925b74: completed/success; beide Pflichtjobs bestanden.
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -1481,8 +1490,11 @@ bereits vorhandenen Planner-Aufruf. Direkte Aufgaben erzeugen keine künstlichen
 unvollständige Workshops werden als Fallback markiert. Der aktuelle providerfreie Mock-Candidate
 durchläuft alle drei eingefrorenen Fälle vollständig, bindet seine Endartefakte per SHA-256 und
 vergleicht dieselben 15 Kriterien gegen die P1-Baseline. Er verbessert den Score nicht:
-`0.1778`, Delta `0.0`, null erfolgreiche Fälle und zehn simulierte Aufrufe je Fall. Damit ist
-die Messlücke geschlossen, aber nicht die Qualitätslücke. Offen bleibt ein Candidate mit
+`0.1778`, Delta `0.0`, null erfolgreiche Fälle und fünf simulierte Aufrufe je Fall. Der
+Pilot-Aufrufdeckel ist damit im Candidate-Pfad eingehalten, ohne Plan-, Schritt- oder
+Endprüfung zu entfernen. Ein nicht bestandenes Zwischenergebnis wird nicht mehr durch eine
+zusätzliche Mock-Synthese wie eine fertige Antwort dargestellt. Damit ist die Budgetlücke
+geschlossen, aber nicht die Qualitätslücke. Offen bleibt ein Candidate mit
 nutzbaren, unabhängig bewerteten Ergebnissen innerhalb des strengeren Pilotbudgets.
 
 P3 — Projektentscheidungen und Fortsetzung verlässlich verbinden.
@@ -1533,7 +1545,7 @@ späteren Qualitätsnachweis für den vollständigen P2-Candidate.
 Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
 Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
 Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
-Der Reality Contract 5.7.42 und seine historischen Receipts werden durch diesen
+Der Reality Contract 5.7.43 und seine historischen Receipts werden durch diesen
 Planungsnachtrag nicht rückwirkend umgeschrieben.
 
 0.11.7 Verbindliches Start-Testbudget
@@ -1638,9 +1650,13 @@ beweist weder bessere Ideen noch fertige Arbeit. Qualität und Kosten gemeinsam 
 
 AUD-02-Zwischenstand am 12. Oktober 2026: Der aktuelle TankAI-Mock wurde tatsächlich über alle
 drei Fälle ausgeführt. Der versionierte Candidate bewahrt die drei Endartefakte mit SHA-256,
-vollständiger Kriterienbelegung, Laufzeit, zehn simulierten Aufrufen, Receiptzahl und null
+vollständiger Kriterienbelegung, Laufzeit, fünf simulierten Aufrufen, Receiptzahl und null
 externen Kosten. Der Vergleich ergibt unverändert `0.1778`, Delta `0.0`, null erfolgreiche
-Fälle und `pilot_eligible=false`. Dieser negative Befund ist ein reproduzierbarer
+Fälle, `pilot_call_limit_met=true` und `pilot_eligible=false`. Der begrenzte Candidate-Pfad
+verwendet genau einen Planschritt, behält Plan-, Schritt- und finale Critic-Prüfung bei und
+spart nur den zusätzlichen LLM-Syntheseaufruf, wenn ein verifiziertes Einzelergebnis direkt
+übernommen werden kann. Ohne verifiziertes Ergebnis liefert er fail-closed eine Sperrmeldung.
+Dieser negative Befund ist ein reproduzierbarer
 Ausführungsnachweis, aber kein Qualitätsgewinn. P2 bleibt bis zu einem fachlich erfolgreichen,
 unabhängig bewerteten Candidate offen; den Korpus oder die Baseline nicht erleichtern.
 
@@ -1662,6 +1678,17 @@ Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und off
 Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.43, 13. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf bac990b2ba4a2423173496414ec946754a925b74 / Tree
+0122389572925fa94fb12282585e32b1e96afadd gebunden; PR #81 sowie erfolgreiche CI Runs
+#153/#154 als Candidate-Ausgangsnachweis aufgenommen. Den providerfreien Candidate auf einen
+expliziten, vollständig geprüften Einzelschritt-Pfad begrenzt: Planner, Plan-Critic,
+Specialist, Schritt-Critic und finaler Critic benötigen genau fünf simulierte Modellaufrufe;
+ein verifiziertes Einzelergebnis wird ohne zusätzlichen Syntheseaufruf übernommen. Der
+eingefrorene Korpus und die Baseline bleiben unverändert. Qualität, Pilotfreigabe und
+Providerbetrieb werden nicht behauptet; keine Kosten, Secrets oder Produktionssysteme verändert.
 
 5.7.42, 12. Oktober 2026:
 
