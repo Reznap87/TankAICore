@@ -16,9 +16,11 @@ from tankai.evaluation.cooperative_acceptance import (
     baseline_receipt,
     candidate_receipt,
     corpus_digest,
+    human_review_template,
     load_baseline,
     load_candidate,
     load_corpus,
+    load_human_review,
     run_mock_candidate,
 )
 
@@ -273,3 +275,123 @@ def test_candidate_cli_emits_machine_readable_comparison() -> None:
     assert receipt["candidate_id"] == "tankai-current-mock-candidate-v1"
     assert receipt["score_delta"] == 0.0
     assert receipt["pilot_eligible"] is False
+
+
+def _completed_human_review_document() -> dict[str, object]:
+    corpus = load_corpus()
+    candidate = load_candidate(corpus=corpus)
+    document = human_review_template(corpus, candidate).model_dump(mode="json")
+    document.update(
+        {
+            "review_id": "independent-review-1",
+            "reviewer_identity": "human-reviewer-1",
+            "reviewed_at": "2026-10-14T08:00:00Z",
+            "independent_reviewer_attested": True,
+        }
+    )
+    for review_case in document["cases"]:
+        for decision in review_case["decisions"]:
+            decision["verdict"] = "failed"
+            decision["evidence"] = "Das Candidate-Artefakt belegt dieses Kriterium nicht."
+    return document
+
+
+def test_human_review_template_binds_exact_candidate_and_human_criteria() -> None:
+    corpus = load_corpus()
+    candidate = load_candidate(corpus=corpus)
+    review = human_review_template(corpus, candidate)
+
+    assert review.review_id is None
+    assert review.reviewer_identity is None
+    assert review.source_revision == candidate.source_revision
+    assert review.corpus_sha256 == corpus_digest(corpus)
+    assert len(review.cases) == 3
+    assert sum(len(item.decisions) for item in review.cases) == 8
+    assert all(
+        decision.verdict == "pending"
+        for item in review.cases
+        for decision in item.decisions
+    )
+    assert {
+        item.case.case_id: item.output_sha256 for item in review.cases
+    } == {
+        item.case_id: item.output_sha256 for item in candidate.observations
+    }
+
+
+def test_completed_human_review_updates_receipt_without_claiming_pilot(tmp_path) -> None:
+    review_path = tmp_path / "review.json"
+    review_path.write_text(
+        json.dumps(_completed_human_review_document()), encoding="utf-8"
+    )
+    corpus = load_corpus()
+    baseline = load_baseline(corpus=corpus)
+    candidate = load_candidate(corpus=corpus)
+    review = load_human_review(review_path, corpus, candidate)
+    receipt = candidate_receipt(corpus, baseline, candidate, review)
+
+    assert receipt["human_reviewed"] is True
+    assert receipt["human_review_id"] == "independent-review-1"
+    assert receipt["candidate_weighted_score"] == 0.1778
+    assert receipt["pilot_eligible"] is False
+    assert receipt["quality_claim"] == "simulation-candidate-human-reviewed"
+
+    updated = _completed_human_review_document()
+    updated["cases"][0]["decisions"][0]["verdict"] = "passed"
+    updated["cases"][0]["decisions"][0]["evidence"] = (
+        "Synthetisches Positivurteil zur Prüfung der gewichteten Receipt-Berechnung."
+    )
+    review_path.write_text(json.dumps(updated), encoding="utf-8")
+    rescored = candidate_receipt(
+        corpus,
+        baseline,
+        candidate,
+        load_human_review(review_path, corpus, candidate),
+    )
+    assert rescored["candidate_weighted_score"] > receipt["candidate_weighted_score"]
+    assert rescored["pilot_eligible"] is False
+
+
+def test_human_review_rejects_pending_or_tampered_artifact(tmp_path) -> None:
+    corpus = load_corpus()
+    candidate = load_candidate(corpus=corpus)
+    pending = _completed_human_review_document()
+    pending["cases"][0]["decisions"][0]["verdict"] = "pending"
+    pending_path = tmp_path / "pending.json"
+    pending_path.write_text(json.dumps(pending), encoding="utf-8")
+    with pytest.raises(ValueError, match="noch offen"):
+        load_human_review(pending_path, corpus, candidate)
+
+    tampered = _completed_human_review_document()
+    tampered["cases"][0]["candidate_output"] += " manipuliert"
+    tampered_path = tmp_path / "tampered.json"
+    tampered_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="Artefakt"):
+        load_human_review(tampered_path, corpus, candidate)
+
+
+def test_candidate_cli_writes_human_review_template(tmp_path) -> None:
+    review_path = tmp_path / "review-template.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tankai.evaluation.cooperative_acceptance",
+            "--candidate",
+            str(DEFAULT_CANDIDATE),
+            "--write-human-review-template",
+            str(review_path),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert json.loads(completed.stdout)["human_reviewed"] is False
+    template = json.loads(review_path.read_text(encoding="utf-8"))
+    assert template["source_revision"] == load_candidate().source_revision
+    assert all(
+        decision["verdict"] == "pending"
+        for item in template["cases"]
+        for decision in item["decisions"]
+    )
