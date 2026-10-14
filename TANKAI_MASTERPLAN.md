@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.43
+Version: 5.7.44
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 13. Oktober 2026
+Statusdatum: 14. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 13. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 14. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,19 +44,19 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.43-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.44-Inkrements:
 
-bac990b2ba4a2423173496414ec946754a925b74
+3d529f0c9dbb4ea840ba95327ea9807ad29e7197
 
 Zugehöriger Repository-Git-Tree:
 
-0122389572925fa94fb12282585e32b1e96afadd
+32769ec5e73f76e3ab7a37b136bb7686f2a0246e
 
 Commit-Titel:
 
-feat(evaluation): record full provider-free candidate receipt (#81)
+feat(evaluation): fit candidate within five-call pilot limit (#82)
 
-Dieser Stand ist der Ausgangsstand der providerfreien Candidate-Messung. Ein
+Dieser Stand ist der Ausgangsstand des gebundenen Human-Review-Receipts. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
 Ausgangsstand oder den unten getrennt ausgewiesenen Production-Runtime-Stand rückwirkend zu
 ersetzen.
@@ -710,6 +710,21 @@ die Jobs test und cloudflare bestanden einschließlich Produktions-Container-Bui
 
 TankAI Core CI Run #154, Run 38213279239, auf main-Commit
 bac990b2ba4a2423173496414ec946754a925b74: completed/success; beide Pflichtjobs bestanden.
+
+PR #82 begrenzte den vollständigen Candidate-Pfad auf genau fünf simulierte Modellaufrufe je
+Fall, ohne Plan-, Schritt- oder finale Critic-Prüfung zu entfernen.
+
+TankAI Core CI Run #155, Run 38359220638, auf einem zwischenzeitlichen PR-#82-Head:
+completed/failure; eine unvollständig übertragene Masterplan-Datei verletzte den
+Reality-Contract-Test. Der Branch wurde durch Wiederherstellung des vollständigen Dokuments
+repariert.
+
+TankAI Core CI Run #156, Run 38359445036, auf dem reparierten finalen PR-#82-Head:
+completed/success; die Jobs test und cloudflare bestanden einschließlich
+Produktions-Container-Build und Container-Smoke.
+
+TankAI Core CI Run #157, Run 38359602689, auf main-Commit
+3d529f0c9dbb4ea840ba95327ea9807ad29e7197: completed/success; beide Pflichtjobs bestanden.
 
 Production-Runtime-Basis-Commit d7edb12b764310f00804c724ad6d3b4bbc96b54a,
 
@@ -1545,7 +1560,7 @@ späteren Qualitätsnachweis für den vollständigen P2-Candidate.
 Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
 Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
 Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
-Der Reality Contract 5.7.43 und seine historischen Receipts werden durch diesen
+Der Reality Contract 5.7.44 und seine historischen Receipts werden durch diesen
 Planungsnachtrag nicht rückwirkend umgeschrieben.
 
 0.11.7 Verbindliches Start-Testbudget
@@ -1660,6 +1675,15 @@ Dieser negative Befund ist ein reproduzierbarer
 Ausführungsnachweis, aber kein Qualitätsgewinn. P2 bleibt bis zu einem fachlich erfolgreichen,
 unabhängig bewerteten Candidate offen; den Korpus oder die Baseline nicht erleichtern.
 
+AUD-02-Zwischenstand am 14. Oktober 2026: Für die acht menschlich zu bewertenden Kriterien kann
+eine lokale Review-Vorlage erzeugt und nach unabhängiger Prüfung als Receipt validiert werden.
+Sie bindet Korpus, Source-Revision, vollständige Fallverträge, Candidate-Ausgaben und
+Artefakt-Hashes. Veränderte oder unvollständige Vorlagen, offene Urteile, fehlende Begründungen
+und eine fehlende Unabhängigkeitsbestätigung werden fail-closed abgewiesen. Der interne
+Dokumentfall bleibt in der Vorlage intern und darf nicht an externe Dienste übertragen werden.
+Es liegt noch kein tatsächlich ausgefülltes unabhängiges Review vor; Score `0.1778`,
+`human_reviewed=false` und `pilot_eligible=false` bleiben deshalb unverändert.
+
 AUD-03 bis AUD-06: Vor dem bezahlten Pilot unter Issue #25 gemeinsame persistente monetäre
 Reservierung einschließlich tatsächlicher Retry-/Fallback-Versuche, Cloudflare-Persistenz
 mit Restart-/Restore-Nachweis, einen zum Pilot passenden Quellen-/Suchmodus und aktuelle
@@ -1678,6 +1702,16 @@ Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und off
 Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.44, 14. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 3d529f0c9dbb4ea840ba95327ea9807ad29e7197 / Tree
+32769ec5e73f76e3ab7a37b136bb7686f2a0246e gebunden. Für den unveränderten P2-Candidate eine
+lokale, manipulationsgebundene Human-Review-Vorlage und vollständige Receipt-Prüfung ergänzt.
+Nur unabhängig attestierte, vollständig begründete Entscheidungen zu den acht Human-Kriterien
+werden auf den Vergleichs-Receipt angewendet; automatische Kriterien bleiben unverändert und
+Pilotfähigkeit wird nicht automatisch behauptet. Noch kein Human-Review ausgeführt, keine
+Provider-, Secret-, Kosten- oder Produktionsmutation.
 
 5.7.43, 13. Oktober 2026:
 

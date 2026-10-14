@@ -178,6 +178,36 @@ class AcceptanceCandidate(StrictModel):
     observations: list[CandidateObservation] = Field(min_length=3, max_length=20)
 
 
+class HumanReviewDecision(StrictModel):
+    criterion_id: str = Field(pattern=r"^[a-z][a-z0-9_]{2,63}$")
+    description: str = Field(min_length=10, max_length=500)
+    weight: int = Field(ge=1, le=10)
+    verdict: Literal["pending", "passed", "failed"]
+    evidence: str = Field(max_length=2_000)
+
+
+class HumanReviewCase(StrictModel):
+    case: AcceptanceCase
+    candidate_output: str = Field(min_length=1, max_length=50_000)
+    output_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decisions: list[HumanReviewDecision] = Field(max_length=12)
+
+
+class CandidateHumanReview(StrictModel):
+    """Tamper-bound worksheet for an independent review of candidate artifacts."""
+
+    schema_version: Literal[1]
+    review_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{2,63}$")
+    candidate_id: Literal["tankai-current-mock-candidate-v1"]
+    corpus_id: Literal["tankai-cooperative-acceptance-v1"]
+    corpus_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
+    reviewer_identity: str | None = Field(default=None, min_length=3, max_length=200)
+    reviewed_at: datetime | None = None
+    independent_reviewer_attested: bool
+    cases: list[HumanReviewCase] = Field(min_length=3, max_length=3)
+
+
 def _read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -288,6 +318,113 @@ def load_candidate(
     return candidate
 
 
+def human_review_template(
+    corpus: AcceptanceCorpus,
+    candidate: AcceptanceCandidate,
+) -> CandidateHumanReview:
+    """Create a local worksheet bound to the exact corpus and candidate output."""
+    _validate_candidate_contract(corpus, candidate)
+    observations = {item.case_id: item for item in candidate.observations}
+    return CandidateHumanReview(
+        schema_version=1,
+        candidate_id=candidate.candidate_id,
+        corpus_id=corpus.corpus_id,
+        corpus_sha256=candidate.corpus_sha256,
+        source_revision=candidate.source_revision,
+        independent_reviewer_attested=False,
+        cases=[
+            HumanReviewCase(
+                case=case,
+                candidate_output=observations[case.case_id].output,
+                output_sha256=observations[case.case_id].output_sha256,
+                decisions=[
+                    HumanReviewDecision(
+                        criterion_id=criterion.criterion_id,
+                        description=criterion.description,
+                        weight=criterion.weight,
+                        verdict="pending",
+                        evidence="",
+                    )
+                    for criterion in case.acceptance_criteria
+                    if criterion.evaluator == "human"
+                ],
+            )
+            for case in corpus.cases
+        ],
+    )
+
+
+def _validate_human_review(
+    corpus: AcceptanceCorpus,
+    candidate: AcceptanceCandidate,
+    review: CandidateHumanReview,
+    *,
+    require_completed: bool,
+) -> None:
+    _validate_candidate_contract(corpus, candidate)
+    if review.candidate_id != candidate.candidate_id:
+        raise ValueError("Human-Review verweist auf einen anderen Candidate")
+    if review.corpus_id != corpus.corpus_id or review.corpus_sha256 != corpus_digest(corpus):
+        raise ValueError("Human-Review verweist auf einen anderen Korpus")
+    if review.source_revision != candidate.source_revision:
+        raise ValueError("Human-Review verweist auf eine andere Source-Revision")
+
+    cases = {item.case_id: item for item in corpus.cases}
+    observations = {item.case_id: item for item in candidate.observations}
+    reviewed_cases = {item.case.case_id: item for item in review.cases}
+    if set(reviewed_cases) != set(cases) or len(reviewed_cases) != len(review.cases):
+        raise ValueError("Human-Review muss jeden Candidate-Fall genau einmal enthalten")
+
+    for case_id, review_case in reviewed_cases.items():
+        case = cases[case_id]
+        observation = observations[case_id]
+        if review_case.case != case:
+            raise ValueError(f"Human-Review-Fallvertrag für {case_id} wurde verändert")
+        if (
+            review_case.candidate_output != observation.output
+            or review_case.output_sha256 != observation.output_sha256
+        ):
+            raise ValueError(f"Human-Review-Artefakt für {case_id} wurde verändert")
+        expected = {
+            item.criterion_id: item
+            for item in case.acceptance_criteria
+            if item.evaluator == "human"
+        }
+        decisions = {item.criterion_id: item for item in review_case.decisions}
+        if set(decisions) != set(expected) or len(decisions) != len(review_case.decisions):
+            raise ValueError(f"Human-Review-Kriterien für {case_id} sind unvollständig")
+        for criterion_id, decision in decisions.items():
+            criterion = expected[criterion_id]
+            if decision.description != criterion.description or decision.weight != criterion.weight:
+                raise ValueError(
+                    f"Human-Review-Kriterium {criterion_id} für {case_id} wurde verändert"
+                )
+            if require_completed and decision.verdict == "pending":
+                raise ValueError(f"Human-Review-Kriterium {criterion_id} ist noch offen")
+            if require_completed and len(decision.evidence.strip()) < 10:
+                raise ValueError(
+                    f"Human-Review-Kriterium {criterion_id} benötigt eine Begründung"
+                )
+
+    if require_completed:
+        if review.review_id is None or review.reviewer_identity is None or review.reviewed_at is None:
+            raise ValueError("Abgeschlossenes Human-Review benötigt ID, Prüfer und Zeitpunkt")
+        if not review.independent_reviewer_attested:
+            raise ValueError("Abgeschlossenes Human-Review benötigt die Unabhängigkeitsbestätigung")
+        if review.reviewer_identity == candidate.system_identity:
+            raise ValueError("Candidate-System darf nicht als unabhängiger Prüfer auftreten")
+
+
+def load_human_review(
+    path: Path,
+    corpus: AcceptanceCorpus,
+    candidate: AcceptanceCandidate,
+) -> CandidateHumanReview:
+    review = CandidateHumanReview.model_validate(_read_json(path))
+    _validate_human_review(corpus, candidate, review, require_completed=True)
+    return review
+
+
 def baseline_receipt(
     corpus: AcceptanceCorpus,
     baseline: AcceptanceBaseline,
@@ -328,10 +465,18 @@ def candidate_receipt(
     corpus: AcceptanceCorpus,
     baseline: AcceptanceBaseline,
     candidate: AcceptanceCandidate,
+    human_review: CandidateHumanReview | None = None,
 ) -> dict[str, object]:
     _validate_baseline_contract(corpus, baseline)
     _validate_candidate_contract(corpus, candidate)
     cases = {item.case_id: item for item in corpus.cases}
+    if human_review is not None:
+        _validate_human_review(corpus, candidate, human_review, require_completed=True)
+    human_verdicts = {
+        (review_case.case.case_id, decision.criterion_id): decision.verdict
+        for review_case in (human_review.cases if human_review is not None else [])
+        for decision in review_case.decisions
+    }
     total_weight = sum(
         criterion.weight for case in corpus.cases for criterion in case.acceptance_criteria
     )
@@ -347,8 +492,41 @@ def candidate_receipt(
         )
 
     baseline_score = round(weighted_passed(baseline.observations) / total_weight, 4)
-    candidate_score = round(weighted_passed(candidate.observations) / total_weight, 4)
-    successful_cases = sum(not item.criteria_failed for item in candidate.observations)
+    effective_passed: dict[str, set[str]] = {}
+    effective_failed: dict[str, set[str]] = {}
+    for observation in candidate.observations:
+        if human_review is None:
+            effective_passed[observation.case_id] = set(observation.criteria_passed)
+            effective_failed[observation.case_id] = set(observation.criteria_failed)
+            continue
+        criterion_types = {
+            item.criterion_id: item.evaluator
+            for item in cases[observation.case_id].acceptance_criteria
+        }
+        passed = {
+            item for item in observation.criteria_passed if criterion_types[item] == "contract"
+        }
+        failed = {
+            item for item in observation.criteria_failed if criterion_types[item] == "contract"
+        }
+        for criterion_id, evaluator in criterion_types.items():
+            if evaluator != "human":
+                continue
+            verdict = human_verdicts.get((observation.case_id, criterion_id))
+            if verdict == "passed":
+                passed.add(criterion_id)
+            else:
+                failed.add(criterion_id)
+        effective_passed[observation.case_id] = passed
+        effective_failed[observation.case_id] = failed
+    candidate_passed_weight = sum(
+        criterion.weight
+        for case in corpus.cases
+        for criterion in case.acceptance_criteria
+        if criterion.criterion_id in effective_passed[case.case_id]
+    )
+    candidate_score = round(candidate_passed_weight / total_weight, 4)
+    successful_cases = sum(not item for item in effective_failed.values())
     total_cost = round(
         sum(item.metrics.external_cost_usd for item in candidate.observations), 6
     )
@@ -361,7 +539,7 @@ def candidate_receipt(
         "corpus_sha256": candidate.corpus_sha256,
         "case_count": len(corpus.cases),
         "criteria_total": sum(len(item.acceptance_criteria) for item in corpus.cases),
-        "criteria_failed": sum(len(item.criteria_failed) for item in candidate.observations),
+        "criteria_failed": sum(len(item) for item in effective_failed.values()),
         "successful_cases": successful_cases,
         "baseline_weighted_score": baseline_score,
         "candidate_weighted_score": candidate_score,
@@ -377,11 +555,19 @@ def candidate_receipt(
         "pilot_call_limit_met": pilot_call_limit_met,
         "pilot_eligible": False,
         "source_revision": candidate.source_revision,
-        "human_reviewed": candidate.human_reviewed,
+        "human_reviewed": candidate.human_reviewed or human_review is not None,
+        "human_review_id": human_review.review_id if human_review is not None else None,
+        "human_reviewed_at": (
+            human_review.reviewed_at.isoformat() if human_review is not None else None
+        ),
         "artifact_sha256": {
             item.case_id: item.output_sha256 for item in candidate.observations
         },
-        "quality_claim": "simulation-candidate-only",
+        "quality_claim": (
+            "simulation-candidate-human-reviewed"
+            if human_review is not None
+            else "simulation-candidate-only"
+        ),
     }
 
 
@@ -473,6 +659,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     parser.add_argument("--candidate", type=Path)
+    parser.add_argument("--human-review", type=Path)
+    parser.add_argument("--write-human-review-template", type=Path)
     parser.add_argument("--run-mock-candidate", action="store_true")
     parser.add_argument("--write-candidate", type=Path)
     parser.add_argument("--source-revision")
@@ -481,6 +669,10 @@ def main(argv: list[str] | None = None) -> int:
     baseline = load_baseline(args.baseline, corpus)
     if args.run_mock_candidate and args.candidate:
         parser.error("--candidate und --run-mock-candidate schließen sich aus")
+    if (args.human_review or args.write_human_review_template) and not args.candidate:
+        parser.error("Human-Review-Optionen erfordern --candidate")
+    if args.human_review and args.write_human_review_template:
+        parser.error("--human-review und --write-human-review-template schließen sich aus")
     if args.write_candidate and not args.run_mock_candidate:
         parser.error("--write-candidate erfordert --run-mock-candidate")
     if args.run_mock_candidate and not args.source_revision:
@@ -495,7 +687,19 @@ def main(argv: list[str] | None = None) -> int:
         receipt = candidate_receipt(corpus, baseline, candidate)
     elif args.candidate:
         candidate = load_candidate(args.candidate, corpus)
-        receipt = candidate_receipt(corpus, baseline, candidate)
+        if args.write_human_review_template:
+            review_template = human_review_template(corpus, candidate)
+            args.write_human_review_template.write_text(
+                json.dumps(review_template.model_dump(mode="json"), ensure_ascii=False, indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
+        human_review = (
+            load_human_review(args.human_review, corpus, candidate)
+            if args.human_review
+            else None
+        )
+        receipt = candidate_receipt(corpus, baseline, candidate, human_review)
     else:
         receipt = baseline_receipt(corpus, baseline)
     print(json.dumps(receipt, ensure_ascii=False, indent=2))

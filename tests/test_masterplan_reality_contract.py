@@ -10,11 +10,11 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.43" in current
-    assert "Statusdatum: 13. Oktober 2026" in current
-    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 13. Oktober 2026" in current
-    assert "bac990b2ba4a2423173496414ec946754a925b74" in current
-    assert "0122389572925fa94fb12282585e32b1e96afadd" in current
+    assert "Version: 5.7.44" in current
+    assert "Statusdatum: 14. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 14. Oktober 2026" in current
+    assert "3d529f0c9dbb4ea840ba95327ea9807ad29e7197" in current
+    assert "32769ec5e73f76e3ab7a37b136bb7686f2a0246e" in current
     assert "kein offener Pull Request" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
@@ -100,6 +100,9 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "TankAI Core CI Run #152" in current
     assert "TankAI Core CI Run #153" in current
     assert "TankAI Core CI Run #154" in current
+    assert "TankAI Core CI Run #155" in current
+    assert "TankAI Core CI Run #156" in current
+    assert "TankAI Core CI Run #157" in current
     assert "PR #74" in current
     assert "PR #75" in current
     assert "PR #76" in current
@@ -108,6 +111,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "PR #79" in current
     assert "PR #80" in current
     assert "PR #81" in current
+    assert "PR #82" in current
     assert "TankAI Core CI Run #69" in current
     assert "PR #39" in current
     assert "PR #42" in current
