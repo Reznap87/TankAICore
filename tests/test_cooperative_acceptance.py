@@ -13,6 +13,7 @@ from tankai.evaluation.cooperative_acceptance import (
     DEFAULT_CORPUS,
     AcceptanceBaseline,
     AcceptanceCorpus,
+    AcceptanceCandidate,
     baseline_receipt,
     candidate_receipt,
     corpus_digest,
@@ -395,3 +396,46 @@ def test_candidate_cli_writes_human_review_template(tmp_path) -> None:
         for item in template["cases"]
         for decision in item["decisions"]
     )
+
+
+@pytest.mark.parametrize("claim_passed", [False, True])
+def test_review_flag_alone_cannot_authorize_receipt(tmp_path, claim_passed) -> None:
+    document = json.loads(DEFAULT_CANDIDATE.read_text(encoding="utf-8"))
+    document["human_reviewed"] = True
+    if claim_passed:
+        observation = document["observations"][0]
+        observation["criteria_passed"].append(observation["criteria_failed"].pop(0))
+    candidate = AcceptanceCandidate.model_validate(document)
+    corpus = load_corpus()
+    baseline = load_baseline(corpus=corpus)
+    with pytest.raises(ValueError, match="Human-Review-Beleg"):
+        candidate_receipt(corpus, baseline, candidate)
+
+    path = tmp_path / "flag-only.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, "-m", "tankai.evaluation.cooperative_acceptance",
+         "--candidate", str(path)],
+        text=True, capture_output=True,
+    )
+    assert completed.returncode != 0
+    assert completed.stdout == ""
+    assert "Human-Review-Beleg" in completed.stderr
+
+
+def test_bound_review_overrides_self_declared_human_passes(tmp_path) -> None:
+    corpus = load_corpus()
+    baseline = load_baseline(corpus=corpus)
+    candidate = load_candidate(corpus=corpus)
+    candidate = candidate.model_copy(update={"human_reviewed": True})
+    observation = candidate.observations[0]
+    observation.criteria_passed.extend(observation.criteria_failed)
+    observation.criteria_failed.clear()
+    path = tmp_path / "review.json"
+    path.write_text(json.dumps(_completed_human_review_document()), encoding="utf-8")
+    review = load_human_review(path, corpus, candidate)
+    receipt = candidate_receipt(corpus, baseline, candidate, review)
+    assert receipt["human_reviewed"] is True
+    assert receipt["candidate_weighted_score"] == 0.1778
+    assert receipt["criteria_failed"] == 12
+    assert receipt["pilot_eligible"] is False

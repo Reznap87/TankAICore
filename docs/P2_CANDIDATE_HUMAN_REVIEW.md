@@ -41,3 +41,9 @@ Ein gültiges Review aktualisiert ausschließlich die menschlichen Kriterien im 
 Vergleichs-Receipt. Automatische Vertragskriterien bleiben unverändert. Auch ein positives
 Review macht den providerfreien Simulations-Candidate nicht automatisch pilotfähig;
 `pilot_eligible` bleibt ohne die übrigen P2-/P0-Nachweise `false`.
+
+Das Candidate-Feld `human_reviewed=true` ist selbst kein Prüfbeleg. Ohne zusätzliches,
+vollständig validiertes `--human-review` wird dafür kein Vergleichs-Receipt ausgegeben.
+Selbst deklarierte bestandene Human-Kriterien werden bei vorhandenem Review ausschließlich
+durch dessen gebundene Urteile ersetzt. Ein unveränderter, noch nicht geprüfter Candidate
+mit `human_reviewed=false` bleibt wie bisher ohne Review auswertbar.
