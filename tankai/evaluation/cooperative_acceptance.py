@@ -470,6 +470,8 @@ def candidate_receipt(
     _validate_baseline_contract(corpus, baseline)
     _validate_candidate_contract(corpus, candidate)
     cases = {item.case_id: item for item in corpus.cases}
+    if candidate.human_reviewed and human_review is None:
+        raise ValueError("human_reviewed erfordert einen vollständig validierten Human-Review-Beleg")
     if human_review is not None:
         _validate_human_review(corpus, candidate, human_review, require_completed=True)
     human_verdicts = {
@@ -555,7 +557,7 @@ def candidate_receipt(
         "pilot_call_limit_met": pilot_call_limit_met,
         "pilot_eligible": False,
         "source_revision": candidate.source_revision,
-        "human_reviewed": candidate.human_reviewed or human_review is not None,
+        "human_reviewed": human_review is not None,
         "human_review_id": human_review.review_id if human_review is not None else None,
         "human_reviewed_at": (
             human_review.reviewed_at.isoformat() if human_review is not None else None

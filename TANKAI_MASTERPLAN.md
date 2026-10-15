@@ -1,11 +1,11 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.44
+Version: 5.7.45
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 14. Oktober 2026
+Statusdatum: 15. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 14. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 15. Oktober 2026
 
 Dieser Abschnitt ist der aktuelle Reality Contract und damit die alleinige aktuelle
 Statusquelle dieses Dokuments. Die historischen Produkt-, Release- und Entwicklungsabschnitte
@@ -44,17 +44,17 @@ Aktives Core-Repository: Reznap87/TankAICore, Branch main. Der Repository-Head w
 aus dem geschützten Branch aufgelöst und ist nicht mit dem deployten Runtime-Commit
 gleichzusetzen.
 
-Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.44-Inkrements:
+Verifizierter geschützter main-Ausgangsstand vor Beginn dieses 5.7.45-Inkrements:
 
-3d529f0c9dbb4ea840ba95327ea9807ad29e7197
+f39f1a010db372e49ebb392173352828e885798d
 
 Zugehöriger Repository-Git-Tree:
 
-32769ec5e73f76e3ab7a37b136bb7686f2a0246e
+5ed5a4fadea14b6f7fdffcc71fe38b5386119422
 
 Commit-Titel:
 
-feat(evaluation): fit candidate within five-call pilot limit (#82)
+feat(evaluation): bind independent candidate reviews (#83)
 
 Dieser Stand ist der Ausgangsstand des gebundenen Human-Review-Receipts. Ein
 nachfolgender Merge darf den Branch-Head verändern, ohne dadurch den hier gebundenen
@@ -99,13 +99,14 @@ Source-of-Truth-Stand interpretiert werden.
 
 Verifiziert sind:
 
-geschützter main-Ausgangsstand 12fd2658d353aef168f519b5599ddaae8e546729 mit Git-Tree
-178ea39982a87a6c08242c97f79ab6c26660938a,
+geschützter main-Ausgangsstand f39f1a010db372e49ebb392173352828e885798d mit Git-Tree
+5ed5a4fadea14b6f7fdffcc71fe38b5386119422,
 
-kein offener Pull Request und genau ein offenes Issue, Issue #25
+ein offener Entwurfs-Pull-Request #84 für die getrennte Hetzner-Grundinstallation und
+genau ein offenes Issue, Issue #25
 `ops: production live-provider readiness gate`, zum Prüfzeitpunkt dieses Reality-Syncs; der
 verbleibende Teil von Issue #25 ist extern blockiert und wird durch dieses unabhängige
-Acceptance-Baseline-Inkrement nicht wiederholt,
+Human-Review-Reparatur-Inkrement nicht wiederholt; PR #84 bleibt unangetastet,
 
 die repositoryseitige read-only Live-Provider-Readiness-Prüfung aus PR #26,
 
@@ -1560,7 +1561,7 @@ späteren Qualitätsnachweis für den vollständigen P2-Candidate.
 Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
 Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
 Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
-Der Reality Contract 5.7.44 und seine historischen Receipts werden durch diesen
+Der Reality Contract 5.7.45 und seine historischen Receipts werden durch diesen
 Planungsnachtrag nicht rückwirkend umgeschrieben.
 
 0.11.7 Verbindliches Start-Testbudget
@@ -1702,6 +1703,18 @@ Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und off
 Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
 
 0.12 Reality-Contract-Versionshistorie
+
+5.7.45, 15. Oktober 2026:
+
+Ausgangsstand f39f1a010db372e49ebb392173352828e885798d / Tree
+5ed5a4fadea14b6f7fdffcc71fe38b5386119422. PR #83 sowie TankAI Core CI Run #158
+(38523544347) und TankAI Core CI Run #159 (38523713865) sind erfolgreich abgeschlossen.
+Der getrennte Hetzner-Entwurf PR #84 mit erfolgreichem CI Run #160 (38565632103)
+bleibt offen und wird nicht parallel bearbeitet. Einen belegten Bewertungs-Bypass geschlossen:
+Das selbst deklarierte Flag `human_reviewed=true` benötigt vor Ausgabe eines Vergleichs-Receipts
+einen vollständig validierten Human-Review-Beleg. Dessen Urteile ersetzen ausschließlich
+Human-Kriterien; automatische Kriterien bleiben erhalten. Ungeprüfter Candidate und Score
+0.1778 bleiben unverändert. Keine Provider-, Secret-, Kosten- oder Produktionsmutation.
 
 5.7.44, 14. Oktober 2026:
 

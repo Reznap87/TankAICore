@@ -10,12 +10,12 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.44" in current
-    assert "Statusdatum: 14. Oktober 2026" in current
-    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 14. Oktober 2026" in current
-    assert "3d529f0c9dbb4ea840ba95327ea9807ad29e7197" in current
-    assert "32769ec5e73f76e3ab7a37b136bb7686f2a0246e" in current
-    assert "kein offener Pull Request" in current
+    assert "Version: 5.7.45" in current
+    assert "Statusdatum: 15. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 15. Oktober 2026" in current
+    assert "f39f1a010db372e49ebb392173352828e885798d" in current
+    assert "5ed5a4fadea14b6f7fdffcc71fe38b5386119422" in current
+    assert "ein offener Entwurfs-Pull-Request #84" in current
     assert "TankAI Core CI Run #70" in current
     assert "TankAI Core CI Run #71" in current
     assert "TankAI Core CI Run #72" in current
