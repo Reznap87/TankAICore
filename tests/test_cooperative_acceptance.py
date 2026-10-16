@@ -297,6 +297,23 @@ def _completed_human_review_document() -> dict[str, object]:
     return document
 
 
+@pytest.mark.parametrize("identity", ["   ", "\t\n ", "self", "padded-self", "uppercase-self"])
+def test_human_review_rejects_empty_and_equivalent_system_identity(tmp_path, identity) -> None:
+    corpus = load_corpus()
+    candidate = load_candidate(corpus=corpus)
+    identities = {
+        "self": candidate.system_identity,
+        "padded-self": f"  {candidate.system_identity}\t",
+        "uppercase-self": candidate.system_identity.upper(),
+    }
+    document = _completed_human_review_document()
+    document["reviewer_identity"] = identities.get(identity, identity)
+    path = tmp_path / "review.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ValueError, match="Prüferkennung|unabhängiger Prüfer"):
+        load_human_review(path, corpus, candidate)
+
+
 def test_human_review_template_binds_exact_candidate_and_human_criteria() -> None:
     corpus = load_corpus()
     candidate = load_candidate(corpus=corpus)
