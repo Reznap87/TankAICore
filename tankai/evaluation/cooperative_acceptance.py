@@ -411,7 +411,10 @@ def _validate_human_review(
             raise ValueError("Abgeschlossenes Human-Review benötigt ID, Prüfer und Zeitpunkt")
         if not review.independent_reviewer_attested:
             raise ValueError("Abgeschlossenes Human-Review benötigt die Unabhängigkeitsbestätigung")
-        if review.reviewer_identity == candidate.system_identity:
+        reviewer_identity = review.reviewer_identity.strip().casefold()
+        if not reviewer_identity:
+            raise ValueError("Human-Review benötigt eine nichtleere Prüferkennung")
+        if reviewer_identity == candidate.system_identity.strip().casefold():
             raise ValueError("Candidate-System darf nicht als unabhängiger Prüfer auftreten")
 
 

@@ -36,6 +36,10 @@ Die Prüfung schlägt geschlossen fehl, wenn Korpus, Source-Revision, Fallvertra
 Artefakt-Hash, Kriterienbeschreibung oder Gewicht verändert wurden. Ebenso abgewiesen werden
 offene Urteile, fehlende Begründungen, unvollständige Kriterien, eine fehlende
 Unabhängigkeitsbestätigung oder das Candidate-System selbst als Prüfer.
+Leere Prüferkennungen (auch reine Leerzeichen) sind ungültig. Beim Vergleich mit der
+Systemkennung werden Rand-Leerzeichen entfernt und Groß-/Kleinschreibung per Unicode
+Casefold ignoriert. Das ist keine Identitätsverifikation: Andere Aliasnamen lassen sich
+damit nicht erkennen; organisatorische Unabhängigkeit bleibt separat sicherzustellen.
 
 Ein gültiges Review aktualisiert ausschließlich die menschlichen Kriterien im ausgegebenen
 Vergleichs-Receipt. Automatische Vertragskriterien bleiben unverändert. Auch ein positives
