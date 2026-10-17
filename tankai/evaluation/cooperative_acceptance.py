@@ -694,11 +694,16 @@ def main(argv: list[str] | None = None) -> int:
         candidate = load_candidate(args.candidate, corpus)
         if args.write_human_review_template:
             review_template = human_review_template(corpus, candidate)
-            args.write_human_review_template.write_text(
+            serialized_template = (
                 json.dumps(review_template.model_dump(mode="json"), ensure_ascii=False, indent=2)
-                + "\n",
-                encoding="utf-8",
+                + "\n"
             )
+            try:
+                # Exclusive creation also rejects symlinks and avoids a check/write race.
+                with args.write_human_review_template.open("x", encoding="utf-8") as output:
+                    output.write(serialized_template)
+            except FileExistsError:
+                parser.error("Review-Ziel existiert bereits; bitte einen neuen Dateipfad wählen")
         human_review = (
             load_human_review(args.human_review, corpus, candidate)
             if args.human_review

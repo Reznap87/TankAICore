@@ -7,6 +7,11 @@ Candidate noch die Baseline und aktiviert keinen Provider.
 
 ## Vorlage erzeugen
 
+Das Ziel muss ein neuer Dateipfad sein. Vorhandene Dateien und Symlinks werden ohne
+Überschreiben abgewiesen (Exitcode 2); auch eine bereits ausgefüllte Bewertung bleibt
+dadurch erhalten. Für eine neue Vorlage einen anderen Dateinamen verwenden. Die exklusive
+Dateierstellung verhindert auch ein Überschreiben bei gleichzeitigem Export.
+
 ```bash
 python -m tankai.evaluation.cooperative_acceptance \
   --candidate evaluation/cooperative_acceptance_v1_candidate.json \

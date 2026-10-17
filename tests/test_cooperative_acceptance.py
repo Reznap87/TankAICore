@@ -415,6 +415,36 @@ def test_candidate_cli_writes_human_review_template(tmp_path) -> None:
     )
 
 
+@pytest.mark.parametrize("target_kind", ["file", "symlink", "dangling_symlink"])
+def test_review_template_cli_never_overwrites_existing_target(tmp_path, target_kind) -> None:
+    target = tmp_path / "review.json"
+    original = json.dumps(_completed_human_review_document()).encode("utf-8")
+    linked = tmp_path / "completed-review.json"
+    if target_kind == "file":
+        target.write_bytes(original)
+    else:
+        if target_kind == "symlink":
+            linked.write_bytes(original)
+        target.symlink_to(linked)
+    completed = subprocess.run(
+        [sys.executable, "-m", "tankai.evaluation.cooperative_acceptance",
+         "--candidate", str(DEFAULT_CANDIDATE),
+         "--write-human-review-template", str(target)],
+        text=True, capture_output=True,
+    )
+    assert completed.returncode == 2
+    assert completed.stdout == ""
+    assert "Review-Ziel existiert bereits" in completed.stderr
+    if target_kind == "file":
+        assert target.read_bytes() == original
+    else:
+        assert target.is_symlink()
+        if target_kind == "symlink":
+            assert linked.read_bytes() == original
+        else:
+            assert not linked.exists()
+
+
 @pytest.mark.parametrize("claim_passed", [False, True])
 def test_review_flag_alone_cannot_authorize_receipt(tmp_path, claim_passed) -> None:
     document = json.loads(DEFAULT_CANDIDATE.read_text(encoding="utf-8"))
