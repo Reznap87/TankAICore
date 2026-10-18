@@ -202,6 +202,32 @@ def test_checked_in_candidate_retains_artifacts_and_honest_comparison() -> None:
     assert receipt["quality_claim"] == "simulation-candidate-only"
 
 
+def test_candidate_case_diagnostics_match_aggregate_without_exposing_artifacts() -> None:
+    corpus = load_corpus()
+    candidate = load_candidate(corpus=corpus)
+    receipt = candidate_receipt(corpus, load_baseline(corpus=corpus), candidate)
+    results = receipt["case_results"]
+    assert [item["case_id"] for item in results] == [case.case_id for case in corpus.cases]
+    assert sum(item["successful"] for item in results) == receipt["successful_cases"]
+    assert sum(
+        criterion["verdict"] == "failed"
+        for item in results for criterion in item["criteria"]
+    ) == receipt["criteria_failed"]
+    for case, result in zip(corpus.cases, results):
+        assert set(result) == {"case_id", "successful", "criteria"}
+        assert [item["criterion_id"] for item in result["criteria"]] == [
+            item.criterion_id for item in case.acceptance_criteria
+        ]
+        for criterion, diagnostic in zip(case.acceptance_criteria, result["criteria"]):
+            assert set(diagnostic) == {
+                "criterion_id", "evaluator", "verdict", "human_review_required"
+            }
+            assert diagnostic["evaluator"] == criterion.evaluator
+            assert diagnostic["human_review_required"] == (criterion.evaluator == "human")
+    reordered = candidate.model_copy(update={"observations": list(reversed(candidate.observations))})
+    assert candidate_receipt(corpus, load_baseline(corpus=corpus), reordered)["case_results"] == results
+
+
 def test_current_mock_execution_reproduces_checked_in_candidate_artifacts() -> None:
     corpus = load_corpus()
     expected = load_candidate(corpus=corpus)
@@ -368,6 +394,16 @@ def test_completed_human_review_updates_receipt_without_claiming_pilot(tmp_path)
     )
     assert rescored["candidate_weighted_score"] > receipt["candidate_weighted_score"]
     assert rescored["pilot_eligible"] is False
+    changed_id = updated["cases"][0]["decisions"][0]["criterion_id"]
+    changes = []
+    for before_case, after_case in zip(receipt["case_results"], rescored["case_results"]):
+        for before, after in zip(before_case["criteria"], after_case["criteria"]):
+            assert after["human_review_required"] is False
+            if before != after:
+                changes.append(after["criterion_id"])
+                assert after["verdict"] == "passed"
+                assert after["evaluator"] == "human"
+    assert changes == [changed_id]
 
 
 def test_human_review_rejects_pending_or_tampered_artifact(tmp_path) -> None:

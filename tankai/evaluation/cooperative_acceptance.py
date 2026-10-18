@@ -545,6 +545,28 @@ def candidate_receipt(
         "case_count": len(corpus.cases),
         "criteria_total": sum(len(item.acceptance_criteria) for item in corpus.cases),
         "criteria_failed": sum(len(item) for item in effective_failed.values()),
+        "case_results": [
+            {
+                "case_id": case.case_id,
+                "successful": not effective_failed[case.case_id],
+                "criteria": [
+                    {
+                        "criterion_id": criterion.criterion_id,
+                        "evaluator": criterion.evaluator,
+                        "verdict": (
+                            "passed"
+                            if criterion.criterion_id in effective_passed[case.case_id]
+                            else "failed"
+                        ),
+                        "human_review_required": (
+                            criterion.evaluator == "human" and human_review is None
+                        ),
+                    }
+                    for criterion in case.acceptance_criteria
+                ],
+            }
+            for case in corpus.cases
+        ],
         "successful_cases": successful_cases,
         "baseline_weighted_score": baseline_score,
         "candidate_weighted_score": candidate_score,

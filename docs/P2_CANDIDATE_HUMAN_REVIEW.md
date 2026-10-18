@@ -31,6 +31,15 @@ keine kryptografische Signatur und kein Ersatz für organisatorische Zugriffskon
 
 ## Abgeschlossenes Review prüfen
 
+Der Vergleichs-Receipt enthält zusätzlich `case_results` in Korpus-Reihenfolge: pro Fall
+`case_id`, `successful` und die Kriterien mit `criterion_id`, `evaluator`, `verdict`
+und `human_review_required`. Damit sind konkrete fehlgeschlagene Kriterien erkennbar,
+ohne Ausgaben, Dokumentinhalte oder Review-Begründungen im Receipt offenzulegen.
+Ohne validiertes Review bleiben Human-Kriterien für die Wertung `failed` und werden
+zusätzlich mit `human_review_required=true` als ungeprüft markiert. Das ist kein
+menschliches Negativurteil. Mit Review zeigen sie dessen Urteil; automatische Kriterien
+bleiben unverändert. Gesamtscore und Pilotregeln ändern sich nicht.
+
 ```bash
 python -m tankai.evaluation.cooperative_acceptance \
   --candidate evaluation/cooperative_acceptance_v1_candidate.json \
