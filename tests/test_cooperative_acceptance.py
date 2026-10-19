@@ -26,6 +26,42 @@ from tankai.evaluation.cooperative_acceptance import (
 )
 
 
+@pytest.mark.parametrize("document_kind", ["corpus", "baseline", "candidate", "review"])
+def test_evaluation_loaders_reject_duplicate_root_keys(tmp_path, document_kind) -> None:
+    corpus = load_corpus()
+    candidate = load_candidate(corpus=corpus)
+    documents = {
+        "corpus": corpus,
+        "baseline": load_baseline(corpus=corpus),
+        "candidate": candidate,
+        "review": human_review_template(corpus, candidate),
+    }
+    path = tmp_path / "duplicate.json"
+    # Even identical values are ambiguous and must not be silently accepted.
+    path.write_text('{"schema_version": 1,' + documents[document_kind].model_dump_json()[1:],
+                    encoding="utf-8")
+    loaders = {
+        "corpus": lambda: load_corpus(path),
+        "baseline": lambda: load_baseline(path, corpus),
+        "candidate": lambda: load_candidate(path, corpus),
+        "review": lambda: load_human_review(path, corpus, candidate),
+    }
+    with pytest.raises(ValueError, match="doppelte Objektschlüssel"):
+        loaders[document_kind]()
+
+
+@pytest.mark.parametrize("second_key", ['"verdict"', '"verdi\\u0063t"'])
+def test_human_review_rejects_nested_conflicting_and_escaped_duplicate_keys(tmp_path, second_key) -> None:
+    document = json.dumps(_completed_human_review_document())
+    document = document.replace('"verdict": "failed"',
+                                '"verdict": "passed", ' + second_key + ': "failed"', 1)
+    path = tmp_path / "ambiguous-review.json"
+    path.write_text(document, encoding="utf-8")
+    corpus = load_corpus()
+    with pytest.raises(ValueError, match="doppelte Objektschlüssel"):
+        load_human_review(path, corpus, load_candidate(corpus=corpus))
+
+
 def test_frozen_corpus_covers_p1_cases_with_bounded_contracts() -> None:
     corpus = load_corpus()
 

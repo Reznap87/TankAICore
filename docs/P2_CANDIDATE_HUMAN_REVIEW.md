@@ -31,6 +31,11 @@ keine kryptografische Signatur und kein Ersatz für organisatorische Zugriffskon
 
 ## Abgeschlossenes Review prüfen
 
+Alle Bewertungsdateien (Korpus, Baseline, Candidate und Review) müssen eindeutige
+JSON-Objektschlüssel enthalten. Doppelte Felder werden auf jeder Verschachtelungsebene
+abgewiesen, auch bei identischen Werten oder äquivalenten Unicode-Escapes. Es gilt
+ausdrücklich nicht „der letzte Wert gewinnt“; mehrdeutige Dateien erzeugen keinen Receipt.
+
 Der Vergleichs-Receipt enthält zusätzlich `case_results` in Korpus-Reihenfolge: pro Fall
 `case_id`, `successful` und die Kriterien mit `criterion_id`, `evaluator`, `verdict`
 und `human_review_required`. Damit sind konkrete fehlgeschlagene Kriterien erkennbar,

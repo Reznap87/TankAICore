@@ -1,11 +1,18 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.48
+Version: 5.7.49
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 18. Oktober 2026
+Statusdatum: 19. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 18. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 19. Oktober 2026
+
+5.7.49: Bewertungs-JSON weist doppelte Objektschlüssel auf allen Ebenen zurück,
+statt widersprüchliche Felder stillschweigend durch den letzten Wert zu ersetzen.
+Korpus, Baseline, Candidate und Human-Review nutzen dieselbe strikte Einleseprüfung.
+Ausgangsstand: e943e61a4ac8b1778f17798b68414656f093cf33,
+Tree 65c5d18e792592df15923fc3e8a21a7b73728a11; main-CI #168 erfolgreich.
+Keine Qualitäts- oder Pilotfreigabe; PR #84 und Produktion bleiben unangetastet.
 
 5.7.48: Candidate-Receipts schlüsseln die effektiven Kriterienurteile je Fall auf.
 Ungeprüfte Human-Kriterien sind explizit markiert. Keine Ausgaben oder Dokumentinhalte
