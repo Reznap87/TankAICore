@@ -209,7 +209,15 @@ class CandidateHumanReview(StrictModel):
 
 
 def _read_json(path: Path) -> object:
-    return json.loads(path.read_text(encoding="utf-8"))
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Bewertungs-JSON enthält doppelte Objektschlüssel")
+            result[key] = value
+        return result
+
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
 
 
 def load_corpus(path: Path = DEFAULT_CORPUS) -> AcceptanceCorpus:
