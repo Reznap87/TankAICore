@@ -1,0 +1,60 @@
+# Private, single-user test only. Use a separate Compose project (see guide).
+# Upstream commit: 19eb7e1c3bd5e7421ee72c3878a099f511ea4275
+services:
+  freellmapi:
+    image: ghcr.io/tashfeenahmed/freellmapi@sha256:c3b92211cc0ada65e6044e8a17d3878ca27f20af8ca74cfdc4a4d51aa3f6ac63
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      ENCRYPTION_KEY: "${FREELLMAPI_ENCRYPTION_KEY:?Run scripts/freellmapi_test.py init first}"
+      FREELLMAPI_UPDATE_CHECK: "off"
+      RESPONSE_CACHE: "false"
+      HEALTH_CHECK_INTERVAL_MS: "86400000"
+      FALLBACK_TIME_BUDGET_MS: "15000"
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - freellmapi_data:/app/server/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/ping').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  tankai:
+    environment:
+      TANKAI_LLM: "openai"
+      # The OpenAI-compatible adapter talks to FreeLLMAPI, not api.openai.com.
+      OPENAI_BASE_URL: "http://freellmapi:3001/v1"
+      OPENAI_API_KEY: "${FREELLMAPI_UNIFIED_KEY:-}"
+      OPENAI_MODEL: "auto"
+      TANKAI_COOKIE_SECURE: "0"
+      # One router cannot establish independent model/critic provenance.
+      TANKAI_CRITIC_LLM: ""
+      TANKAI_CRITIC_MODEL: ""
+      TANKAI_CRITIC_API_KEY: ""
+      TANKAI_CRITIC_BASE_URL: ""
+      TANKAI_REQUIRE_INDEPENDENT_CRITIC: "0"
+      TANKAI_SEARCH_PROVIDER: ""
+      TANKAI_SEARCH_API_KEY: ""
+      BRAVE_SEARCH_API_KEY: ""
+      TAVILY_API_KEY: ""
+      TANKAI_STRICT_WEB_RESEARCH: "0"
+      TANKAI_REQUIRE_RESEARCH_EVIDENCE: "1"
+      TANKAI_DEV_QUEUE_ENABLED: "0"
+      TANKAI_LLM_MAX_TOKENS: "256"
+      TANKAI_LLM_MAX_CALLS_PER_RUN: "5"
+      TANKAI_LLM_MAX_RETRIES: "0"
+      TANKAI_LLM_TIMEOUT_SECONDS: "60"
+    depends_on:
+      freellmapi:
+        condition: service_healthy
+
+volumes:
+  freellmapi_data:
