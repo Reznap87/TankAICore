@@ -20,6 +20,12 @@ from uuid import UUID
 MAX_SNAPSHOT = 8 * 1024 * 1024
 
 
+class AuthStateUnavailable(RuntimeError):
+    def __init__(self, stage, status=None):
+        super().__init__("Account storage is unavailable")
+        self.stage, self.status = stage, status
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, message, headers, new_url):
         return None
@@ -45,7 +51,7 @@ class AuthState:
         return cls(url, token)
 
     def restore(self, path: Path) -> None:
-        request = Request(self.url, headers={"Authorization": "Bearer " + self.token})
+        request = Request(self.url, headers={"Authorization": "Bearer " + self.token, "User-Agent": "TankAI-AuthState/1"})
         try:
             with self.opener.open(request, timeout=20) as response:
                 data = response.read(MAX_SNAPSHOT + 1)
@@ -53,7 +59,7 @@ class AuthState:
         except HTTPError as exc:
             if exc.code == 404:
                 return
-            raise RuntimeError("Auth state restore unavailable") from None
+            raise AuthStateUnavailable("restore", exc.code) from None
         if not revision.isdecimal() or not data.startswith(b"SQLite format 3\x00") or len(data) > MAX_SNAPSHOT:
             raise RuntimeError("Invalid auth state snapshot")
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -91,14 +97,15 @@ class AuthState:
                 raise RuntimeError("Auth state exceeds snapshot capacity")
             request = Request(self.url, method="PUT", data=data, headers={
                 "Authorization": "Bearer " + self.token,
+                "User-Agent": "TankAI-AuthState/1",
                 "Content-Type": "application/octet-stream",
                 "If-Match": self.revision,
             })
             try:
                 with self.opener.open(request, timeout=20) as response:
                     revision = response.headers.get("X-Auth-Revision", "")
-            except HTTPError:
-                raise RuntimeError("Auth state persistence unavailable") from None
+            except HTTPError as exc:
+                raise AuthStateUnavailable("persistence", exc.code) from None
             if not revision.isdecimal():
                 raise RuntimeError("Invalid auth state revision")
             self.revision = revision

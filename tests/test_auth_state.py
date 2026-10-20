@@ -111,11 +111,11 @@ def test_remote_failure_and_stale_writer_cannot_acknowledge_save(tmp_path, remot
     bootstrap_owner(store, owner_config())
     first.save(store)
     original = state["data"]
-    with pytest.raises(RuntimeError, match="persistence unavailable"):
+    with pytest.raises(RuntimeError, match="storage is unavailable"):
         stale.save(store)
     assert state["data"] == original
     state["fail"] = True
-    with pytest.raises(RuntimeError, match="persistence unavailable"):
+    with pytest.raises(RuntimeError, match="storage is unavailable"):
         first.save(store)
 
 
@@ -166,3 +166,24 @@ def test_login_does_not_issue_a_cookie_until_session_is_durable(tmp_path, remote
 def test_transport_rejects_insecure_configuration(url, token):
     with pytest.raises(ValueError):
         AuthState(url, token)
+
+
+def test_failed_startup_reports_only_a_safe_stage_and_keeps_login_disabled():
+    from tankai.web.server import _startup_failure_handler
+    from tankai.web.auth_state import AuthStateUnavailable
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _startup_failure_handler(AuthStateUnavailable("restore", 403)))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(HTTPError) as failure:
+            urlopen(f"http://127.0.0.1:{server.server_port}/api/health")
+        assert failure.value.code == 503
+        assert json.load(failure.value) == {"ok": False, "error": "Kontospeicher konnte nicht gestartet werden", "startup_stage": "restore", "upstream_status": 403, "error_type": "AuthStateUnavailable"}
+        with pytest.raises(HTTPError) as login:
+            urlopen(Request(f"http://127.0.0.1:{server.server_port}/api/auth/login", data=b"{}"))
+        assert login.value.code == 503
+        assert "startup_stage" not in json.load(login.value)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
