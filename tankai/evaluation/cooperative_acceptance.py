@@ -417,6 +417,8 @@ def _validate_human_review(
     if require_completed:
         if review.review_id is None or review.reviewer_identity is None or review.reviewed_at is None:
             raise ValueError("Abgeschlossenes Human-Review benötigt ID, Prüfer und Zeitpunkt")
+        if review.reviewed_at.utcoffset() is None:
+            raise ValueError("Human-Review-Zeitpunkt benötigt eine explizite Zeitzone")
         if not review.independent_reviewer_attested:
             raise ValueError("Abgeschlossenes Human-Review benötigt die Unabhängigkeitsbestätigung")
         reviewer_identity = review.reviewer_identity.strip().casefold()
@@ -593,7 +595,8 @@ def candidate_receipt(
         "human_reviewed": human_review is not None,
         "human_review_id": human_review.review_id if human_review is not None else None,
         "human_reviewed_at": (
-            human_review.reviewed_at.isoformat() if human_review is not None else None
+            human_review.reviewed_at.astimezone(timezone.utc).isoformat()
+            if human_review is not None else None
         ),
         "artifact_sha256": {
             item.case_id: item.output_sha256 for item in candidate.observations

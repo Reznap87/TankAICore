@@ -29,6 +29,13 @@ konkreten Begründung in `evidence` ein. Danach bestätigt sie
 `independent_reviewer_attested=true`. Die Bestätigung ist eine prüfbare Erklärung im Receipt,
 keine kryptografische Signatur und kein Ersatz für organisatorische Zugriffskontrollen.
 
+`reviewed_at` muss eine explizite Zeitzone enthalten: bevorzugt `Z` (UTC), alternativ
+einen numerischen Offset wie `+02:00`. Zeitpunkte ohne Zeitzone und reine Datumsangaben
+werden abgewiesen; die lokale Serverzeitzone wird niemals stillschweigend ergänzt.
+Der Receipt gibt denselben Zeitpunkt normalisiert auf UTC (`+00:00`) aus. Unausgefüllte
+Vorlagen behalten `reviewed_at=null`. Dies prüft die Eindeutigkeit, nicht die Wahrheit
+des angegebenen Prüfzeitpunkts.
+
 ## Abgeschlossenes Review prüfen
 
 Alle Bewertungsdateien (Korpus, Baseline, Candidate und Review) müssen eindeutige

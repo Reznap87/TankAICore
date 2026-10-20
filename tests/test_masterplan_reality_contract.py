@@ -10,9 +10,10 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     current, separator, _history = text.partition("\n1. Ergebnis, das entstehen muss")
 
     assert separator
-    assert "Version: 5.7.49" in current
-    assert "Statusdatum: 19. Oktober 2026" in current
-    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 19. Oktober 2026" in current
+    assert "Version: 5.7.50" in current
+    assert "Statusdatum: 20. Oktober 2026" in current
+    assert "0. Verifizierter Projektstand und Ausführungsvertrag am 20. Oktober 2026" in current
+    assert "7e0e908afc5d6c98e930fd9f2ad0317ffdca4a27" in current
     assert "e943e61a4ac8b1778f17798b68414656f093cf33" in current
     assert "b311abe08bed5cc644798052faf843d0eb136ab0" in current
     assert "317883fa39819c813e292700f6015b456c867084" in current

@@ -376,6 +376,34 @@ def test_human_review_rejects_empty_and_equivalent_system_identity(tmp_path, ide
         load_human_review(path, corpus, candidate)
 
 
+@pytest.mark.parametrize("timestamp", ["2026-10-14T08:00:00", "2026-10-14"])
+def test_completed_review_requires_explicit_timezone(tmp_path, timestamp) -> None:
+    document = _completed_human_review_document()
+    document["reviewed_at"] = timestamp
+    path = tmp_path / "review.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    corpus = load_corpus()
+    with pytest.raises(ValueError, match="explizite Zeitzone"):
+        load_human_review(path, corpus, load_candidate(corpus=corpus))
+
+
+@pytest.mark.parametrize("timestamp", [
+    "2026-10-14T08:00:00Z", "2026-10-14T10:00:00+02:00", "2026-10-14T03:00:00-05:00",
+])
+def test_review_receipt_normalizes_equivalent_instants_to_utc(tmp_path, timestamp) -> None:
+    document = _completed_human_review_document()
+    document["reviewed_at"] = timestamp
+    path = tmp_path / "review.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    corpus = load_corpus()
+    candidate = load_candidate(corpus=corpus)
+    review = load_human_review(path, corpus, candidate)
+    receipt = candidate_receipt(corpus, load_baseline(corpus=corpus), candidate, review)
+    assert receipt["human_reviewed_at"] == "2026-10-14T08:00:00+00:00"
+    assert receipt["candidate_weighted_score"] == 0.1778
+    assert receipt["pilot_eligible"] is False
+
+
 def test_human_review_template_binds_exact_candidate_and_human_criteria() -> None:
     corpus = load_corpus()
     candidate = load_candidate(corpus=corpus)
