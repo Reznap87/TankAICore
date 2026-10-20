@@ -50,7 +50,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager
-from tankai.web.auth_state import AuthState, bootstrap_owner
+from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
@@ -2078,10 +2078,52 @@ class Handler(BaseHTTPRequestHandler):
             self._internal_error("run")
 
 
+def _startup_failure_handler(error: Exception):
+    # Keep the port reachable for a failed startup, without creating any
+    # unauthenticated application or leaking exception text/configuration.
+    diagnostic = {"ok": False, "error": "Kontospeicher konnte nicht gestartet werden", "startup_stage": "initialization", "error_type": type(error).__name__}
+    if isinstance(error, AuthStateUnavailable):
+        diagnostic["startup_stage"] = error.stage
+        diagnostic["upstream_status"] = error.status
+    elif isinstance(error, (ValueError, KeyError)):
+        diagnostic["startup_stage"] = "configuration"
+
+    class StartupFailureHandler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            result = diagnostic if urlsplit(self.path).path == "/api/health" else {"ok": False, "error": "TankAI startet nicht"}
+            body = json.dumps(result, ensure_ascii=False).encode()
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        do_POST = do_GET
+
+    return StartupFailureHandler
+
+
 def main() -> None:
     host = _env("TANKAI_HOST", "127.0.0.1") or "127.0.0.1"
     port = _safe_int("TANKAI_PORT", 8765, 1, 65535)
-    app = AppContext.from_env(host)
+    try:
+        app = AppContext.from_env(host)
+    except Exception as error:
+        print("[web] startup failed; account access remains disabled")
+        traceback.print_exc()
+        diagnostic_server = HTTPServer((host, port), _startup_failure_handler(error))
+        try:
+            diagnostic_server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            diagnostic_server.server_close()
+        return
     if app.auth_mode == "session" and app.auth.user_count() == 0:
         print("[web] WARNUNG: Keine Benutzer vorhanden. Zuerst auth_cli create-user ausführen.")
     server = ThreadedHTTPServer((host, port), Handler, app=app)
