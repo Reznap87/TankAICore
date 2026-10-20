@@ -28,6 +28,10 @@
       {
         "name": "TANKAI_CONTAINER",
         "class_name": "TankAIContainer"
+      },
+      {
+        "name": "TANKAI_AUTH_STATE",
+        "class_name": "TankAIAuthState"
       }
     ]
   },
@@ -35,6 +39,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["TankAIContainer"]
+    },
+    {
+      "tag": "v2-auth-state",
+      "new_sqlite_classes": ["TankAIAuthState"]
     }
   ],
   "observability": {
