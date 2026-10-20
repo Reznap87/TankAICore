@@ -302,123 +302,14 @@ class AppContext:
         self.runtimes.close()
 
 
-HTML_TEMPLATE = r"""<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>TankAI</title>
-  <meta name="theme-color" content="#071820"/>
-  <link rel="icon" href="/favicon.ico" sizes="any"/>
-  <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png"/>
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
-  <style nonce="__CSP_NONCE__">
-    :root { --bg:#0b0f14; --card:#1a2332; --border:#243044; --accent:#3b82f6;
-      --accent2:#8b5cf6; --text:#e8eef7; --muted:#8b9bb4; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
-    header { padding:1rem 1.5rem; border-bottom:1px solid var(--border); display:flex;
-      justify-content:space-between; align-items:center; background:linear-gradient(90deg,#0f172a,#1e1b4b); }
-    header h1 { margin:0; font-size:1.15rem; }
-    .brand { display:flex; align-items:center; gap:.75rem; }
-    .brand-mark { width:42px; height:42px; object-fit:contain; filter:drop-shadow(0 0 8px rgba(34,211,238,.4)); }
-    .ver { color:var(--muted); font-size:.8rem; white-space:pre-wrap; }
-    .layout { display:grid; grid-template-columns:1fr 300px; gap:1rem; max-width:1100px; margin:0 auto; padding:1rem; }
-    .single { max-width:480px; margin:3rem auto; padding:1rem; }
-    @media (max-width:900px){ .layout{grid-template-columns:1fr;} }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.1rem; margin-bottom:1rem; }
-    .card h2 { margin:0 0 .7rem; font-size:.85rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-    label { display:block; font-size:.8rem; color:var(--muted); margin-bottom:.3rem; }
-    textarea,input,select { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px;
-      color:var(--text); padding:.65rem .75rem; margin-bottom:.7rem; font-size:.92rem; }
-    textarea { min-height:100px; resize:vertical; }
-    button { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; border:none;
-      border-radius:8px; padding:.7rem 1.3rem; font-weight:600; cursor:pointer; }
-    button.secondary { background:#263348; }
-    button:disabled { opacity:.45; cursor:not-allowed; }
-    .badge { display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.72rem;
-      font-weight:600; margin:0 .25rem .25rem 0; }
-    .b-ok { background:#14532d; color:#86efac; } .b-err { background:#7f1d1d; color:#fca5a5; }
-    .b-info { background:#1e3a5f; color:#93c5fd; } .b-warn { background:#713f12; color:#fde68a; }
-    #answer { white-space:pre-wrap; line-height:1.55; }
-    table { width:100%; border-collapse:collapse; font-size:.85rem; }
-    th,td { text-align:left; padding:.4rem .5rem; border-bottom:1px solid var(--border); vertical-align:top; }
-    th { color:var(--muted); font-weight:500; }
-    .hist-item { padding:.5rem 0; border-bottom:1px solid var(--border); cursor:pointer; font-size:.85rem; }
-    .hist-item:hover,.hist-item:focus { color:var(--accent); outline:none; }
-    #status,#loginStatus { color:var(--muted); font-size:.85rem; margin-left:.5rem; }
-    .row { display:flex; gap:.5rem; align-items:center; } .row > * { flex:1; }
-    .row > .row-action { flex:0 0 auto; padding-top:1.1rem; }
-    .parallel-option { margin-bottom:.7rem; }
-    .parallel-option label { display:inline; }
-    .card h2.answer-heading { margin-top:.75rem; }
-    .rationale { margin-bottom:.5rem; }
-  </style>
-</head>
-<body>
-  <header><div class="brand"><img class="brand-mark" src="/favicon.png" width="42" height="42" alt="" aria-hidden="true"/><div><h1>TankAI</h1><div class="ver">Mandantenfähiges Web Intelligence OS</div></div></div><div class="ver" id="health">…</div></header>
-  <main id="loginView" class="single">
-    <div class="card"><h2>Anmeldung</h2>
-      <label for="email">E-Mail</label><input id="email" type="email" autocomplete="username" maxlength="254"/>
-      <label for="password">Passwort</label><input id="password" type="password" autocomplete="current-password" maxlength="256"/>
-      <button id="loginBtn" type="button">Anmelden</button><span id="loginStatus"></span>
-    </div>
-  </main>
-  <main id="appView" class="layout" hidden>
-    <div>
-      <div class="card"><div class="row"><div><label for="workspace">Workspace</label><select id="workspace"></select></div>
-        <div class="row-action"><button id="logoutBtn" class="secondary" type="button">Abmelden</button></div></div></div>
-      <div class="card">
-        <h2>Neues Ziel</h2>
-        <label for="goal">Ziel</label><textarea id="goal" maxlength="20000" placeholder="Was soll erreicht werden?"></textarea>
-        <label for="dod">Definition of Done</label><input id="dod" maxlength="5000" value="Eine klare, überprüfbare Antwort liegt vor."/>
-        <div class="parallel-option"><label><input type="checkbox" id="parallel"/> Parallel</label></div>
-        <button id="runBtn" type="button">TankAI starten</button><span id="status"></span>
-      </div>
-      <div class="card" id="outCard" hidden><div id="badges"></div><h2 class="answer-heading">Antwort</h2><div id="answer"></div></div>
-      <div class="card" id="planCard" hidden><h2>Plan</h2><div id="rationale" class="ver rationale"></div>
-        <table><thead><tr><th>#</th><th>Typ</th><th>Beschreibung</th><th>Status</th></tr></thead><tbody id="planBody"></tbody></table></div>
-      <div class="card" id="receiptCard" hidden><h2>Receipts</h2>
-        <table><thead><tr><th>Actor</th><th>Action</th><th>OK</th><th>Summary</th></tr></thead><tbody id="receiptBody"></tbody></table></div>
-    </div>
-    <div><div class="card"><h2>System</h2><div id="sysInfo" class="ver">—</div></div>
-      <div class="card"><h2>Verlauf</h2><div id="history" class="ver">Noch keine Runs.</div></div></div>
-  </main>
-<script nonce="__CSP_NONCE__">
-'use strict';
-const byId=(id)=>document.getElementById(id); let csrf=''; let currentUser=null;
-function textCell(value){ const td=document.createElement('td'); td.textContent=String(value??''); return td; }
-function badge(value,cls){ const span=document.createElement('span'); span.className='badge '+cls; span.textContent=String(value??''); return span; }
-function clear(node){ node.replaceChildren(); }
-async function jsonFetch(url,options={}){
-  options.headers=Object.assign({},options.headers||{}); if(csrf && options.method && options.method!=='GET') options.headers['X-CSRF-Token']=csrf;
-  const response=await fetch(url,options); let data;
-  try{ data=await response.json(); }catch{ throw new Error('Ungültige Serverantwort'); }
-  if(!response.ok || data.error){ const err=new Error(data.error||('HTTP '+response.status)); err.status=response.status; throw err; }
-  return data;
-}
-function showLogin(){ byId('loginView').hidden=false; byId('appView').hidden=true; csrf=''; currentUser=null; }
-function showApp(data){ currentUser=data; csrf=String(data.csrf_token||''); byId('loginView').hidden=true; byId('appView').hidden=false;
-  const select=byId('workspace'); clear(select); (data.workspaces||[]).forEach((w)=>{ const o=document.createElement('option'); o.value=w.id; o.textContent=w.name+' ('+w.role+')'; o.selected=w.id===data.workspace.id; select.appendChild(o); });
-}
-async function refreshHealth(){ try{ const d=await jsonFetch('/api/health'); byId('health').textContent=(d.ok?'Online':'Offline')+' · '+d.version; }catch{ byId('health').textContent='Offline'; } }
-async function loadMe(){ try{ const d=await jsonFetch('/api/auth/me'); showApp(d); await refreshSystem(); await loadHistory(); }catch(error){ if(error.status===401) showLogin(); else byId('loginStatus').textContent=String(error.message||error); } }
-async function login(){ const email=byId('email').value.trim(); const password=byId('password').value; const btn=byId('loginBtn'); btn.disabled=true; byId('loginStatus').textContent='Prüfe …';
-  try{ const d=await jsonFetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})}); byId('password').value=''; showApp(d); await refreshSystem(); await loadHistory(); byId('loginStatus').textContent=''; }
-  catch(error){ byId('loginStatus').textContent='Fehler: '+String(error.message||error); } finally{ btn.disabled=false; } }
-async function logout(){ try{ await jsonFetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }finally{ showLogin(); } }
-async function selectWorkspace(){ try{ const d=await jsonFetch('/api/workspaces/select',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspace_id:byId('workspace').value})}); showApp(d); await refreshSystem(); await loadHistory(); }catch(error){ byId('status').textContent='Fehler: '+String(error.message||error); await loadMe(); } }
-async function refreshSystem(){ try{ const d=await jsonFetch('/api/health'); byId('sysInfo').textContent='Nutzer: '+(d.user||'')+'\nWorkspace: '+(d.workspace||'')+'\nMain: '+(d.llm||'')+'\nCritic: '+(d.critic_llm||'')+'\nUnabhängig: '+String(Boolean(d.critic_independent))+'\nWeb: '+(d.web_research||'disabled')+'\nModus: '+(d.execution_mode||'unbekannt')+'\n'+(d.ltm||''); }catch(error){ byId('sysInfo').textContent='Systemdaten nicht verfügbar: '+String(error.message||error); } }
-async function loadHistory(){ try{ const d=await jsonFetch('/api/history'); const el=byId('history'); clear(el); if(!d.length){ el.textContent='Noch keine Runs.'; return; } window.__hist=d; d.forEach((item,index)=>{ const row=document.createElement('div'); row.className='hist-item'; row.tabIndex=0; row.textContent=String(item.goal||'').slice(0,60); const show=()=>renderResult(window.__hist[index]); row.addEventListener('click',show); row.addEventListener('keydown',(event)=>{ if(event.key==='Enter'||event.key===' '){ event.preventDefault(); show(); } }); el.appendChild(row); }); }catch(error){ const el=byId('history'); clear(el); el.textContent='Verlauf nicht verfügbar: '+String(error.message||error); } }
-function renderResult(data){ byId('outCard').hidden=false; byId('answer').textContent=String(data.final_answer||''); const badges=byId('badges'); clear(badges); const status=String(data.status||'unknown'); badges.appendChild(badge(status,status==='completed'?'b-ok':status==='simulated'?'b-warn':'b-err')); badges.appendChild(badge(String(data.duration_seconds??0)+'s','b-info')); badges.appendChild(badge(String(data.receipts_count??0)+' Receipts','b-info')); badges.appendChild(badge(String(data.execution_mode||'unknown'),'b-info')); badges.appendChild(badge(data.release_ready?'freigegeben':'nicht freigegeben',data.release_ready?'b-ok':'b-warn'));
-  const planCard=byId('planCard'),planBody=byId('planBody'); clear(planBody); if(data.plan&&Array.isArray(data.plan.steps)){ planCard.hidden=false; byId('rationale').textContent=String(data.plan.rationale||''); data.plan.steps.forEach((step,index)=>{ const tr=document.createElement('tr'); tr.append(textCell(index+1),textCell(step.specialist_type),textCell(step.description),textCell(step.status||'—')); planBody.appendChild(tr); }); }else planCard.hidden=true;
-  const receiptCard=byId('receiptCard'),receiptBody=byId('receiptBody'); clear(receiptBody); if(Array.isArray(data.receipts)&&data.receipts.length){ receiptCard.hidden=false; data.receipts.forEach((receipt)=>{ const tr=document.createElement('tr'); tr.append(textCell(receipt.actor),textCell(receipt.action),textCell(receipt.success?'✓':'✗'),textCell(String(receipt.output_summary||'').slice(0,80))); receiptBody.appendChild(tr); }); }else receiptCard.hidden=true; }
-async function runTank(){ const goal=byId('goal').value.trim(),dod=byId('dod').value.trim(); if(!goal){ byId('status').textContent='Bitte ein Ziel eingeben.'; return; } const btn=byId('runBtn'); btn.disabled=true; byId('status').textContent='PLAN → ROUTE → VERIFY → LEARN …'; ['outCard','planCard','receiptCard'].forEach((id)=>byId(id).hidden=true); try{ const data=await jsonFetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal,definition_of_done:dod,parallel:byId('parallel').checked})}); renderResult(data); byId('status').textContent=data.status==='simulated'?'Simulation beendet — nicht verifiziert.':'Fertig.'; await loadHistory(); }catch(error){ if(error.status===401) showLogin(); else byId('status').textContent='Fehler: '+String(error.message||error); }finally{ btn.disabled=false; } }
-byId('loginBtn').addEventListener('click',login); byId('password').addEventListener('keydown',(e)=>{if(e.key==='Enter')login();}); byId('logoutBtn').addEventListener('click',logout); byId('workspace').addEventListener('change',selectWorkspace); byId('runBtn').addEventListener('click',runTank);
-refreshHealth(); loadMe(); setInterval(refreshHealth,15000);
-</script>
-</body>
-</html>"""
+# Keep the UI in separate source files; inline its assets into the existing
+# per-response nonce policy so no new public asset routes or CSP exceptions are needed.
+_WEB_ROOT = Path(__file__).parent
+HTML_TEMPLATE = (
+    (_WEB_ROOT / "chat.html").read_text(encoding="utf-8")
+    .replace("__CHAT_STYLES__", (_WEB_ROOT / "chat.css").read_text(encoding="utf-8"))
+    .replace("__CHAT_SCRIPT__", (_WEB_ROOT / "chat.js").read_text(encoding="utf-8"))
+)
 
 
 def _render_html(csp_nonce: str) -> str:
