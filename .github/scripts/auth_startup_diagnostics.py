@@ -6,6 +6,9 @@ request headers, request bodies, environment bindings, or account identifiers.
 import json
 import os
 import re
+import signal
+import subprocess
+import threading
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -40,8 +43,9 @@ result = read("/workers/observability/telemetry/query", {
 def messages(value):
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in {"message", "$metadata.message", "$metadata.error"} and isinstance(item, str):
-                clean = item.replace(token, "[credential]").replace(account, "[account]")
+            if key in {"message", "$metadata.message", "$metadata.error"} and isinstance(item, (str, list)):
+                text = item if isinstance(item, str) else " ".join(str(part) for part in item)
+                clean = text.replace(token, "[credential]").replace(account, "[account]")
                 clean = re.sub(r"scrypt\$\S+|Bearer\s+\S+", "[credential]", clean)
                 print(clean[:2500])
             elif key not in {"headers", "body", "env", "bindings", "request"}:
@@ -52,4 +56,46 @@ def messages(value):
 
 
 messages(result.get("result", {}).get("events", {}))
+
+# Older production tokens can allow live tailing without the newer stored-log
+# query permission. This is still read only and scoped to the same Worker.
+def probe():
+    time.sleep(5)
+    try:
+        with urlopen(Request("https://tankaicore.com/api/health", headers={"User-Agent": "TankAI-Readiness/1"}), timeout=25) as response:
+            print("Readiness probe:", response.status)
+    except HTTPError as error:
+        print("Readiness probe:", error.code)
+    except Exception:
+        print("Readiness probe: unavailable")
+
+
+tail = subprocess.Popen(["npx", "--no-install", "wrangler", "tail", "tankai-core", "--format", "json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+thread = threading.Thread(target=probe, daemon=True)
+thread.start()
+try:
+    output, errors = tail.communicate(timeout=40)
+except subprocess.TimeoutExpired:
+    os.killpg(tail.pid, signal.SIGTERM)
+    try:
+        output, errors = tail.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        os.killpg(tail.pid, signal.SIGKILL)
+        output, errors = tail.communicate()
+decoder = json.JSONDecoder()
+while output.strip():
+    start = output.find("{")
+    if start < 0:
+        break
+    output = output[start:]
+    try:
+        event, end = decoder.raw_decode(output)
+    except ValueError:
+        output = output[1:]
+        continue
+    messages(event.get("logs", []))
+    messages(event.get("exceptions", []))
+    output = output[end:]
+if errors:
+    print(errors.replace(token, "[credential]").replace(account, "[account]")[-1500:])
 print("Auth startup diagnostics complete (read only).")
