@@ -50,6 +50,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager
+from tankai.web.auth_state import AuthState, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
@@ -242,6 +243,7 @@ class AppContext:
     allow_registration: bool
     login_limiter: LoginRateLimiter
     provider_limiter: ProviderCallRateLimiter
+    auth_state: AuthState | None = None
 
     @classmethod
     def from_env(cls, server_host: str) -> "AppContext":
@@ -254,7 +256,16 @@ class AppContext:
         data_root = Path(_env("TANKAI_DATA_ROOT", ".tankai/data")).resolve()
         auth_db = Path(_env("TANKAI_AUTH_DB", str(data_root / "auth.db"))).resolve()
         cookie_secure = _env_bool("TANKAI_COOKIE_SECURE", not is_loopback)
+        auth_state = AuthState.from_env()
+        if auth_state is not None:
+            auth_state.restore(auth_db)
         auth = AuthStore(auth_db, session_hours=_safe_int("TANKAI_SESSION_HOURS", 12, 1, 720))
+        owner_config = _env("TANKAI_BOOTSTRAP_OWNER")
+        if owner_config and auth_state is None:
+            raise RuntimeError("Owner bootstrap requires durable auth state")
+        bootstrap_owner(auth, owner_config)
+        if auth_state is not None:
+            auth_state.save(auth)
         job_queue = None
         if _env_bool("TANKAI_DEV_QUEUE_ENABLED", False):
             if mode != "session":
@@ -276,6 +287,7 @@ class AppContext:
             )
         return cls(
             auth_mode=mode,
+            auth_state=auth_state,
             auth=auth,
             runtimes=WorkspaceRuntimeManager(data_root),
             job_queue=job_queue,
@@ -436,6 +448,14 @@ class Handler(BaseHTTPRequestHandler):
         headers: dict[str, str] | None = None,
         suppress_body: bool = False,
     ) -> None:
+        if self.command == "POST" and self.app.auth_state is not None:
+            try:
+                self.app.auth_state.save(self.app.auth)
+            except Exception:
+                # Never acknowledge a login, logout, or account mutation until
+                # the account/session database is durably committed.
+                print(f"[web] auth persistence unavailable request_id={self.request_id}")
+                obj, code, set_cookie, headers = {"error": "Kontospeicher vorübergehend nicht verfügbar"}, 503, None, None
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")

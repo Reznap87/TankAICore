@@ -46,6 +46,8 @@ jobs:
         run: npm run cf:check
       - name: Verify Worker artifact
         run: test -s dist/cloudflare.js
+      - name: Test durable auth snapshots in the Worker runtime
+        run: node scripts/test-auth-state.mjs
       - name: Validate local Qwen Compose contract
         run: |
           install -m 600 .env.example .env
