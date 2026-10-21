@@ -111,10 +111,14 @@ Dann mit der dort dokumentierten interaktiven Passworteingabe ein Testkonto
 anlegen. Anmeldung und einen kurzen, quellenfreien Textauftrag im Chat prüfen.
 Ein Gateway-Smoke allein bestätigt nicht den gesamten TankAI-Chatablauf.
 
-Der Versuch begrenzt TankAI auf sieben Adapteraufrufe und 256 Ausgabetokens je
+Der Versuch begrenzt TankAI auf 20 Adapteraufrufe und 1024 Ausgabetokens je
 Aufruf, ohne SDK-Retries. Websuche und Development-Queue bleiben aus.
-Sieben ist das kleinste vom Workspace-Start akzeptierte gemeinsame Aufrufbudget;
-ein kleinerer Wert verhindert bereits den angemeldeten Health- und Chat-Aufruf.
+Sieben ist nur das kleinste vom Workspace-Start akzeptierte Aufrufbudget.
+Der normale Ablauf braucht bei fünf Planschritten bereits 14 Aufrufe vor der
+optionalen Memory-Verarbeitung. Die Testgrenze lässt dafür Platz; sie bleibt
+eine harte Obergrenze und garantiert keinen Abschluss aller Reparaturversuche.
+1024 Ausgabetokens geben den strukturierten Planner- und Critic-Antworten mehr
+Platz. Ein abgebrochener oder abgelehnter Lauf gilt weiterhin nicht als Erfolg.
 Hauptmodell und Critic nutzen denselben Router; ihre Unabhängigkeit ist damit
 **nicht nachgewiesen**. Der Test ist keine Produktionsfreigabe und keine
 Qualitätsabnahme. Keine öffentlichen Nutzer an diesen Test anschließen.

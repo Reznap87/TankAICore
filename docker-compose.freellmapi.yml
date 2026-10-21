@@ -51,9 +51,11 @@ services:
       TANKAI_STRICT_WEB_RESEARCH: "0"
       TANKAI_REQUIRE_RESEARCH_EVIDENCE: "1"
       TANKAI_DEV_QUEUE_ENABLED: "0"
-      TANKAI_LLM_MAX_TOKENS: "256"
-      # Workspace startup enforces a minimum budget of seven shared calls.
-      TANKAI_LLM_MAX_CALLS_PER_RUN: "7"
+      # Leave room for structured planner/critic JSON instead of a short reply.
+      TANKAI_LLM_MAX_TOKENS: "1024"
+      # Five steps need 14 calls before optional memory work. Seven only starts
+      # the workspace; it cannot complete the normal multi-step pipeline.
+      TANKAI_LLM_MAX_CALLS_PER_RUN: "20"
       TANKAI_LLM_MAX_RETRIES: "0"
       TANKAI_LLM_TIMEOUT_SECONDS: "60"
     depends_on:

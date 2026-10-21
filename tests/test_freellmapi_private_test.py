@@ -35,6 +35,51 @@ def test_private_compose_budget_allows_workspace_startup(tmp_path, monkeypatch):
         manager.close()
 
 
+def test_private_compose_budget_completes_five_steps_and_memory(tmp_path, monkeypatch):
+    from tankai.core.llm import BaseLLM
+    from tankai.web.runtime import WorkspaceRuntimeManager
+
+    class OfflinePipeline(BaseLLM):
+        # Exercise the live-path memory processing using scripted local replies.
+        # No provider SDK, credentials or network requests are involved.
+        provider_name = "offline-test"
+        model_name = "scripted-five-step"
+
+        def complete(self, prompt, *, system="", **kwargs):
+            if "planner" in system.lower():
+                return json.dumps({"rationale": "Five bounded analysis steps", "steps": [
+                    {"description": f"Compute part {i}", "specialist_type": "analysis",
+                     "expected_output": "391"} for i in range(5)
+                ]})
+            if "critic" in system.lower():
+                return '{"passed":true,"score":1.0,"issues":[],"suggestions":[]}'
+            if "memory-consolidator" in system.lower():
+                return "[]"
+            return "23 * 17 = 391"
+
+    compose = (ROOT / "docker-compose.freellmapi.yml").read_text(encoding="utf-8")
+    budget = re.search(r'^\s+TANKAI_LLM_MAX_CALLS_PER_RUN: "(\d+)"\s*$', compose, re.MULTILINE)
+    assert budget is not None
+    monkeypatch.setenv("TANKAI_LLM_MAX_CALLS_PER_RUN", budget.group(1))
+    monkeypatch.setenv("TANKAI_CRITIC_LLM", "")
+    monkeypatch.setenv("TANKAI_EMBEDDER", "hashing")
+    monkeypatch.setenv("TANKAI_REQUIRE_INDEPENDENT_CRITIC", "0")
+    monkeypatch.setenv("TANKAI_REQUIRE_RESEARCH_EVIDENCE", "1")
+    monkeypatch.setattr("tankai.web.runtime.get_llm", OfflinePipeline)
+    manager = WorkspaceRuntimeManager(tmp_path)
+    try:
+        runtime = manager.get(tenant_id=str(uuid4()), workspace_id=str(uuid4()))
+        result = runtime.tank.run("Berechne 23 mal 17 ohne Websuche")
+        assert len(result.plan.steps) == 5
+        assert result.verification_passed
+        assert result.final_answer == "23 * 17 = 391"
+        budget_receipt = next(r for r in result.receipts if r.action == "llm_call_budget")
+        assert 14 <= budget_receipt.details["used"] <= int(budget.group(1))
+        assert runtime.tank.run_store.list_recent(1)[0]["final_answer"] == result.final_answer
+    finally:
+        manager.close()
+
+
 def test_setup_preserves_encryption_and_keeps_credentials_private(tmp_path):
     path = tmp_path / "private" / "gateway.env"
     assert helper.initialize(path)
