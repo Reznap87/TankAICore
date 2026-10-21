@@ -1,11 +1,20 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.50
+Version: 5.7.51
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 20. Oktober 2026
+Statusdatum: 21. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 20. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 21. Oktober 2026
+
+5.7.51: Die Wiederherstellung des dauerhaften Kontospeichers akzeptiert nicht mehr
+jedes technisch intakte SQLite-Abbild. Vor dem atomaren Austausch müssen der
+TankAI-Tabellenvertrag und die aktuelle Auth-Schemaversion vollständig passen;
+fremde oder inkompatible Datenbanken lassen den bestehenden lokalen Kontostand
+unverändert. Ausgangsstand: 5e51377259ea5e0281607f7f1a7ce6592353543e,
+Tree 1a75c2c10666cc8d3ef8f262d44e17111f69b48d; main-CI #183 erfolgreich.
+Die Entwurfs-PRs #84 und #96 sowie Issue #25 bleiben getrennt offen. Keine
+Produktions-, Provider-, Secret-, Berechtigungs- oder Abrechnungsänderung.
 
 5.7.50: Abgeschlossene Human-Reviews benötigen einen expliziten Zeitzonenbezug.
 Receipts normalisieren gültige Prüfzeitpunkte auf UTC, ohne Serverzeitzonen anzunehmen.

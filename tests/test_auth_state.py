@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import sqlite3
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from uuid import uuid4
@@ -127,6 +128,32 @@ def test_corrupt_backup_fails_closed_without_replacing_existing_db(tmp_path, rem
     original = store.list_users()
     state.update(data=b"not a sqlite database", revision=1)
     with pytest.raises(RuntimeError, match="Invalid auth state"):
+        client().restore(path)
+    assert AuthStore(path).list_users() == original
+
+
+@pytest.mark.parametrize("kind", ["foreign", "wrong_version"])
+def test_healthy_but_incompatible_sqlite_backup_cannot_replace_auth_db(
+    tmp_path, remote, kind
+):
+    state, client = remote
+    path = tmp_path / "auth.db"
+    store = AuthStore(path)
+    bootstrap_owner(store, owner_config())
+    original = store.list_users()
+
+    incompatible = tmp_path / f"{kind}.db"
+    with sqlite3.connect(incompatible) as connection:
+        if kind == "foreign":
+            connection.execute("CREATE TABLE unrelated(value TEXT)")
+        else:
+            connection.execute("CREATE TABLE auth_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            connection.execute(
+                "INSERT INTO auth_meta(key,value) VALUES('schema_version','999')"
+            )
+    state.update(data=incompatible.read_bytes(), revision=1)
+
+    with pytest.raises(RuntimeError, match="Invalid auth state database"):
         client().restore(path)
     assert AuthStore(path).list_users() == original
 

@@ -18,6 +18,19 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import UUID
 
 MAX_SNAPSHOT = 8 * 1024 * 1024
+_REQUIRED_AUTH_TABLES = frozenset({
+    "auth_meta",
+    "users",
+    "tenants",
+    "workspaces",
+    "memberships",
+    "sessions",
+    "audit_events",
+    "provider_call_events",
+    "service_agents",
+    "agent_tokens",
+    "agent_job_grants",
+})
 
 
 class AuthStateUnavailable(RuntimeError):
@@ -29,6 +42,33 @@ class AuthStateUnavailable(RuntimeError):
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, message, headers, new_url):
         return None
+
+
+def _validate_snapshot(path: str) -> None:
+    """Reject healthy SQLite files that are not a compatible TankAI auth store."""
+    from .auth import AuthStore
+
+    connection = sqlite3.connect(path)
+    try:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        version = connection.execute(
+            "SELECT value FROM auth_meta WHERE key='schema_version'"
+        ).fetchone()
+        if (
+            connection.execute("PRAGMA quick_check").fetchone() != ("ok",)
+            or not _REQUIRED_AUTH_TABLES.issubset(tables)
+            or version != (str(AuthStore.SCHEMA_VERSION),)
+        ):
+            raise RuntimeError("Invalid auth state database")
+    except sqlite3.DatabaseError as exc:
+        raise RuntimeError("Invalid auth state database") from exc
+    finally:
+        connection.close()
 
 
 class AuthState:
@@ -67,12 +107,7 @@ class AuthState:
         try:
             with os.fdopen(descriptor, "wb") as output:
                 output.write(data)
-            connection = sqlite3.connect(temporary)
-            try:
-                if connection.execute("PRAGMA quick_check").fetchone() != ("ok",):
-                    raise RuntimeError("Invalid auth state database")
-            finally:
-                connection.close()
+            _validate_snapshot(temporary)
             # Called before any connection to the destination is opened.
             for suffix in ("-wal", "-shm"):
                 Path(str(path) + suffix).unlink(missing_ok=True)
