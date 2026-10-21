@@ -52,7 +52,8 @@ services:
       TANKAI_REQUIRE_RESEARCH_EVIDENCE: "1"
       TANKAI_DEV_QUEUE_ENABLED: "0"
       TANKAI_LLM_MAX_TOKENS: "256"
-      TANKAI_LLM_MAX_CALLS_PER_RUN: "5"
+      # Workspace startup enforces a minimum budget of seven shared calls.
+      TANKAI_LLM_MAX_CALLS_PER_RUN: "7"
       TANKAI_LLM_MAX_RETRIES: "0"
       TANKAI_LLM_TIMEOUT_SECONDS: "60"
     depends_on:

@@ -1,6 +1,8 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
+from uuid import uuid4
 
 import pytest
 
@@ -9,6 +11,28 @@ ROOT = Path(__file__).parents[1]
 spec = importlib.util.spec_from_file_location("freellmapi_test", ROOT / "scripts/freellmapi_test.py")
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
+
+
+def test_private_compose_budget_allows_workspace_startup(tmp_path, monkeypatch):
+    from tankai.web.runtime import WorkspaceRuntimeManager
+
+    compose = (ROOT / "docker-compose.freellmapi.yml").read_text(encoding="utf-8")
+    budget = re.search(r'^\s+TANKAI_LLM_MAX_CALLS_PER_RUN: "(\d+)"\s*$', compose, re.MULTILINE)
+    assert budget is not None
+    monkeypatch.setenv("TANKAI_LLM_MAX_CALLS_PER_RUN", budget.group(1))
+    # Exercise the real workspace startup with the shipped limit, without any
+    # network access, provider credentials or inference.
+    monkeypatch.setenv("TANKAI_LLM", "mock")
+    monkeypatch.setenv("TANKAI_CRITIC_LLM", "")
+    monkeypatch.setenv("TANKAI_EMBEDDER", "hashing")
+    monkeypatch.setenv("TANKAI_REQUIRE_INDEPENDENT_CRITIC", "0")
+    manager = WorkspaceRuntimeManager(tmp_path)
+    try:
+        runtime = manager.get(tenant_id=str(uuid4()), workspace_id=str(uuid4()))
+        assert runtime.root.is_dir()
+        assert runtime.tank.llm.is_simulation
+    finally:
+        manager.close()
 
 
 def test_setup_preserves_encryption_and_keeps_credentials_private(tmp_path):
