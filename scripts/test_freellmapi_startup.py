@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import time
 from uuid import uuid4
 
@@ -30,11 +31,18 @@ def configuration() -> dict:
     # Disposable fixture, never a real installation's encryption or API key.
     env["FREELLMAPI_ENCRYPTION_KEY"] = "0" * 64
     env["FREELLMAPI_UNIFIED_KEY"] = ""
-    result = subprocess.run([
-        "docker", "compose", "-p", "tankai-freellm-config-check",
-        "-f", "docker-compose.yml", "-f", "docker-compose.freellmapi.yml",
-        "config", "--no-env-resolution", "--format", "json",
-    ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=30, check=True)
+    # Resolve the base service's .env against an empty scratch directory.
+    # Do not read an operator's real .env, and do not require newer Compose's
+    # --no-env-resolution flag. Only the image-based router service is used.
+    with tempfile.TemporaryDirectory(prefix="tankai-freellm-compose-") as temporary:
+        Path(temporary, ".env").write_text("", encoding="utf-8")
+        result = subprocess.run([
+            "docker", "compose", "--project-directory", temporary,
+            "-p", "tankai-freellm-config-check",
+            "-f", str(ROOT / "docker-compose.yml"),
+            "-f", str(ROOT / "docker-compose.freellmapi.yml"),
+            "config", "--format", "json",
+        ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=30, check=True)
     service = json.loads(result.stdout)["services"]["freellmapi"]
     assert service["image"] == IMAGE, "Router image must stay pinned"
     assert service.get("user") == "node", "Router must start directly as unprivileged node"
@@ -99,6 +107,10 @@ def main() -> int:
         return 0
     except (AssertionError, RuntimeError) as error:
         print(str(error))
+    except subprocess.CalledProcessError as error:
+        action = error.cmd[1] if len(error.cmd) > 1 else "unknown"
+        print(json.dumps({"docker_action": action, "exit_code": error.returncode,
+                          "detail": "Command output and router logs omitted"}))
     except (OSError, ValueError, subprocess.SubprocessError):
         print("Docker configuration or startup check failed; router logs and credentials omitted.")
     return 1
