@@ -3,6 +3,9 @@
 services:
   freellmapi:
     image: ghcr.io/tashfeenahmed/freellmapi@sha256:c3b92211cc0ada65e6044e8a17d3878ca27f20af8ca74cfdc4a4d51aa3f6ac63
+    # Start as the image's existing unprivileged user. The root entrypoint's
+    # setpriv cannot change UID/GID after cap_drop: ALL (exit status 127).
+    user: "node"
     environment:
       NODE_ENV: production
       PORT: "3001"

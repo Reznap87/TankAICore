@@ -33,6 +33,29 @@ festgelegt, gebaut aus Upstream-Commit
 Nachweis: [Upstream Docker Run](https://github.com/tashfeenahmed/freellmapi/actions/runs/39425845703).
 Keine automatischen Containerupdates, kein Docker-Socket im Router.
 
+Der Router startet direkt als Image-Benutzer `node`, weiterhin mit `cap_drop: ALL`
+und `no-new-privileges`. Der Root-Start des Images würde `setpriv` zum Wechseln
+von Benutzer/Gruppen benötigen; mit vollständig entzogenen Capabilities kann
+dieser Schritt mit Exit-Code 127 abbrechen. Neue benannte Volumes übernehmen das
+im Image bereits für `node` vorbereitete Datenverzeichnis. Ein fremdes oder
+bereits Root gehörendes Volume wird nicht automatisch umgeschrieben.
+
+Bei einem nicht startenden bestehenden Container zunächst dessen konkrete
+Startfehlermeldung und Volume-Besitzer prüfen. Den Verschlüsselungsschlüssel und
+die Daten erhalten; weder `down -v` noch eine erneute Schlüsselerzeugung ausführen.
+Die lokale Konfiguration lässt sich ohne Docker-Engine prüfen:
+
+```bash
+python3 scripts/test_freellmapi_startup.py --config-only
+```
+
+Ohne `--config-only` prüft das Skript das echte gepinnte Image in einem
+wegwerfbaren Container: Benutzer ist nicht Root, effektive Capabilities sind
+leer und `/api/ping` antwortet. Der Container hat kein Netzwerk, keinen Hostport,
+keine Anbieterzugänge und kein persistentes Volume. Startlogs werden nicht
+ausgegeben, weil sie einen Setup-Code enthalten können. Der Test löst keine
+Inferenz aus und ersetzt nicht die Prüfung des vorhandenen Hetzner-Containers.
+
 ## 2. Eigenen Anbieterzugang hinzufügen
 
 Auf demselben Rechner `http://127.0.0.1:3001` öffnen, das erste private
