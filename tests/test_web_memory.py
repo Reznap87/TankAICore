@@ -177,7 +177,7 @@ def test_resume_rejects_extra_options_and_does_not_leak_internal_errors(memory_a
 
 
 def test_run_response_and_history_include_the_stable_memory_run_identifier(memory_api):
-    _, _, clients, _ = memory_api
+    _, runtime, clients, base = memory_api
     owner, csrf = clients[0]
     status, _, result = owner.post("/api/run", {"goal": "Local mock fixture"}, csrf=csrf)
     assert status == 200
@@ -186,6 +186,54 @@ def test_run_response_and_history_include_the_stable_memory_run_identifier(memor
     state = owner.get("/api/memory/consolidation/" + result["goal_id"])[2]["memory_consolidation"]
     assert state["state"] == "not_eligible"
     assert not state["can_resume"]
+    path = "/api/runs/" + result["goal_id"] + "/usage"
+    assert Client(base).get(path)[0] == 401
+    assert clients[1][0].get(path)[0] == 404
+    status, _, measured = owner.get(path)
+    assert status == 200
+    assert measured["usage"]["adapter_attempts"] > 0
+    assert measured["usage"]["cost_status"] == "not_priced"
+    assert measured["usage"]["attempts_with_incomplete_usage"] > 0
+    assert "Local mock fixture" not in json.dumps(measured)
+    assert runtime.usage_ledger.summary(result["goal_id"]) == measured["usage"]
+
+
+def test_workspace_work_inventory_paginates_older_jobs_without_text_or_foreign_access(memory_api):
+    _, runtime, clients, base = memory_api
+    owner, csrf = clients[0]
+    # More jobs than the history window. No inference: checkpoints are fixtures.
+    ids = [seed(runtime.tank.ltm) for _ in range(23)]
+    assert Client(base).get("/api/memory/work")[0] == 401
+    assert clients[1][0].get("/api/memory/work")[2]["items"] == []
+    first = owner.get("/api/memory/work")[2]
+    second = owner.get("/api/memory/work?offset=20")[2]
+    assert len(first["items"]) == 20 and len(second["items"]) == 3
+    assert first["next_offset"] == 20 and second["next_offset"] is None
+    assert set(ids) == {item["goal_id"] for item in first["items"] + second["items"]}
+    assert "Private fixture" not in json.dumps(first)
+    assert all(item["can_resume"] for item in first["items"])
+    for query in ("offset=-1", "offset=10001", "offset=no", "offset=", "offset=0&offset=1", "workspace_id=foreign"):
+        assert owner.get("/api/memory/work?" + query)[0] == 400
+    resumed = second["items"][0]["goal_id"]
+    assert owner.post("/api/memory/consolidation/" + resumed + "/resume", {}, csrf=csrf)[0] == 200
+    ids_after = {item["goal_id"] for offset in (0, 20) for item in owner.get("/api/memory/work?offset=" + str(offset))[2]["items"]}
+    assert ids_after == set(ids) - {resumed}
+
+
+def test_web_selects_verified_path_without_removing_checks_or_leaking_run_settings(memory_api):
+    _, runtime, clients, _ = memory_api
+    owner, csrf = clients[0]
+    original = runtime.tank.verified_single_step, runtime.tank.max_retries
+    status, _, result = owner.post("/api/run", {"goal": "Berechne 47 mal 19"}, csrf=csrf)
+    assert status == 200 and result["execution_path"] == "verified_single_step"
+    actions = [receipt["action"] for receipt in result["receipts"]]
+    assert "reuse_verified_single_step" in actions
+    assert runtime.tank.llm_call_budget.snapshot()["used"] == 5
+    assert (runtime.tank.verified_single_step, runtime.tank.max_retries) == original
+    # Simulation remains explicitly unreleased; shorter is not evidence of live quality.
+    assert result["execution_mode"] == "simulation" and not result["release_ready"]
+    status, _, next_result = owner.post("/api/run", {"goal": "Ein vollständiger Projektplan"}, csrf=csrf)
+    assert status == 200 and next_result["execution_path"] == "standard"
 
 
 def test_container_html_smoke_accepts_current_page_and_still_bounds_oversized_reads(memory_api, monkeypatch):

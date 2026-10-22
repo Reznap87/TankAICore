@@ -13,6 +13,9 @@
   let theme = 'dark';
   let toastTimer;
   let memoryRequest = 0;
+  let workRequest = 0;
+  let workOffset = 0;
+  let workNext = null;
   try { const stored = localStorage.getItem('tankai.ui.theme'); if (['dark', 'light', 'system'].includes(stored)) theme = stored; }
   catch (error) { console.info('TankAI: appearance preference is unavailable.'); }
   function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = String(text); return node; }
@@ -31,7 +34,7 @@
   function resetResult() {
     memoryRequest += 1; byId('memory-recovery').hidden = true;
     selectedResult = null; selectedIndex = -1;
-    ['questionRow', 'outCard', 'planCard', 'receiptCard'].forEach(id => { byId(id).hidden = true; });
+    ['questionRow', 'outCard', 'planCard', 'receiptCard', 'usageCard'].forEach(id => { byId(id).hidden = true; });
     ['question', 'answer', 'badges', 'planBody', 'receiptBody', 'rationale'].forEach(id => byId(id).replaceChildren());
     byId('export-chat').disabled = true;
     byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true;
@@ -39,6 +42,7 @@
     document.title = 'TankAI – Dein Chat';
   }
   function resetWorkspace() {
+    workRequest += 1; workOffset = 0; workNext = null; byId('work-items').replaceChildren(); byId('work-status').textContent = ''; if (byId('work-dialog').open) byId('work-dialog').close();
     historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren();
     byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = '';
     byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft';
@@ -61,7 +65,7 @@
   }
   function setBusy(value) {
     busy = value; byId('goal').disabled = value;
-    ['new-chat', 'workspace', 'memory-resume', 'memory-refresh'].forEach(id => { byId(id).disabled = value; });
+    ['new-chat', 'workspace', 'memory-resume', 'memory-refresh', 'work-open', 'work-refresh', 'work-prev', 'work-next'].forEach(id => { byId(id).disabled = value; });
     document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; });
     byId('runBtn').disabled = value || !byId('goal').value.trim();
     byId('composer').setAttribute('aria-busy', String(value));
@@ -193,6 +197,46 @@
       if (requestEpoch === epoch) { setBusy(false); renderHistory(); }
     }
   }
+  async function loadWork(offset = 0) {
+    if (busy || !currentUser) return;
+    const request = ++workRequest; const requestEpoch = epoch;
+    byId('work-items').replaceChildren(); byId('work-status').textContent = 'Offene Aufbereitungen werden geladen …';
+    byId('work-prev').hidden = true; byId('work-next').hidden = true;
+    try {
+      const page = await jsonFetch('/api/memory/work?offset=' + offset);
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      workOffset = page.offset; workNext = page.next_offset;
+      byId('work-status').textContent = page.items.length ? 'Einträge ' + (offset + 1) + ' bis ' + (offset + page.items.length) + '. Die Liste zeigt den aktuellen Stand.' : 'Keine offenen Aufbereitungen auf dieser Seite.';
+      const labels = { prepared: 'Vorbereitet', needs_inference: 'Neue Modellanfrage nötig', running: 'In Bearbeitung', not_eligible: 'Nicht fortsetzbar', not_started: 'Nicht begonnen' };
+      page.items.forEach(item => {
+        const row = element('div', 'work-item'); row.append(element('strong', '', labels[item.state] || 'Status unbekannt'));
+        row.append(element('p', 'muted', 'Lauf ' + item.goal_id.slice(0, 8) + ' · ' + new Date(item.updated_at).toLocaleString('de-DE')));
+        if (item.can_resume === true) { const button = element('button', 'secondary-button', 'Wissen fertig speichern'); button.type = 'button'; button.disabled = busy; button.addEventListener('click', () => resumeWork(item.goal_id)); row.append(button); }
+        byId('work-items').append(row);
+      });
+      byId('work-prev').hidden = offset === 0; byId('work-next').hidden = workNext === null;
+    } catch (error) {
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      if (error.status === 401) showLogin(); else byId('work-status').textContent = 'Übersicht nicht verfügbar. Bitte erneut aktualisieren.';
+    }
+  }
+  async function resumeWork(runId) {
+    if (busy || !currentUser) return;
+    const requestEpoch = epoch; const request = ++workRequest; const workspaceResult = selectedResult;
+    setBusy(true); byId('work-items').querySelectorAll('button').forEach(button => { button.disabled = true; });
+    byId('work-status').textContent = 'Vorbereitete Einträge werden gespeichert …';
+    try {
+      const result = await jsonFetch('/api/memory/consolidation/' + encodeURIComponent(runId) + '/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      if (workspaceResult && selectedResult === workspaceResult && memoryRunId(workspaceResult) === runId) { memoryRequest += 1; workspaceResult.memory_consolidation = result.memory_consolidation; renderMemoryState(workspaceResult); }
+      toast('Wissensaufbereitung abgeschlossen.');
+    } catch (error) {
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      if (error.status === 401) showLogin(); else toast('Speichern nicht bestätigt. Der Status wird neu geladen.');
+    } finally {
+      if (requestEpoch === epoch) { setBusy(false); await loadWork(0); }
+    }
+  }
   function renderResult(data) {
     selectedResult = data; byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
     byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
@@ -204,10 +248,17 @@
     byId('rationale').textContent = String(data.plan?.rationale || '');
     if (Array.isArray(steps)) steps.forEach((step, index) => { const row = element('tr'); row.append(textCell(index + 1), textCell(step.specialist_type), textCell(step.description), textCell(step.status || '—')); planBody.append(row); });
     const receiptBody = byId('receiptBody'); receiptBody.replaceChildren(); const receipts = info.receipts; byId('receiptCard').hidden = !receipts.length;
+    const usage = receipts.find(receipt => receipt.action === 'llm_usage')?.details;
+    byId('usageCard').hidden = !usage;
+    byId('usageInfo').textContent = usage ? usageText(usage) : '';
     receipts.forEach(receipt => { const row = element('tr'); row.append(textCell(receipt.actor), textCell(receipt.action), textCell(receipt.success ? '✓' : '✗'), textCell(String(receipt.output_summary || '').slice(0, 300))); receiptBody.append(row); });
     const title = String(data.goal || 'Gespräch').replace(/\s+/g, ' ').slice(0, 55); byId('topbar-title').textContent = title; document.title = title + ' – TankAI'; byId('export-chat').disabled = false;
     byId('status').textContent = resultStatus(data, info);
     requestAnimationFrame(() => { byId('messages').scrollTop = byId('messages').scrollHeight; });
+  }
+  function usageText(usage) {
+    const tokens = usage.reported_tokens || {};
+    return 'Gemeldete Eingabetokens: ' + (tokens.input_tokens ?? 'nicht gemeldet') + '\nGemeldete Ausgabetokens: ' + (tokens.output_tokens ?? 'nicht gemeldet') + '\nBei ' + String(usage.attempts_with_incomplete_usage ?? 0) + ' von ' + String(usage.adapter_attempts ?? 0) + ' Versuchen fehlen vollständige Verbrauchsdaten.\nKosten sind noch nicht berechnet. Interne Versuche des Routers sind nicht bestätigt.';
   }
   async function runTank(event) {
     event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
@@ -240,6 +291,10 @@
   byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEventListener('click', exportChat);
   byId('memory-resume').addEventListener('click', resumeMemory);
   byId('memory-refresh').addEventListener('click', () => { if (!busy && selectedResult) loadMemoryState(selectedResult); });
+  byId('work-open').addEventListener('click', () => { if (!busy) { showDialog('work-dialog'); loadWork(0); } });
+  byId('work-refresh').addEventListener('click', () => loadWork(0));
+  byId('work-prev').addEventListener('click', () => loadWork(Math.max(0, workOffset - 20)));
+  byId('work-next').addEventListener('click', () => { if (workNext !== null) loadWork(workNext); });
   byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
   byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
   byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));

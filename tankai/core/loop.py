@@ -128,7 +128,6 @@ class TankAI:
         Führt den kompletten PLAN → ROUTE → VERIFY → LEARN Zyklus aus.
         """
         start = time.perf_counter()
-        self.llm_call_budget.reset()
 
         goal = Goal(
             description=goal_description,
@@ -137,6 +136,7 @@ class TankAI:
             status=TaskStatus.PLANNING,
         )
         self.current_goal = goal
+        self.llm_call_budget.reset(run_id=goal.id)
         self.receipts = []
 
         self._log_header(goal)
@@ -477,6 +477,14 @@ class TankAI:
             },
         )
         self.receipts.append(budget_receipt)
+        usage = self.llm_call_budget.usage_snapshot()
+        self.receipts.append(Receipt(
+            action="llm_usage", actor=Role.COMMANDER,
+            input_summary="Metadaten der Adapterversuche",
+            output_summary=(f"attempts={usage['adapter_attempts']}, "
+                            f"incomplete_usage={usage['attempts_with_incomplete_usage']}; costs not priced"),
+            success=True, details=usage,
+        ))
         result.receipts = list(self.receipts)
 
         if self.run_store is not None:

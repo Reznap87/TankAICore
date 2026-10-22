@@ -717,7 +717,7 @@ class AuthStore:
             try:
                 conn.execute(
                     "DELETE FROM provider_call_events "
-                    "WHERE user_id=? AND provider=? AND occurred_at<?",
+                    "WHERE user_id=? AND provider=? AND occurred_at<=?",
                     (user_id, provider_n, _iso(cutoff)),
                 )
                 row = conn.execute(
@@ -1257,7 +1257,12 @@ class AuthStore:
 
 
 class ProviderCallRateLimiter:
-    """Persistente per-user/provider Sliding-Window-Grenze auf Basis des AuthStore."""
+    """Persistent user limit plus an optional shared upstream admission limit.
+
+    A scope identifies a shared egress/router, not an SDK protocol or user.
+    Auto-routed models share the conservative pool; their hidden attempts are
+    not claimed to be fully accounted for. No automatic provider retry occurs.
+    """
 
     def __init__(
         self,
@@ -1266,11 +1271,21 @@ class ProviderCallRateLimiter:
         limit: int = 40,
         window_seconds: int = 60,
         clock: Callable[[], datetime] | None = None,
+        shared_scope: str = "",
+        shared_limit: int = 2,
+        shared_window_seconds: int = 60,
     ) -> None:
         self.store = store
         self.limit = max(1, min(int(limit), 240))
         self.window_seconds = max(1, min(int(window_seconds), 3600))
         self._clock = clock or _utcnow
+        if shared_scope and not re.fullmatch(r"[a-z0-9_.-]{1,64}", shared_scope):
+            raise ValueError("Ungültiger gemeinsamer Upstream-Bereich")
+        if not 1 <= shared_limit <= 240 or not 1 <= shared_window_seconds <= 3600:
+            raise ValueError("Ungültige gemeinsame Upstream-Grenze")
+        self.shared_scope = shared_scope
+        self.shared_limit = shared_limit
+        self.shared_window_seconds = shared_window_seconds
 
     @staticmethod
     def _provider(identity: str) -> str:
@@ -1281,6 +1296,19 @@ class ProviderCallRateLimiter:
 
     def consume(self, user_id: str, identity: str) -> None:
         provider = self._provider(identity)
+        # Shared admission comes first, so users cannot bypass an upstream
+        # limit by switching accounts, workspaces, model aliases or protocols.
+        if self.shared_scope and provider != "mock":
+            retry_after = self.store.consume_provider_call_event(
+                user_id="__shared_upstream__", provider=self.shared_scope,
+                limit=self.shared_limit, window_seconds=self.shared_window_seconds,
+                now=self._clock(),
+            )
+            if retry_after is not None:
+                raise LLMRateLimitExceeded(
+                    provider="shared-upstream", limit=self.shared_limit,
+                    window_seconds=self.shared_window_seconds, retry_after_seconds=retry_after,
+                )
         retry_after = self.store.consume_provider_call_event(
             user_id=user_id,
             provider=provider,

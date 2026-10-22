@@ -449,6 +449,24 @@ class LongTermMemory:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def consolidation_work_page(self, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
+        """Bounded metadata inventory, including runs outside recent history."""
+        if type(offset) is not int or not 0 <= offset <= 10000:
+            raise ValueError("Invalid work offset")
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise ValueError("Invalid work limit")
+        rows = self._conn.execute(
+            "SELECT run_id, updated_at FROM consolidation_jobs WHERE status != 'completed' "
+            "ORDER BY updated_at, run_id LIMIT ? OFFSET ?", (limit + 1, offset),
+        ).fetchall()
+        items = []
+        for row in rows[:limit]:
+            status = self.consolidation_status(row["run_id"])
+            if status is not None:
+                items.append({**status, "updated_at": row["updated_at"]})
+        return {"items": items, "offset": offset,
+                "next_offset": offset + limit if len(rows) > limit and offset + limit <= 10000 else None}
+
     def consolidation_status(self, run_id: str) -> dict[str, Any] | None:
         """Current recovery state without reading checkpoint contents or inference."""
         row = self._conn.execute("SELECT status, metadata FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -616,14 +634,28 @@ Regeln:
         1. Vector-Suche über Semantic + Procedural
         2. Anreicherung mit Metadaten aus der DB
         """
-        hits = self.vectors.search(query, k=k * 2, min_score=min_score)
+        if k <= 0:
+            return []
+        types = set(memory_types or ["semantic", "procedural"]) & {"semantic", "procedural"}
+        if not types:
+            return []
+        placeholders = ",".join("?" for _ in types)
+        allowed_ids = {row["id"] for row in self._conn.execute(
+            "SELECT id FROM memory_entries WHERE validity = 'valid' "
+            "AND retention_policy IN ('hot', 'warm') "
+            f"AND memory_type IN ({placeholders})", tuple(sorted(types)),
+        ).fetchall()}
+        # Filter before top-k: invalid or archived vectors must not crowd out
+        # usable knowledge, even when their similarity scores are higher.
+        hits = self.vectors.search(query, k=k, min_score=min_score, allowed_ids=allowed_ids)
         results = []
 
         for entry_id, score, meta in hits:
             row = self._conn.execute(
                 "SELECT * FROM memory_entries WHERE id = ?", (entry_id,)
             ).fetchone()
-            if not row:
+            if (not row or row["validity"] != "valid"
+                    or row["retention_policy"] not in {"hot", "warm"}):
                 continue
             mtype = row["memory_type"]
             if memory_types and mtype not in memory_types:

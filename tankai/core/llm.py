@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import threading
+import time
+from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Any, Callable
+
+from .usage import CompletionResult, field_value, safe_label, safe_tokens, token_counts, usage_summary
 
 
 class BaseLLM(ABC):
@@ -18,6 +23,9 @@ class BaseLLM(ABC):
     provider_name = "unknown"
     model_name = "unknown"
     is_simulation = False
+
+    def complete_with_usage(self, prompt: str, *, system: str = "", **kwargs: Any) -> CompletionResult:
+        return CompletionResult(self.complete(prompt, system=system, **kwargs))
 
     @abstractmethod
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
@@ -60,12 +68,44 @@ class LLMCallBudget:
             raise ValueError("max_calls muss zwischen 1 und 40 liegen")
         self.max_calls = parsed
         self._used = 0
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._call_guard: Callable[[str], None] | None = None
+        self._run_id = str(uuid4())
+        self._attempts: dict[str, dict] = {}
+        self._usage_sink: Callable[[dict], None] | None = None
 
-    def reset(self) -> None:
+    def reset(self, run_id: str | None = None) -> None:
         with self._lock:
             self._used = 0
+            self._run_id = run_id or str(uuid4())
+            self._attempts = {}
+
+    def set_usage_sink(self, sink: Callable[[dict], None]) -> None:
+        with self._lock:
+            self._usage_sink = sink
+
+    def begin_attempt(self, provider: str, model: str, simulation: bool) -> dict:
+        with self._lock:
+            number = self.consume(f"{provider}:{model}".lower())
+            event = {"attempt_id": str(uuid4()), "run_id": self._run_id, "adapter_attempt": number,
+                     "provider": safe_label(provider), "requested_model": safe_label(model),
+                     "reported_model": None, "status": "started", "tokens": {},
+                     "simulation": simulation, "created_at": datetime.now(timezone.utc).isoformat()}
+            if self._usage_sink:
+                self._usage_sink(event)
+            self._attempts[event["attempt_id"]] = event
+            return dict(event)
+
+    def finish_attempt(self, event: dict) -> None:
+        with self._lock:
+            if self._usage_sink:
+                self._usage_sink(event)
+            if event["run_id"] == self._run_id:
+                self._attempts[event["attempt_id"]] = dict(event)
+
+    def usage_snapshot(self) -> dict:
+        with self._lock:
+            return usage_summary(sorted(self._attempts.values(), key=lambda item: item["adapter_attempt"]))
 
     def set_call_guard(self, guard: Callable[[str], None] | None) -> None:
         """Setzt einen run-lokalen Guard; ``None`` entfernt ihn vollständig."""
@@ -103,9 +143,22 @@ class BudgetedLLM(BaseLLM):
             self.client = client
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
-        identity = f"{self.provider_name}:{self.model_name}".lower()
-        self.budget.consume(identity)
-        return self.delegate.complete(prompt, system=system, **kwargs)
+        return self.complete_with_usage(prompt, system=system, **kwargs).text
+
+    def complete_with_usage(self, prompt: str, *, system: str = "", **kwargs: Any) -> CompletionResult:
+        event = self.budget.begin_attempt(self.provider_name, self.model_name, self.is_simulation)
+        start = time.perf_counter()
+        try:
+            response = self.delegate.complete_with_usage(prompt, system=system, **kwargs)
+        except Exception as exc:
+            event.update(status="failed", error_type=type(exc).__name__,
+                         duration_ms=round((time.perf_counter() - start) * 1000))
+            self.budget.finish_attempt(event)
+            raise
+        event.update(status="completed", reported_model=safe_label(response.reported_model), tokens=safe_tokens(response.tokens),
+                     duration_ms=round((time.perf_counter() - start) * 1000))
+        self.budget.finish_attempt(event)
+        return response
 
 
 class MockLLM(BaseLLM):
@@ -531,6 +584,9 @@ class OpenAILLM(BaseLLM):
         self.client = OpenAI(**client_kwargs)
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
+        return self.complete_with_usage(prompt, system=system, **kwargs).text
+
+    def complete_with_usage(self, prompt: str, *, system: str = "", **kwargs: Any) -> CompletionResult:
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -541,7 +597,9 @@ class OpenAILLM(BaseLLM):
             temperature=kwargs.get("temperature", self.temperature),
             max_tokens=kwargs.get("max_tokens", self.max_tokens),
         )
-        return (resp.choices[0].message.content or "").strip()
+        return CompletionResult((resp.choices[0].message.content or "").strip(),
+                                safe_label(field_value(resp, "model")),
+                                token_counts(field_value(resp, "usage")))
 
 
 class AnthropicLLM(BaseLLM):
@@ -597,6 +655,9 @@ class AnthropicLLM(BaseLLM):
         )
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
+        return self.complete_with_usage(prompt, system=system, **kwargs).text
+
+    def complete_with_usage(self, prompt: str, *, system: str = "", **kwargs: Any) -> CompletionResult:
         resp = self.client.messages.create(
             model=self.model,
             max_tokens=kwargs.get("max_tokens", self.max_tokens),
@@ -610,7 +671,8 @@ class AnthropicLLM(BaseLLM):
             text = getattr(block, "text", None)
             if text:
                 parts.append(text)
-        return "\n".join(parts).strip()
+        return CompletionResult("\n".join(parts).strip(), safe_label(field_value(resp, "model")),
+                                token_counts(field_value(resp, "usage"), anthropic=True))
 
 
 
