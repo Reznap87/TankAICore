@@ -134,6 +134,11 @@ optionalen Memory-Verarbeitung. Die Testgrenze lässt dafür Platz; sie bleibt
 eine harte Obergrenze und garantiert keinen Abschluss aller Reparaturversuche.
 1024 Ausgabetokens geben den strukturierten Planner- und Critic-Antworten mehr
 Platz. Ein abgebrochener oder abgelehnter Lauf gilt weiterhin nicht als Erfolg.
+Schlägt erst die zusätzliche Memory-Aufbereitung nach dem gespeicherten
+Ergebnis fehl (zum Beispiel wegen eines Ratenlimits), bleibt die ursprüngliche
+Antwort samt Prüfstatus erhalten. Ein fehlgeschlagenes Receipt
+`defer_memory_consolidation` weist die ausstehende Aufbereitung aus; ein
+automatischer Wiederholungsauftrag wird dadurch nicht angelegt.
 Hauptmodell und Critic nutzen denselben Router; ihre Unabhängigkeit ist damit
 **nicht nachgewiesen**. Der Test ist keine Produktionsfreigabe und keine
 Qualitätsabnahme. Keine öffentlichen Nutzer an diesen Test anschließen.

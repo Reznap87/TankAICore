@@ -421,7 +421,21 @@ class TankAI:
             run_id = self.ltm.store_episode(result, goal.description)
             created = []
             if not any_simulation:
-                created = self.ltm.consolidate(run_id, llm=self.llm)
+                # The episode already contains the final answer and verification.
+                # Optional extra inference must not turn that result into an HTTP
+                # failure when the provider or shared call budget is exhausted.
+                try:
+                    created = self.ltm.consolidate(run_id, llm=self.llm)
+                except Exception as exc:
+                    self.receipts.append(Receipt(
+                        action="defer_memory_consolidation",
+                        actor=Role.MEMORY,
+                        input_summary=goal.description,
+                        output_summary="Memory-Aufbereitung ausstehend; Ergebnis bleibt erhalten",
+                        success=False,
+                        details={"error_type": type(exc).__name__, "episode_stored": True,
+                                 "deferred": True, "retry_scheduled": False},
+                    ))
                 if final_critique.passed and plan is not None:
                     self.ltm.promote_to_procedure(
                         plan, success_score=final_critique.score, goal_description=goal.description
