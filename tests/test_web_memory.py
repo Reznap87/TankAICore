@@ -1,9 +1,12 @@
 """Real session/CSRF requests; all memory fixtures are local scripted replies."""
 import json
+import importlib.util
+from pathlib import Path
 import threading
 from types import SimpleNamespace
 from datetime import timedelta
 from uuid import uuid4
+from urllib.request import urlopen
 
 import pytest
 
@@ -183,3 +186,33 @@ def test_run_response_and_history_include_the_stable_memory_run_identifier(memor
     state = owner.get("/api/memory/consolidation/" + result["goal_id"])[2]["memory_consolidation"]
     assert state["state"] == "not_eligible"
     assert not state["can_resume"]
+
+
+def test_container_html_smoke_accepts_current_page_and_still_bounds_oversized_reads(memory_api, monkeypatch):
+    app, _, _, base = memory_api
+    # Match the container's public-page headers; no further login is performed.
+    app.cookie_secure = True
+    app.hsts_seconds = 31_536_000
+    path = Path(__file__).parents[1] / ".github/scripts/production_web_container_smoke.py"
+    spec = importlib.util.spec_from_file_location("memory_html_smoke", path)
+    smoke = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(smoke)
+    smoke.html_contract(base)
+    with urlopen(base) as response:
+        headers = response.headers
+    reads = []
+    class OversizedResponse:
+        status = 200
+        def __init__(self):
+            self.headers = headers
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self, amount):
+            reads.append(amount)
+            return b"x" * amount
+    monkeypatch.setattr(smoke.OPENER, "open", lambda *args, **kwargs: OversizedResponse())
+    with pytest.raises(smoke.Failure, match="HTML response too large"):
+        smoke.html_contract(base)
+    assert reads == [smoke.HTML_LIMIT + 1]

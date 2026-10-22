@@ -28,7 +28,9 @@ DOCKER = shutil.which("docker") or "docker"
 MANAGED_LABEL = "com.tankai.ci.production-web-smoke"
 SCOPE_LABEL = MANAGED_LABEL + ".scope"
 HTTP_LIMIT = 4096
-HTML_LIMIT = 50_000
+# The nonce-protected page embeds its CSS and JS, including memory recovery.
+# Keep a bounded read while allowing the current application shell.
+HTML_LIMIT = 64 * 1024
 READY_TIMEOUT = 120.0
 ENVIRONMENT = (
     ("TANKAI_HOST", "0.0.0.0"),
