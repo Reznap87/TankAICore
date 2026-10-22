@@ -18,19 +18,42 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import UUID
 
 MAX_SNAPSHOT = 8 * 1024 * 1024
-_REQUIRED_AUTH_TABLES = frozenset({
-    "auth_meta",
-    "users",
-    "tenants",
-    "workspaces",
-    "memberships",
-    "sessions",
-    "audit_events",
-    "provider_call_events",
-    "service_agents",
-    "agent_tokens",
-    "agent_job_grants",
-})
+_REQUIRED_AUTH_COLUMNS = {
+    "auth_meta": frozenset({"key", "value"}),
+    "users": frozenset({
+        "id", "email", "display_name", "password_hash", "is_active",
+        "created_at", "password_changed_at",
+    }),
+    "tenants": frozenset({"id", "name", "created_at", "created_by"}),
+    "workspaces": frozenset({
+        "id", "tenant_id", "name", "slug", "created_at", "created_by",
+    }),
+    "memberships": frozenset({"user_id", "workspace_id", "role", "created_at"}),
+    "sessions": frozenset({
+        "id", "token_hash", "csrf_hash", "csrf_token", "user_id",
+        "active_workspace_id", "created_at", "expires_at", "last_seen_at",
+        "revoked_at", "user_agent_hash", "ip_hash",
+    }),
+    "audit_events": frozenset({
+        "id", "event_type", "user_id", "workspace_id", "success", "details",
+        "created_at",
+    }),
+    "provider_call_events": frozenset({
+        "id", "user_id", "provider", "occurred_at",
+    }),
+    "service_agents": frozenset({
+        "id", "tenant_id", "workspace_id", "name", "description",
+        "owner_user_id", "is_active", "created_at", "updated_at",
+    }),
+    "agent_tokens": frozenset({
+        "id", "agent_id", "token_prefix", "token_hash", "scopes_json",
+        "repository_ids_json", "label", "created_by", "created_at",
+        "expires_at", "last_used_at", "revoked_at",
+    }),
+    "agent_job_grants": frozenset({
+        "agent_id", "job_id", "repository_id", "created_at",
+    }),
+}
 
 
 class AuthStateUnavailable(RuntimeError):
@@ -50,19 +73,24 @@ def _validate_snapshot(path: str) -> None:
 
     connection = sqlite3.connect(path)
     try:
-        tables = {
-            str(row[0])
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+        table_columns = {
+            table: {
+                str(row[1])
+                for row in connection.execute(f'PRAGMA table_info("{table}")')
+            }
+            for table in _REQUIRED_AUTH_COLUMNS
         }
         version = connection.execute(
             "SELECT value FROM auth_meta WHERE key='schema_version'"
         ).fetchone()
         if (
             connection.execute("PRAGMA quick_check").fetchone() != ("ok",)
-            or not _REQUIRED_AUTH_TABLES.issubset(tables)
+            or any(
+                not required.issubset(table_columns[table])
+                for table, required in _REQUIRED_AUTH_COLUMNS.items()
+            )
             or version != (str(AuthStore.SCHEMA_VERSION),)
+            or connection.execute("PRAGMA foreign_key_check").fetchone() is not None
         ):
             raise RuntimeError("Invalid auth state database")
     except sqlite3.DatabaseError as exc:

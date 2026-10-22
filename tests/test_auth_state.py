@@ -158,6 +158,45 @@ def test_healthy_but_incompatible_sqlite_backup_cannot_replace_auth_db(
     assert AuthStore(path).list_users() == original
 
 
+@pytest.mark.parametrize("kind", ["missing_columns", "broken_relations"])
+def test_snapshot_schema_and_foreign_keys_are_validated(tmp_path, remote, kind):
+    state, client = remote
+    path = tmp_path / "auth.db"
+    store = AuthStore(path)
+    bootstrap_owner(store, owner_config())
+    original = store.list_users()
+
+    incompatible = tmp_path / f"{kind}.db"
+    if kind == "missing_columns":
+        tables = (
+            "users", "tenants", "workspaces", "memberships", "sessions",
+            "audit_events", "provider_call_events", "service_agents",
+            "agent_tokens", "agent_job_grants",
+        )
+        with sqlite3.connect(incompatible) as connection:
+            connection.execute(
+                "CREATE TABLE auth_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+            connection.execute(
+                "INSERT INTO auth_meta(key,value) VALUES('schema_version','3')"
+            )
+            for table in tables:
+                connection.execute(f'CREATE TABLE "{table}"(placeholder TEXT)')
+    else:
+        broken = AuthStore(incompatible)
+        with broken._connect() as connection:
+            connection.execute("PRAGMA foreign_keys=OFF")
+            connection.execute(
+                "INSERT INTO memberships(user_id,workspace_id,role,created_at) "
+                "VALUES('missing-user','missing-workspace','member','2026-10-22T00:00:00+00:00')"
+            )
+    state.update(data=incompatible.read_bytes(), revision=1)
+
+    with pytest.raises(RuntimeError, match="Invalid auth state database"):
+        client().restore(path)
+    assert AuthStore(path).list_users() == original
+
+
 def test_login_does_not_issue_a_cookie_until_session_is_durable(tmp_path, remote, monkeypatch):
     from tankai.web import server as web
     state, client = remote

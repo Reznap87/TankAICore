@@ -28,9 +28,10 @@ chunks, atomically stored with its revision, and capped at 8 MiB. This contract
 supports the configured single Core container; multiple independent writers
 require a different storage adapter. Snapshot or restoration errors fail closed.
 Before replacement, a restored file must also pass SQLite integrity checking,
-contain every required TankAI authentication table, and declare the current
-authentication schema version. A healthy but foreign or incompatible SQLite file
-is rejected without replacing the local account database.
+contain every required TankAI authentication table and column, declare the current
+authentication schema version, and have no broken foreign-key relationships. A
+healthy but foreign or incompatible SQLite file is rejected without replacing the
+local account database.
 
 This persists accounts, memberships, sessions, audit events and auth rate-limit
 records. It does **not** persist workspace files or run history, and does not
