@@ -108,3 +108,24 @@ Nächster Gate: geeigneten lizenzierten Basiskandidaten und Ressourcenprofil
 festlegen, dann die erste echte Inferenzmessung und einen unabhängigen Holdout
 vorbereiten. Kostenfreies API-Routing ist ein paralleler Produktpfad und ersetzt
 dieses Modellentwicklungsprogramm nicht.
+
+## Festgehaltene erste Basiskandidaten
+
+Die offiziellen Modellkarten von [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B)
+und [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) nennen Apache-2.0 und
+Text-/Bildfähigkeiten. Sie sind kleine Entwicklungskandidaten, keine belegten
+GPT-6.1-Sol-/Kimi-K3-Ersatzmodelle. Der kleinere Kandidat hat Vorrang für die erste
+Inferenzprobe, der größere folgt nur bei gemessenem Speicherplatz. Die öffentlich
+ermittelten Repository-Revisionen stehen in `evaluation/model_candidates_v1.json`;
+es wurden nur Metadaten gelesen, keine Gewichte geladen. Die spätere Runtime und
+eine eventuelle quantisierte Ableitung benötigen eigene Versions-, Lizenz- und
+Artefaktprüfung. Behauptete Kontextgröße wird nicht als gemessene nutzbare
+Kontextlänge auf diesem Rechner übernommen.
+
+Für die erste Trainingsanpassung ist [TRL mit PEFT/LoRA](https://huggingface.co/docs/trl/peft_integration)
+ein begründeter Werkzeugkandidat: zusätzliche Parameter werden trainiert, während
+das Basismodell eingefroren bleibt. Die konkrete Architekturunterstützung,
+Softwareversionen, Datenrechte und der tatsächliche Speicherbedarf müssen vor
+einem Lauf zusammen geprüft werden. Kein Trainingspaket wurde installiert und
+kein Trainingsbefehl ausgeführt. Ein erfolgreicher Adapterlauf wäre zunächst ein
+eigener spezialisierter Checkpoint, noch kein Nachweis breiter Frontier-Leistung.

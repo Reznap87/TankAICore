@@ -56,6 +56,7 @@ implementierte Integration oder unabhängig bestätigte Leistungsbewertung.
 | [vLLM](https://github.com/vllm-project/vllm) | Batching, KV-/Prefix-Caching und parallele Inferenz. | Für einen getrennten Inferenzhost bei nachgewiesener Last untersuchen. Keine notwendige Zusatzkomponente des heutigen kleinen Control-Servers. |
 | [LangGraph](https://github.com/langchain-ai/langgraph) | Dauerhafte Zustände und Wiederaufnahme langer Agentenabläufe. | Chat-Schritte mit Checkpoints, idempotenten Seiteneffekten und Abbruch weiterentwickeln; bestehende Orchestrierung gezielt erweitern. |
 | [Promptfoo](https://github.com/promptfoo/promptfoo) | Wiederholbare Modell-/Promptvergleiche und CI-Evaluation. | Den vorhandenen eingefrorenen Korpus für echte Kandidatenvergleichsläufe und Regressionen nutzen; Bewertungskosten ebenfalls begrenzen. |
+| [TRL](https://github.com/huggingface/trl) und [PEFT](https://github.com/huggingface/peft) | SFT und zusätzliche LoRA-Parameter zur Anpassung eigener Checkpoints. | Erster Trainingswerkzeugkandidat nach Daten-, Architektur-, Software- und Ressourcenprüfung. Laut [offizieller Integration](https://huggingface.co/docs/trl/peft_integration) bleibt die Basis bei PEFT eingefroren. Noch nicht installiert oder ausgeführt. |
 | [Letta](https://github.com/letta-ai/letta) | Zustandsbehaftete Agenten mit Gedächtnis. | Provenienz, Trennung von Erinnerung und verifiziertem Wissen sowie Konsolidierung vergleichen. Das Hauptrepository verweist inzwischen auf [letta-code](https://github.com/letta-ai/letta-code); alte V1-Anleitungen sind historisch. |
 | [Sigstore/Cosign](https://github.com/sigstore/cosign) | Signieren und Identitätsprüfung von Softwareartefakten. | In diesem Paket konkret übernommen: verpflichtende Signaturprüfung im produktiven Rootless-Queue-Pfad plus manueller signierender Releaseworkflow. |
 | [Awesome Free LLM APIs](https://github.com/mnfst/awesome-free-llm-apis) | Breites Verzeichnis möglicher Zugänge. | Für Entdeckung nutzen; technische oder finanzielle Zusagen immer am Anbieter bestätigen. Die Recherche zu GitHub Models und Hugging Face zeigt den Aktualitätsbedarf. |
@@ -87,3 +88,7 @@ Bausteine, noch keine vollständig fortsetzbare Chat-Ausführung.
 messbaren Tank Core-Kandidaten beginnen. Lizenz, Trainingsdaten, Ressourcen und
 unabhängige Holdouts klären; erst danach einen begrenzten Trainingslauf buchen.
 Frontier-Vergleich und Produktentwicklung stehen im ergänzten Modellprogramm.
+Zwölf öffentliche Entwicklungsfälle und eine offene Protokollvorlage sind bereits
+ausführbar vorbereitet. Die Ressourcen sind gelesen, zwei kleine Qwen-Basiskandidaten
+mit exakten Revisionen festgehalten. Ein unabhängiger geheimer Holdout, Training
+und echte Qualitätsmessungen bleiben offen.
