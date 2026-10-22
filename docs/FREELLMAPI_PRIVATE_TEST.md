@@ -64,6 +64,19 @@ für diesen Test geeigneten Gratis-Anbieterzugang hinzufügen. Keine kostenpflic
 Kontingente oder automatischen Aufladungen für diesen Versuch aktivieren.
 Providerbedingungen und tatsächlich verbleibende Kontingente gelten weiter.
 
+Unter **Modelle → Chat-Modelle → Fallback-Ketten** eine leere Kette `tankai`
+anlegen, vorübergehend aktivieren und nur für allgemeine Chat-Aufgaben geeignete
+Modelle hinzufügen. Danach kann die bisherige Standardkette wieder aktiviert
+werden: TankAI ruft ausdrücklich `auto:tankai` auf. Reine Moderationsmodelle
+(etwa Qwen3Guard) gehören nicht in diese Kette. Modelle, die im gewählten
+Tokenrahmen nur Zwischentexte statt vollständigem JSON liefern, ebenfalls
+zunächst ausschließen. Die automatische HTTP-Erfolgsbewertung des Routers
+belegt keine Kompatibilität mit Planner und Critic.
+
+Im privaten OVH-Versuch wurden Llama 3.3 70B, Mistral Small 3.2 24B,
+Qwen2.5 VL 72B und Mistral Nemo ausgewählt. Verfügbarkeit und Eignung am
+eigenen Zielhost prüfen; diese Auswahl ist keine allgemeine Qualitätszusage.
+
 Bei einem entfernten Host den bestehenden SSH-Zugang für einen lokalen Tunnel
 nutzen; Port 3001 bleibt auf Loopback. Die HTTP-Seite niemals öffentlich freigeben.
 Falls das Dashboard beim Erstkonto einen Setup-Code verlangt, diesen privat am

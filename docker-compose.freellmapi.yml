@@ -36,7 +36,8 @@ services:
       # The OpenAI-compatible adapter talks to FreeLLMAPI, not api.openai.com.
       OPENAI_BASE_URL: "http://freellmapi:3001/v1"
       OPENAI_API_KEY: "${FREELLMAPI_UNIFIED_KEY:-}"
-      OPENAI_MODEL: "auto"
+      # Curated chat-capable models; create this named chain in the dashboard.
+      OPENAI_MODEL: "auto:tankai"
       TANKAI_COOKIE_SECURE: "0"
       # One router cannot establish independent model/critic provenance.
       TANKAI_CRITIC_LLM: ""
