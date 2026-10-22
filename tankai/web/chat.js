@@ -115,19 +115,35 @@
   }
   function textCell(value) { return element('td', '', value ?? ''); }
   function badge(value, className) { return element('span', 'badge ' + className, value); }
+  function resultInfo(data) {
+    const receipts = Array.isArray(data.receipts) ? data.receipts : [];
+    const trustedIds = new Set((Array.isArray(data.source_ids) ? data.source_ids : []).filter(value => typeof value === 'string' && /^SRC-[A-F0-9]{8}$/i.test(value)).map(value => value.toUpperCase()));
+    // Historical runs can predate the server's source-integrity gate. Keep the
+    // stored answer visible, but never display an unsupported marker as passed.
+    const unverifiedSources = [...String(data.final_answer || '').matchAll(/\[\s*(SRC-[^\]\r\n]*)\]/gi)].map(match => match[1].trim().toUpperCase()).filter(value => !trustedIds.has(value));
+    const simulated = data.status === 'simulated' || data.execution_mode === 'simulation';
+    const memoryDeferred = receipts.some(receipt => receipt.action === 'defer_memory_consolidation' && receipt.success === false && receipt.details?.deferred === true);
+    return { receipts, simulated, memoryDeferred, unverifiedSources, released: Boolean(data.release_ready) && !unverifiedSources.length && !simulated };
+  }
+  function resultStatus(data, info = resultInfo(data)) {
+    const status = info.simulated ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : info.unverifiedSources.length ? 'Die Antwort enthält nicht bestätigte Quellenangaben. Bitte nicht als belegtes Ergebnis übernehmen.' : info.released ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
+    return status + (info.memoryDeferred ? ' Die Antwort bleibt gespeichert; die zusätzliche Wissensaufbereitung steht noch aus.' : '');
+  }
   function renderResult(data) {
     selectedResult = data; byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
     byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
     byId('outCard').hidden = false; byId('answer').textContent = String(data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
-    const badges = byId('badges'); badges.replaceChildren(); const simulated = data.status === 'simulated' || data.execution_mode === 'simulation';
-    badges.append(badge(simulated ? 'Simulation · keine verifizierte KI-Antwort' : data.release_ready ? 'Prüfung bestanden' : 'Nicht freigegeben', simulated ? 'b-warn' : data.release_ready ? 'b-ok' : 'b-warn'));
+    const info = resultInfo(data); const badges = byId('badges'); badges.replaceChildren();
+    badges.append(badge(info.simulated ? 'Simulation · keine verifizierte KI-Antwort' : info.unverifiedSources.length ? 'Quellenbelege nicht bestätigt' : info.released ? 'Prüfung bestanden' : 'Nicht freigegeben', info.released ? 'b-ok' : 'b-warn'));
+    if (info.memoryDeferred) badges.append(badge('Wissensaufbereitung ausstehend', 'b-warn'));
     badges.append(badge(String(data.duration_seconds ?? 0) + ' s', 'b-info'));
     const steps = data.plan?.steps; const planBody = byId('planBody'); planBody.replaceChildren(); byId('planCard').hidden = !Array.isArray(steps) || !steps.length;
     byId('rationale').textContent = String(data.plan?.rationale || '');
     if (Array.isArray(steps)) steps.forEach((step, index) => { const row = element('tr'); row.append(textCell(index + 1), textCell(step.specialist_type), textCell(step.description), textCell(step.status || '—')); planBody.append(row); });
-    const receiptBody = byId('receiptBody'); receiptBody.replaceChildren(); const receipts = Array.isArray(data.receipts) ? data.receipts : []; byId('receiptCard').hidden = !receipts.length;
+    const receiptBody = byId('receiptBody'); receiptBody.replaceChildren(); const receipts = info.receipts; byId('receiptCard').hidden = !receipts.length;
     receipts.forEach(receipt => { const row = element('tr'); row.append(textCell(receipt.actor), textCell(receipt.action), textCell(receipt.success ? '✓' : '✗'), textCell(String(receipt.output_summary || '').slice(0, 300))); receiptBody.append(row); });
     const title = String(data.goal || 'Gespräch').replace(/\s+/g, ' ').slice(0, 55); byId('topbar-title').textContent = title; document.title = title + ' – TankAI'; byId('export-chat').disabled = false;
+    byId('status').textContent = resultStatus(data, info);
     requestAnimationFrame(() => { byId('messages').scrollTop = byId('messages').scrollHeight; });
   }
   async function runTank(event) {
@@ -140,7 +156,6 @@
       const data = await jsonFetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal, definition_of_done: definition, parallel }) });
       if (requestEpoch !== epoch) return;
       if (!data.goal) data.goal = goal; renderResult(data); byId('goal').value = '';
-      byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
       await loadHistory();
     } catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
     finally { if (requestEpoch === epoch) { setBusy(false); renderHistory(); byId('goal').focus(); } }
@@ -155,7 +170,7 @@
     if (!matches.length) { root.append(element('div', 'no-results', historyItems.length ? 'Keine passenden Gespräche gefunden.' : 'Noch keine Gespräche in diesem Workspace.')); return; }
     matches.forEach(({ item, index }) => { const button = element('button', 'search-result'); button.type = 'button'; button.disabled = busy; button.append(icon('chat')); const text = element('div'); text.append(element('strong', '', String(item.goal || 'Ohne Titel').slice(0, 90)), element('p', '', String(item.final_answer || '').slice(0, 120))); button.append(text); button.addEventListener('click', () => { byId('search-dialog').close(); selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
   }
-  function exportChat() { if (!selectedResult) return; const data = selectedResult; const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nStatus: ' + String(data.status || 'unbekannt') + '\nFreigegeben: ' + (data.release_ready ? 'Ja' : 'Nein') + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
+  function exportChat() { if (!selectedResult) return; const data = selectedResult; const info = resultInfo(data); const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nGespeicherter Laufstatus: ' + String(data.status || 'unbekannt') + '\nAktuelle Ergebnisanzeige freigegeben: ' + (info.released ? 'Ja' : 'Nein') + '\nHinweis: ' + resultStatus(data, info) + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
   byId('login-form').addEventListener('submit', login); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
   byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
   byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });

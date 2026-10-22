@@ -139,6 +139,20 @@ Ergebnis fehl (zum Beispiel wegen eines Ratenlimits), bleibt die ursprüngliche
 Antwort samt Prüfstatus erhalten. Ein fehlgeschlagenes Receipt
 `defer_memory_consolidation` weist die ausstehende Aufbereitung aus; ein
 automatischer Wiederholungsauftrag wird dadurch nicht angelegt.
+Der Chat zeigt die ausstehende Wissensaufbereitung direkt bei der Antwort und
+erneut beim Öffnen aus dem Verlauf an. Der Gesprächsexport enthält denselben
+Hinweis.
+
+Quellenmarkierungen werden auch bei Aufgaben ohne Recherche geprüft. Eine
+erfundene oder fehlerhafte Quellen-ID verhindert die Freigabe, selbst wenn der
+Modell-Critic zustimmt. Der Antworttext bleibt zur Nachvollziehbarkeit erhalten.
+Die Synthese erhält nur die bestätigten IDs aus den aktuellen Research-Receipts;
+ohne solche Quellen verlangt sie keinen Quellenabschnitt. Ältere gespeicherte
+Antworten mit unbestätigten Markierungen werden in der Oberfläche entsprechend
+gekennzeichnet. Ihre historischen Datensätze und Receipts werden nicht
+umgeschrieben; der Export unterscheidet gespeicherten Laufstatus und aktuelle
+Ergebnisanzeige. Das ist eine Prüfung der Quellen-IDs, kein Beweis für die
+inhaltliche Richtigkeit aller Aussagen oder die Unabhängigkeit des Kritikers.
 Hauptmodell und Critic nutzen denselben Router; ihre Unabhängigkeit ist damit
 **nicht nachgewiesen**. Der Test ist keine Produktionsfreigabe und keine
 Qualitätsabnahme. Keine öffentlichen Nutzer an diesen Test anschließen.

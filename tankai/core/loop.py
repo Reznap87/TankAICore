@@ -328,6 +328,7 @@ class TankAI:
                 step_results,
                 critiques_summary,
                 goal_analysis=plan.goal_analysis,
+                source_ids=self._research_provenance()[0],
             )
         final_answer = self._append_source_catalog(final_answer)
         synth_receipt.output_summary = final_answer[:300]
@@ -340,6 +341,7 @@ class TankAI:
 
         # Deterministische Quellenprüfung der Synthese. Ein LLM-Critic darf fehlende
         # Provenance nicht versehentlich durchwinken.
+        final_critique = self._apply_source_integrity_gate(final_critique, final_answer)
         final_critique = self._apply_final_research_gate(final_critique, final_answer, plan)
         final_critique = self._apply_execution_gate(
             final_critique, plan, plan_gate_passed=plan_gate_passed
@@ -349,6 +351,8 @@ class TankAI:
             f"passed={final_critique.passed}, score={final_critique.score}"
         )
         final_crit_receipt.details["deterministic_research_gate"] = True
+        final_crit_receipt.details["source_integrity_checked"] = True
+        final_crit_receipt.details["unverified_source_markers"] = self._unverified_source_markers(final_answer)
         final_crit_receipt.details["deterministic_execution_gate"] = True
         final_crit_receipt.details["plan_gate_passed"] = plan_gate_passed
         final_crit_receipt.details["failed_step_ids"] = [
@@ -554,6 +558,30 @@ class TankAI:
     @staticmethod
     def _citation_ids(text: str) -> set[str]:
         return set(re.findall(r"\[(SRC-[A-F0-9]{8})\]", text or "", flags=re.IGNORECASE))
+
+    def _unverified_source_markers(self, text: str) -> list[str]:
+        # Include malformed markers: a hex-only parser silently ignored the
+        # literal placeholder from the synthesis prompt in non-research runs.
+        markers = {value.strip().upper() for value in
+                   re.findall(r"\[\s*(SRC-[^\]\r\n]*)\]", text or "", flags=re.IGNORECASE)}
+        trusted_ids = set(self._research_provenance()[0])
+        return sorted(markers - trusted_ids)
+
+    def _apply_source_integrity_gate(self, critique: Critique, final_answer: str) -> Critique:
+        unverified = self._unverified_source_markers(final_answer)
+        if not unverified:
+            return critique
+        return Critique(
+            id=critique.id,
+            target_id=critique.target_id,
+            passed=False,
+            issues=list(dict.fromkeys([*critique.issues,
+                "Finale Antwort enthält unbestätigte Quellenmarkierungen: " + ", ".join(unverified)])),
+            suggestions=list(dict.fromkeys([*critique.suggestions,
+                "Nur bestätigte Quellenbelege verwenden; Aufgaben ohne Quellen ohne Quellenabschnitt beantworten"])),
+            score=min(critique.score, 0.25),
+            timestamp=critique.timestamp,
+        )
 
     def _apply_step_research_gate(
         self,
