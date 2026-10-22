@@ -66,7 +66,9 @@ Providerbedingungen und tatsächlich verbleibende Kontingente gelten weiter.
 
 Unter **Modelle → Chat-Modelle → Fallback-Ketten** eine leere Kette `tankai`
 anlegen, vorübergehend aktivieren und nur für allgemeine Chat-Aufgaben geeignete
-Modelle hinzufügen. Danach kann die bisherige Standardkette wieder aktiviert
+Modelle hinzufügen. **Änderungen speichern** anklicken und die Zuordnung nach
+einem Neuladen prüfen. Die Umschalter allein speichern noch nicht. Danach kann
+die bisherige Standardkette wieder aktiviert
 werden: TankAI ruft ausdrücklich `auto:tankai` auf. Reine Moderationsmodelle
 (etwa Qwen3Guard) gehören nicht in diese Kette. Modelle, die im gewählten
 Tokenrahmen nur Zwischentexte statt vollständigem JSON liefern, ebenfalls
