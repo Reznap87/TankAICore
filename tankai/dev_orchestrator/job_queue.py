@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import secrets
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Iterator, Sequence
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -1598,6 +1599,37 @@ class DevelopmentJobQueue:
             idempotent_replay=False,
         )
 
+    @staticmethod
+    def _claim_candidates(conn: sqlite3.Connection, now: datetime) -> Iterator[sqlite3.Row]:
+        """Page the ordered admission snapshot without starving later work.
+
+        The caller holds BEGIN IMMEDIATE. Invalid candidates can change state
+        during iteration, so OFFSET would skip rows; use immutable order keys.
+        Only one bounded page is held in memory.
+        """
+        after = None
+        while True:
+            boundary = " AND (-j.priority,j.created_at,j.id) > (?,?,?)" if after else ""
+            rows = conn.execute(
+                """
+                SELECT j.*,p.max_running,p.enabled AS policy_enabled,
+                       p.max_memory_mb AS policy_max_memory_mb,
+                       p.max_cpus AS policy_max_cpus,p.max_pids AS policy_max_pids,
+                       p.max_runtime_seconds AS policy_max_runtime_seconds,
+                       p.allowed_images_json AS policy_allowed_images_json
+                FROM development_jobs j
+                JOIN queue_policies p ON p.workspace_id=j.workspace_id AND p.tenant_id=j.tenant_id
+                JOIN repositories r ON r.id=j.repository_id
+                WHERE j.state='queued' AND j.available_at<=? AND p.enabled=1 AND r.enabled=1
+                """ + boundary + " ORDER BY j.priority DESC,j.created_at,j.id LIMIT 200",
+                (_iso(now), *(after or ())),
+            ).fetchall()
+            if not rows:
+                return
+            yield from rows
+            last = rows[-1]
+            after = (-last["priority"], last["created_at"], last["id"])
+
     def claim_next(self, *, worker_id: str, lease_seconds: int = 300) -> JobLease | None:
         worker = worker_id.strip()
         if not worker or len(worker) > 120 or any(ord(ch) < 32 for ch in worker):
@@ -1612,22 +1644,7 @@ class DevelopmentJobQueue:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 self._recover_expired_leases(conn, now)
-                candidates = conn.execute(
-                    """
-                    SELECT j.*,p.max_running,p.enabled AS policy_enabled,
-                           p.max_memory_mb AS policy_max_memory_mb,
-                           p.max_cpus AS policy_max_cpus,p.max_pids AS policy_max_pids,
-                           p.max_runtime_seconds AS policy_max_runtime_seconds,
-                           p.allowed_images_json AS policy_allowed_images_json
-                    FROM development_jobs j
-                    JOIN queue_policies p ON p.workspace_id=j.workspace_id AND p.tenant_id=j.tenant_id
-                    JOIN repositories r ON r.id=j.repository_id
-                    WHERE j.state='queued' AND j.available_at<=? AND p.enabled=1 AND r.enabled=1
-                    ORDER BY j.priority DESC,j.created_at,j.id
-                    LIMIT 200
-                    """,
-                    (_iso(now),),
-                ).fetchall()
+                candidates = self._claim_candidates(conn, now)
                 chosen = None
                 chosen_repo = None
                 chosen_fence = None
@@ -1901,7 +1918,7 @@ class DevelopmentJobQueue:
                 epoch=int(row["fence_epoch"]),
                 lease_token=lease_token,
             )
-        except FenceError as exc:
+        except (FenceError, sqlite3.Error) as exc:
             conn.execute("ROLLBACK")
             raise LeaseError(f"Externer Fence ist nicht mehr gültig: {exc}") from exc
         return row
@@ -1921,16 +1938,24 @@ class DevelopmentJobQueue:
                 lease_token=lease_token,
                 reason=reason,
             )
-        except FenceError as exc:
+        except (FenceError, sqlite3.Error) as exc:
             # The terminal queue state is authoritative. A failed release is
             # fail-safe because the fence remains occupied until its expiry.
-            with self._lock, self._connect() as conn:
-                conn.execute("BEGIN IMMEDIATE")
-                self._event(conn, row["id"], "fence_release_failed", "queue", {
-                    "error": str(exc)[:1000],
-                    "fence_epoch": int(row["fence_epoch"]),
-                })
-                conn.execute("COMMIT")
+            try:
+                with self._lock, self._connect() as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    self._event(conn, row["id"], "fence_release_failed", "queue", {
+                        "error_type": type(exc).__name__,
+                        "fence_epoch": int(row["fence_epoch"]),
+                    })
+                    conn.execute("COMMIT")
+            except sqlite3.Error as audit_error:
+                # Cleanup and diagnostic availability cannot undo the durable
+                # terminal commit, nor cause a completed pipeline to be replayed.
+                logging.getLogger(__name__).warning(
+                    "Terminal queue result persisted; fence cleanup audit unavailable (%s)",
+                    type(audit_error).__name__,
+                )
 
     def _recover_expired_leases(self, conn: sqlite3.Connection, now: datetime) -> None:
         rows = conn.execute(

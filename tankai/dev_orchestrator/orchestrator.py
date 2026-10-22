@@ -306,6 +306,8 @@ class DevelopmentOrchestrator:
             task = self._task(state, task_id)
             if task.assigned_agent_id:
                 raise ConflictError(f"Task {task_id} ist bereits {task.assigned_agent_id} zugewiesen")
+            if task.state != TaskState.PENDING:
+                raise TransitionError(f"Nur ausstehende Tasks können neu starten: {task.state.value}")
             self._assert_dependencies_integrated(state, task)
             if task.base_commit != state.current_commit:
                 previous_base = task.base_commit

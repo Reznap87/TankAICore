@@ -6,12 +6,12 @@ import json
 import os
 import tempfile
 import threading
-import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator, TypeVar
 
 from .models import AgentGovernancePolicy, ProjectState, utcnow
+from .local_lock import exclusive_local_lock, LocalLockTimeout
 
 
 class StateStoreError(RuntimeError):
@@ -28,7 +28,7 @@ T = TypeVar("T")
 class ProjectStateStore:
     """Stores one authoritative project state as atomically replaced JSON.
 
-    A small lock-file protocol protects separate local processes. Revision checks
+    A process-owned OS lock protects separate local processes. Revision checks
     prevent stale writers from silently replacing a newer state.
     """
 
@@ -184,29 +184,8 @@ class ProjectStateStore:
 
     @contextmanager
     def _process_lock(self) -> Iterator[None]:
-        deadline = time.monotonic() + self.lock_timeout_seconds
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        while True:
-            try:
-                fd = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    handle.write(f"pid={os.getpid()} created={time.time()}\n")
-                break
-            except FileExistsError:
-                try:
-                    age = time.time() - self.lock_path.stat().st_mtime
-                    if age > self.stale_lock_seconds:
-                        self.lock_path.unlink(missing_ok=True)
-                        continue
-                except OSError:
-                    pass
-                if time.monotonic() >= deadline:
-                    raise StateStoreError(f"Timeout beim Sperren von {self.path}")
-                time.sleep(0.05)
         try:
-            yield
-        finally:
-            try:
-                self.lock_path.unlink()
-            except FileNotFoundError:
-                pass
+            with exclusive_local_lock(self.lock_path, timeout_seconds=self.lock_timeout_seconds):
+                yield
+        except LocalLockTimeout as error:
+            raise StateStoreError(f"Timeout beim Sperren von {self.path}") from error

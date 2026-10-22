@@ -19,6 +19,7 @@ from typing import Callable, Iterator, Sequence
 from .models import AgentSpec, TestExecution
 from .orchestrator import ValidationError, normalize_repo_path, path_matches_scope
 from .process_control import run_bounded_process
+from .local_lock import exclusive_local_lock, LocalLockTimeout
 
 
 class GitWorkspaceError(RuntimeError):
@@ -108,43 +109,11 @@ class GitWorkspaceManager:
         label: str,
     ) -> Iterator[None]:
         lock_path = self.common_git_dir / filename
-        deadline = time.monotonic() + timeout_seconds
-        while True:
-            try:
-                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    handle.write(f"pid={os.getpid()} created={time.time()}\n")
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                break
-            except FileExistsError:
-                try:
-                    owner_alive = False
-                    content = lock_path.read_text(encoding="utf-8", errors="replace")
-                    match = re.search(r"\bpid=(\d+)\b", content)
-                    if match:
-                        try:
-                            os.kill(int(match.group(1)), 0)
-                            owner_alive = True
-                        except ProcessLookupError:
-                            owner_alive = False
-                        except PermissionError:
-                            owner_alive = True
-                    if not owner_alive and time.time() - lock_path.stat().st_mtime > 1.0:
-                        lock_path.unlink(missing_ok=True)
-                        continue
-                    if not match and time.time() - lock_path.stat().st_mtime > stale_seconds:
-                        lock_path.unlink(missing_ok=True)
-                        continue
-                except OSError:
-                    pass
-                if time.monotonic() >= deadline:
-                    raise GitWorkspaceError(f"Timeout beim Sperren der {label}")
-                time.sleep(0.05)
         try:
-            yield
-        finally:
-            lock_path.unlink(missing_ok=True)
+            with exclusive_local_lock(lock_path, timeout_seconds=timeout_seconds):
+                yield
+        except LocalLockTimeout as error:
+            raise GitWorkspaceError(f"Timeout beim Sperren der {label}") from error
 
     def get_or_create_workspace(self, agent: AgentSpec) -> Workspace:
         if agent.workspace_path or agent.branch:

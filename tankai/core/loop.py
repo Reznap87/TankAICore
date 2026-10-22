@@ -7,6 +7,7 @@ Der Commander hält das Ziel und orchestriert den gesamten Ablauf.
 from __future__ import annotations
 
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
@@ -91,6 +92,7 @@ class TankAI:
         if use_ltm:
             self.ltm = LongTermMemory(db_path=ltm_db, vector_path=ltm_vectors)
         self.max_retries = max_retries
+        self._run_lock = threading.Lock()
         self.verbose = verbose
         self.parallel = parallel
         self.run_store = RunStore(run_store_path) if run_store_path else None
@@ -123,6 +125,25 @@ class TankAI:
         goal_description: str,
         definition_of_done: str = "Eine klare, überprüfbare Antwort liegt vor.",
         constraints: Optional[list[str]] = None,
+    ) -> RunResult:
+        """One run owns this instance's goal, receipts and shared call budget.
+
+        Specialist threads within that run still share the atomic budget. A
+        second caller cannot reset it while those requests are in flight.
+        Independent concurrent goals require separate TankAI instances.
+        """
+        if not self._run_lock.acquire(blocking=False):
+            raise RuntimeError("Diese TankAI-Instanz bearbeitet bereits einen Lauf")
+        try:
+            return self._run(goal_description, definition_of_done, constraints)
+        finally:
+            self._run_lock.release()
+
+    def _run(
+        self,
+        goal_description: str,
+        definition_of_done: str,
+        constraints: Optional[list[str]],
     ) -> RunResult:
         """
         Führt den kompletten PLAN → ROUTE → VERIFY → LEARN Zyklus aus.
