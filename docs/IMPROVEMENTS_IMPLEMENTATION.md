@@ -33,7 +33,8 @@ teilen weiterhin das vorhandene atomare Aufrufbudget. Eine getrennte Quittung
 `llm_usage` erhält gemeldete Werte, unvollständige Versuche und den ausdrücklichen
 Preisstatus `not_priced`. Die Chatansicht bietet diese Angaben unter
 **Verbrauch ansehen** an. `GET /api/runs/{goal_id}/usage` ist angemeldet und auf
-den aktiven Workspace begrenzt.
+den aktiven Workspace begrenzt. Gemeldete Modellnamen, bekannte Tokenwerte und
+Hinweise auf fehlende Daten sind auch im Gesprächsexport enthalten.
 
 Referenz für das kompatible Antwortformat:
 [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
@@ -101,7 +102,16 @@ Ordner mit 0700 und Dateien mit 0600 angelegt; unter Windows gelten zusätzlich
 die ACLs des vom Betreiber gewählten privaten Zielordners. Keine öffentliche
 Downloadroute. Ein lokaler Test stellt Anmeldung, Verlauf, Kurzzeitwissen,
 Langzeitwissen, Index und Usage aus vollständigen Fixture-Daten wieder her.
-Dies ist noch kein Wiederaufbau der echten Serverinstallation.
+Dies allein ist noch kein Wiederaufbau der echten Serverinstallation.
+
+Am 22. Oktober 2026 wurde zusätzlich der Schreibbetrieb des privaten Core kurz
+gestoppt und eine echte Sicherung in ein getrenntes privates Serververzeichnis
+erstellt. Die isolierte Wiederherstellung erhielt ein bestehendes Konto samt
+Passwort-Hash, einen Arbeitsraum, drei Gespräche und sieben Wissenseinträge.
+Der Anmeldeablauf wurde zusätzlich mit einem Fixture-Konto ausschließlich im
+wiederhergestellten Ziel geprüft. Der ursprüngliche Datenbestand blieb erhalten,
+der normale Dienst wurde danach erfolgreich neu gestartet. Router-Volume und
+Schlüsseldateien außerhalb der Core-Datenwurzel gehören nicht zu diesem Beleg.
 
 ## Weitere Arbeit aus dem Auftrag
 
@@ -113,6 +123,6 @@ durchgesetzt werden. Die vorhandenen Vorgates unter Issue #25 bleiben relevant.
 Offen bleiben die faire wartende Zulassung mit vollständigen Routerversuchen,
 dauerhafte Chat-Aufträge einschließlich Schritt-Checkpoints und Abbruch sowie
 die unabhängige Qualitätsabnahme am eingefrorenen Korpus. Der vollständige
-Restore mit echten Serverdaten und das separate Wiederherstellen der
-Produktionskonfiguration sind ebenfalls weitere Betriebsnachweise. Diese
+Wiederherstellen der Produktionskonfiguration und des gesonderten Router-Volumes
+bleibt ein weiterer Betriebsnachweis. Diese
 offenen Punkte werden nicht aus erfolgreichen lokalen Tests abgeleitet.
