@@ -71,7 +71,10 @@ in [WEB_FETCH_PINNING.md](WEB_FETCH_PINNING.md). Ein endgültig abgelehnter Plan
 stoppt nun ebenfalls vor Ausführung und optionalen Modellaufrufen, dokumentiert
 in [IMPROVEMENTS_IMPLEMENTATION.md](IMPROVEMENTS_IMPLEMENTATION.md).
 
-Image-Digest-Bindung ist weiterhin keine Image-Signaturprüfung. Die
+Image-Digest-Bindung allein ist keine Image-Signaturprüfung. Anschließend wurde
+für produktive Rootless-Queue-Executor eine zusätzliche Cosign-Signaturpflicht
+implementiert; Release- und Betriebsgrenzen stehen in
+[WORKER_IMAGE_SIGNATURES.md](WORKER_IMAGE_SIGNATURES.md). Die
 Pipe-Behandlung und eine mögliche scrypt-Anpassung bleiben offen. Ebenso offen bleiben
 Geldreservierung über Router-Fallbacks, dauerhafte Chat-Schrittaufträge und die
 unabhängige fachliche Abnahme des eingefrorenen Korpus.

@@ -4378,6 +4378,37 @@ Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht bloc
 begrenzte extern studentisierte/Deleted-Residual-Diagnostik oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
 
+## Ergänzung vom 22. Oktober 2026: eigenes Modell und überprüfte Entwicklungsmöglichkeiten
+
+Das Nutzerziel für die TankAI Model Family ist ausdrücklich ein eigenes Modell
+mit einem Leistungsanspruch in der Klasse von GPT-6.1 Sol und Kimi K3. Die
+vorhandenen Abschnitte 10.1–10.5 bleiben maßgeblich. Der konkretisierte Stufenplan
+steht in [docs/TANKAI_MODEL_PROGRAM.md](docs/TANKAI_MODEL_PROGRAM.md): eingefrorene
+Vergleichsaufgaben, hardware- und lizenzgeeignete Baseline, eigener trainierter
+Checkpoint, unabhängiger Verbesserungsnachweis und signierte Auslieferung. Eine
+API-Umbenennung oder Orchestrierungsverbesserung ist kein eigener Modellcheckpoint.
+Noch wurden keine eigenen Gewichte trainiert und keine Gleichwertigkeit gemessen.
+Ressourcen, Datenrechte, Kosten und Trainingsfreigabe bleiben Startbedingungen.
+Ausführbar vorbereitet sind zwölf öffentliche Entwicklungsaufgaben in sechs
+Bereichen, ein versionsgebundenes Manifest und getrennte offene Protokolle für
+Rohmodell und TankAI-System. Sie führen keine Modellaufrufe aus und sind kein
+geheimer Holdout. Die Ressourcenprüfung bestätigt rund 16 GB RAM lokal und 4 GB
+auf dem privaten Server; eine Trainings-GPU ist nicht nachgewiesen.
+
+Die [GitHub-Recherche](docs/AI_PROJECT_RESEARCH_2026-10-22.md) vergleicht aktuelle
+Free-Zugänge und Entwicklungsmuster aus LiteLLM, Ollama/llama.cpp, vLLM,
+LangGraph, Promptfoo, Letta und Sigstore. Direkte Anbieterquellen entscheiden über
+Quoten und Kosten. GitHub Models ist eingestellt; Hugging Face nennt für Free-
+Inference-Provider-Konten inzwischen keine monatlichen Credits. Es wurden keine
+neuen Provider aktiviert oder Zugangsdaten erstellt.
+
+Konkret umgesetzt ist die [Cosign-Signaturpflicht](docs/WORKER_IMAGE_SIGNATURES.md)
+vor jedem Image-Start im produktiven Rootless-Queue-Pfad. Vertrauen stammt aus der
+Betreiber-Richtlinie außerhalb des Worker-Workspace. Ein manuell auslösbarer,
+commitgebundener Build-/Signierworkflow ist vorbereitet. Ein eigener signierter
+TankAI-Image-Release und die Abnahme eines dedizierten Runners bleiben gesonderte
+Betriebsschritte; die private Queue bleibt deaktiviert.
+
 Umgesetzte R2-Scheibe: TankAI Web v0.43.0
 
 Status: Begrenzte OLS-Diagnostik berechnet extern studentisierte Residuen aus der jeweils ohne

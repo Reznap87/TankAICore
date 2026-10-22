@@ -23,6 +23,7 @@ from .git_workspace import Workspace
 from .models import CommandSpec, TestExecution, WorkerIsolationSpec
 from .orchestrator import normalize_repo_path
 from .process_control import run_bounded_process
+from .image_signatures import CosignImageVerifier, ImageSignatureError
 
 
 class ContainerRuntimeError(RuntimeError):
@@ -176,11 +177,17 @@ class DockerCommandExecutor:
         runtime_binary: str = "docker",
         *,
         require_rootless: bool = False,
+        require_image_signatures: bool | None = None,
+        image_verifier: CosignImageVerifier | None = None,
     ) -> None:
         if not runtime_binary or any(ch in runtime_binary for ch in ("\x00", "\n", "\r")):
             raise ContainerRuntimeError("Ungültige Container-Runtime")
         self.runtime_binary = runtime_binary
         self.require_rootless = require_rootless
+        # Rootless queue runners always require signatures. Unsigned compatibility
+        # is restricted to explicit local/rootful development executors.
+        self.require_image_signatures = require_rootless or bool(require_image_signatures)
+        self.image_verifier = image_verifier
 
     def ensure_available(self) -> str:
         executable = shutil.which(self.runtime_binary)
@@ -477,6 +484,15 @@ class DockerCommandExecutor:
         cancellation_check: Callable[[], None] | None = None,
         metadata_labels: Mapping[str, str] | None = None,
     ) -> TestExecution:
+        verification = None
+        if self.require_image_signatures:
+            try:
+                verifier = self.image_verifier or CosignImageVerifier.from_env()
+                verification = verifier.verify(
+                    isolation.image, workspace=workspace.path, cancellation_check=cancellation_check
+                )
+            except ImageSignatureError as exc:
+                raise ContainerRuntimeError(str(exc)) from exc
         plan = self.build_plan(
             workspace,
             command,
@@ -488,6 +504,8 @@ class DockerCommandExecutor:
             phase=phase,
             metadata_labels=metadata_labels,
         )
+        if cancellation_check is not None:
+            cancellation_check()
         try:
             completed = run_bounded_process(
                 plan.argv,
@@ -513,11 +531,15 @@ class DockerCommandExecutor:
                 exit_code=None,
                 summary=(completed.output + f"\nTIMEOUT nach {command.timeout_seconds}s")[-10_000:],
             )
+        signature_summary = (
+            f"Image-Signatur verifiziert: {verification.digest}; Signierer: {verification.signer}\n"
+            if verification else ""
+        )
         return TestExecution(
             command=" ".join(command.argv),
             passed=completed.returncode == 0,
             exit_code=completed.returncode,
-            summary=completed.output,
+            summary=signature_summary + completed.output[-(10_000 - len(signature_summary)):],
         )
 
     def list_managed_containers(self, *, repository_id: str) -> list[ManagedContainerRecord]:
