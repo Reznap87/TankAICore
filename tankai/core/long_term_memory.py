@@ -23,7 +23,7 @@ from uuid import uuid4, uuid5, NAMESPACE_URL
 from .models import MemoryEntry, Plan, Receipt, RunResult, utcnow
 from .llm import BaseLLM
 from .vector_store import VectorStore
-from .embeddings import BaseEmbedder, get_embedder
+from .embeddings import BaseEmbedder, HashingEmbedder, get_embedder
 
 
 class LongTermMemory:
@@ -347,6 +347,8 @@ class LongTermMemory:
 
         mode = "llm" if llm is not None else "heuristic"
         if prepared_only:
+            if type(self.vectors.embedder) is not HashingEmbedder:
+                raise ValueError("Prepared-only recovery requires the local hashing index")
             cached = self._conn.execute(
                 "SELECT mode, prepared_entries FROM consolidation_jobs WHERE run_id = ?", (run_id,)
             ).fetchone()
@@ -446,6 +448,39 @@ class LongTermMemory:
             (max(0, min(int(limit), 500)),),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def consolidation_status(self, run_id: str) -> dict[str, Any] | None:
+        """Current recovery state without reading checkpoint contents or inference."""
+        row = self._conn.execute("SELECT status, metadata FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if row is None:
+            return None
+        metadata = json.loads(row["metadata"] or "{}")
+        eligible = (row["status"] == "completed" and metadata.get("verification_passed") is True
+                    and metadata.get("release_ready") is True and metadata.get("execution_mode") == "live")
+        job = self._conn.execute(
+            "SELECT status, lease_until, prepared_entries IS NOT NULL AS prepared "
+            "FROM consolidation_jobs WHERE run_id = ?", (run_id,),
+        ).fetchone()
+        local_index = type(self.vectors.embedder) is HashingEmbedder
+        if not eligible:
+            state = "not_eligible"
+        elif job is None:
+            state = "not_started"
+        elif job["status"] == "completed":
+            state = "completed"
+        elif (job["status"] == "running" and job["lease_until"]
+              and job["lease_until"] > utcnow().isoformat()):
+            state = "running"
+        else:
+            state = "prepared" if job["prepared"] else "needs_inference"
+        count = self._conn.execute(
+            "SELECT COUNT(*) FROM memory_entries WHERE related_run_id = ? "
+            "AND memory_type = 'semantic' AND source LIKE 'consolidation:%'", (run_id,),
+        ).fetchone()[0] if state == "completed" else 0
+        return {"goal_id": run_id, "state": state,
+                "can_resume": state == "prepared" and local_index,
+                "local_index": local_index, "entries_count": count,
+                "provider_calls_allowed": False}
 
     def _prepare_consolidation(self, row: sqlite3.Row, llm: "BaseLLM | None") -> list[dict]:
         run_id = row["id"]

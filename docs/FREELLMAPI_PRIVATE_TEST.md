@@ -143,12 +143,15 @@ Aufbereitungen werden zusätzlich dauerhaft in der Workspace-Datenbank als
 `LongTermMemory.pending_consolidations()` liest diesen Arbeitsstand ohne
 Modellaufruf. Ein expliziter erneuter Aufruf von `consolidate(run_id, llm=...)`
 kann ihn fortsetzen; der Betreiber muss dafür denselben Budget-, Kosten- und
-Zugriffsschutz wie beim ursprünglichen Lauf bereitstellen. Es gibt dafür noch
-keinen Hintergrunddienst und keinen Knopf in der Chatoberfläche.
+Zugriffsschutz wie beim ursprünglichen Lauf bereitstellen. Ein Hintergrunddienst
+wird dadurch nicht aktiviert.
 
 Bereits strukturierte, vollständig validierte Einträge werden vor der
 Indexierung zwischengespeichert. `consolidate(run_id, prepared_only=True)` kann
 diesen Schritt ohne Modell fortsetzen; ohne vorbereiteten Stand bricht es ab.
+Dieser Modus setzt ausdrücklich den lokalen `HashingEmbedder` voraus. Andere
+oder unbekannte Embedder werden abgewiesen, damit auch die Indexierung keine
+Provider-Anfrage oder zusätzlichen Kosten auslösen kann.
 Ein Retry schaltet nicht still auf eine heuristische Aufbereitung um. Stabile
 Eintrags-IDs und eine gemeinsame SQL-Transaktion verhindern doppelte oder
 teilweise freigegebene Einträge. Eine fünfminütige Claim-Lease verhindert die
@@ -165,6 +168,25 @@ keine unabhängige inhaltliche Prüfung der extrahierten Aussagen.
 Der Chat zeigt die ausstehende Wissensaufbereitung direkt bei der Antwort und
 erneut beim Öffnen aus dem Verlauf an. Der Gesprächsexport enthält denselben
 Hinweis.
+
+Neue Chatantworten und Verlaufseinträge enthalten ihre stabile `goal_id`. Bei
+ausstehender Wissensaufbereitung lädt die Oberfläche den aktuellen Zustand aus
+dem angemeldeten Workspace. Nur bei vorhandenem vorbereitetem Stand und lokalem
+Index erscheint **Wissen fertig speichern**. Der Knopf ruft ausschließlich
+`prepared_only=True` auf. Ein noch nötiger Modellversuch wird erklärt und nicht
+gestartet. Ältere Einträge ohne Laufkennung zeigen einen entsprechenden Hinweis.
+Der nachträgliche Status ersetzt keine historischen Receipts oder Prüfverdicts;
+die aktuelle Anzeige und der Export berücksichtigen ihn auch nach Neuladen.
+
+Die Statusschnittstelle `GET /api/memory/consolidation/{goal_id}` benötigt eine
+Session. `POST /api/memory/consolidation/{goal_id}/resume` benötigt zusätzlich
+den vorhandenen CSRF-Schutz und ein leeres JSON-Objekt. Die Laufkennung wird nur
+innerhalb des aktiven, serverseitig bestimmten Workspaces aufgelöst. Andere
+Workspaces erhalten dieselbe 404-Antwort wie bei einem unbekannten Lauf. Beide
+Operationen verwenden die vorhandene Workspace-Sperre. Der Status enthält
+weder Wissensinhalte noch interne Fehlertexte. Ein erfolgreicher Speicherversuch
+wird separat auditiert; wiederholtes Speichern eines abgeschlossenen Auftrags
+legt keine neuen Einträge an.
 
 Quellenmarkierungen werden auch bei Aufgaben ohne Recherche geprüft. Eine
 erfundene oder fehlerhafte Quellen-ID verhindert die Freigabe, selbst wenn der

@@ -948,6 +948,12 @@ class Handler(BaseHTTPRequestHandler):
             except (PermissionError, QueueError, ValueError) as exc:
                 self._json({"error": str(exc)}, 403)
             return
+        match = re.fullmatch(r"/api/memory/consolidation/([0-9a-fA-F-]{36})", path)
+        if match:
+            context = self._auth_context()
+            if context:
+                self._memory_consolidation(context, match.group(1))
+            return
         if path == "/api/history":
             context = self._auth_context()
             if not context:
@@ -1217,6 +1223,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(exc)}, 403)
             except (QueueError, ValueError) as exc:
                 self._json({"error": str(exc)}, 409)
+            return
+        match = re.fullmatch(r"/api/memory/consolidation/([0-9a-fA-F-]{36})/resume", path)
+        if match:
+            self._memory_consolidation(context, match.group(1), resume=True)
             return
         if path == "/api/run":
             self._run(context)
@@ -1978,6 +1988,46 @@ class Handler(BaseHTTPRequestHandler):
         remaining = max(1, int((session.context.expires_at.timestamp() - time.time())))
         self._json(self._me_payload(session.context), 201, set_cookie=self._session_cookie(session.token, remaining))
 
+    def _memory_consolidation(self, context: AuthContext, run_id: str, *, resume: bool = False) -> None:
+        try:
+            run_id = str(UUID(run_id))
+        except ValueError:
+            self._json({"error": "Ungültige Laufkennung"}, 400)
+            return
+        if resume:
+            data = self._read_json(max_bytes=1000)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Die Wiederaufnahme erwartet keine zusätzlichen Einstellungen"}, 400)
+                return
+        try:
+            runtime = self.app.runtimes.get(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
+            with runtime.lock:
+                memory = runtime.tank.ltm
+                status = memory.consolidation_status(run_id) if memory else None
+                if status is None:
+                    self._json({"error": "Kein gespeicherter Lauf in diesem Arbeitsraum"}, 404)
+                    return
+                created = []
+                if resume and status["state"] != "completed":
+                    if not status["can_resume"]:
+                        self._json({"error": "Für diesen Lauf ist kein lokal fortsetzbarer Arbeitsstand verfügbar",
+                                    "memory_consolidation": status}, 409)
+                        return
+                    created = memory.consolidate(run_id, prepared_only=True)
+                    status = memory.consolidation_status(run_id)
+                if resume:
+                    self.app.auth.audit(
+                        "memory_consolidation_resume", user_id=context.user_id,
+                        workspace_id=context.workspace_id, success=True,
+                        details=json.dumps({"goal_id": run_id, "entries_created": len(created),
+                                            "provider_inference_requested": False}),
+                    )
+            self._json({"memory_consolidation": status, "entries_created": len(created)})
+        except Exception:
+            self._internal_error("memory_consolidation_resume" if resume else "memory_consolidation_status")
+
     def _run(self, context: AuthContext) -> None:
         data = self._read_json()
         if data is None:
@@ -2028,6 +2078,7 @@ class Handler(BaseHTTPRequestHandler):
                     "details": receipt.details,
                 } for receipt in result.receipts]
                 payload = {
+                    "goal_id": result.goal_id,
                     "workspace_id": context.workspace_id,
                     "goal": goal,
                     "final_answer": result.final_answer,
