@@ -264,12 +264,17 @@ def test_candidate_case_diagnostics_match_aggregate_without_exposing_artifacts()
     assert candidate_receipt(corpus, load_baseline(corpus=corpus), reordered)["case_results"] == results
 
 
-def test_current_mock_execution_reproduces_checked_in_candidate_artifacts() -> None:
+def test_current_mock_execution_reproduces_versioned_plan_admission_candidate() -> None:
     corpus = load_corpus()
-    expected = load_candidate(corpus=corpus)
+    # Preserve the original five-call candidate and its historical revision.
+    # The admission gate intentionally changes output and call count, so bind
+    # current execution to its separately recorded candidate, not the old one.
+    expected = load_candidate(
+        DEFAULT_CANDIDATE.with_name("cooperative_acceptance_v1_plan_admission_candidate.json"), corpus
+    )
     current = run_mock_candidate(
         corpus,
-        source_revision="65e0b78054f756d0e08a2c2509377c2bdc6d9acc",
+        source_revision=expected.source_revision,
     )
 
     assert {
@@ -283,6 +288,11 @@ def test_current_mock_execution_reproduces_checked_in_candidate_artifacts() -> N
     assert [item.criteria_failed for item in current.observations] == [
         item.criteria_failed for item in expected.observations
     ]
+    assert all(item.metrics.llm_calls == 2 for item in current.observations)
+    assert all("nicht ausgeführt" in item.output for item in current.observations)
+    receipt = candidate_receipt(corpus, load_baseline(corpus=corpus), current)
+    assert receipt["successful_cases"] == 0 and receipt["pilot_eligible"] is False
+    assert receipt["human_reviewed"] is False
 
 
 def test_candidate_rejects_tampered_artifact(tmp_path) -> None:
