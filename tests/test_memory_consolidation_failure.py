@@ -23,8 +23,11 @@ def test_memory_provider_failure_preserves_result_and_verification(tmp_path, mon
                      "expected_output": "403 with calculation"}
                 ]})
             if "critic" in system.lower():
-                return json.dumps({"passed": passes, "score": 1.0 if passes else 0.2,
-                                   "issues": [] if passes else ["rejected"], "suggestions": []})
+                # This test exercises optional memory after execution, including
+                # a failed result. Admission itself must succeed to reach it.
+                accepted = passes or "Prüfe den folgenden Plan" in prompt
+                return json.dumps({"passed": accepted, "score": 1.0 if accepted else 0.2,
+                                   "issues": [] if accepted else ["rejected"], "suggestions": []})
             return "31 * 13 = 31 * 10 + 31 * 3 = 310 + 93 = 403"
 
     monkeypatch.setattr("tankai.web.runtime.get_llm", OfflinePipeline)

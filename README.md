@@ -730,7 +730,7 @@ tankai/
 ## Bekannte Grenzen
 
 - Der Seitenabruf verarbeitet derzeit HTML, Text, XHTML und JSON, aber keine PDFs oder clientseitig gerenderten JavaScript-Seiten.
-- DNS-Prüfung reduziert SSRF-Risiken, pinnt die Ziel-IP während der Verbindung aber noch nicht kryptografisch gegen DNS-Rebinding.
+- Der öffentliche Seitenabruf verbindet direkt zu zuvor geprüften IP-Adressen; HTTPS behält die Zertifikats- und Hostprüfung. Redirects werden erneut geprüft und gepinnt. Umgebungsproxys werden dafür nicht verwendet. DNS-Laufzeit, lokale Netzwerkrouten und Inhaltsprüfung bleiben eigene Grenzen; siehe [Transportnachweis](docs/WEB_FETCH_PINNING.md).
 - Search-API-Quoten, Kostenbudgets und Provider-Rate-Limits müssen extern überwacht werden.
 - Der Critic prüft Inhalte modellbasiert; die Quellen-ID-Prüfung beweist Provenance, nicht automatisch die Wahrheit jeder Aussage.
 - Benutzerkonten und Workspace-Trennung sind umgesetzt; allgemeine Provider-Kostenbudgets, Abrechnung, MFA und E-Mail-basierte Kontowiederherstellung fehlen weiterhin.

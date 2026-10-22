@@ -220,9 +220,14 @@ def test_workspace_work_inventory_paginates_older_jobs_without_text_or_foreign_a
     assert ids_after == set(ids) - {resumed}
 
 
-def test_web_selects_verified_path_without_removing_checks_or_leaking_run_settings(memory_api):
+def test_web_selects_verified_path_without_removing_checks_or_leaking_run_settings(memory_api, monkeypatch):
     _, runtime, clients, _ = memory_api
     owner, csrf = clients[0]
+    # The default mock deliberately rejects every critique. Use an explicitly
+    # passing scripted plan/result critique to exercise the complete short path;
+    # the wrapper remains a simulation and cannot produce a live release.
+    monkeypatch.setattr(runtime.tank.llm.delegate, "_mock_critique", lambda prompt:
+                        '{"passed":true,"score":1.0,"issues":[],"suggestions":[]}')
     original = runtime.tank.verified_single_step, runtime.tank.max_retries
     status, _, result = owner.post("/api/run", {"goal": "Berechne 47 mal 19"}, csrf=csrf)
     assert status == 200 and result["execution_path"] == "verified_single_step"
@@ -234,6 +239,23 @@ def test_web_selects_verified_path_without_removing_checks_or_leaking_run_settin
     assert result["execution_mode"] == "simulation" and not result["release_ready"]
     status, _, next_result = owner.post("/api/run", {"goal": "Ein vollständiger Projektplan"}, csrf=csrf)
     assert status == 200 and next_result["execution_path"] == "standard"
+
+
+def test_rejected_plan_is_returned_and_saved_with_diagnostics_without_extra_inference(memory_api):
+    _, runtime, clients, _ = memory_api
+    owner, csrf = clients[0]
+    status, _, result = owner.post("/api/run", {"goal": "Berechne 47 mal 19"}, csrf=csrf)
+    assert status == 200 and result["execution_path"] == "verified_single_step"
+    assert not result["verification_passed"] and not result["release_ready"]
+    actions = [r["action"] for r in result["receipts"]]
+    assert actions == ["create_plan", "critique_plan", "reject_plan", "llm_call_budget", "llm_usage"]
+    assert "nicht ausgeführt" in result["final_answer"]
+    rejection = next(r for r in result["receipts"] if r["action"] == "reject_plan")
+    assert rejection["details"]["issues"] == ["Simulierter Critic: keine unabhängige inhaltliche Verifikation möglich"]
+    assert runtime.tank.llm_call_budget.snapshot()["used"] == 2
+    saved = owner.get("/api/history")[2][0]
+    assert saved["goal_id"] == result["goal_id"]
+    assert saved["final_answer"] == result["final_answer"]
 
 
 def test_container_html_smoke_accepts_current_page_and_still_bounds_oversized_reads(memory_api, monkeypatch):

@@ -115,6 +115,24 @@ Schlüsseldateien außerhalb der Core-Datenwurzel gehören nicht zu diesem Beleg
 
 ## Weitere Arbeit aus dem Auftrag
 
+### Ausführung nur nach bestandenem Plan
+
+Nach der letzten vorgesehenen Planreparatur blockiert eine fehlgeschlagene
+Planprüfung nun bereits vor dem ersten Spezialisten. Das gilt für serielle und
+parallele Ausführung sowie den verkürzten Rechenpfad. Synthese, finale
+Modellprüfung und optionale Wissensaufbereitung werden dann nicht aufgerufen.
+Der Commander speichert stattdessen eine ausdrücklich nicht freigegebene Antwort
+mit begrenzten Prüfhinweisen und Vorschlägen, übersprungenen Schritt-IDs,
+tatsächlichem Verbrauch und dem Diagnoseereignis `reject_plan`. Schritte bleiben
+unausgeführt, statt als fachlich fehlgeschlagene Ausführungen ausgegeben zu werden.
+
+Die episodische Diagnose bleibt bei aktivem Langzeitgedächtnis als `unknown`
+erhalten. Sie wird nicht in semantisches Wissen oder ein Verfahrensmuster
+umgewandelt und erzeugt keinen Aufbereitungsauftrag. Simulationen bleiben
+ausdrücklich Simulationen. Ein im erlaubten Reparaturfenster akzeptierter Plan
+kann weiterhin normal ausgeführt werden. Sitzungs-/CSRF-geschützte HTTP-Tests
+prüfen außerdem die gespeicherte Antwort im Verlauf.
+
 Die Verbrauchserfassung ist die Grundlage, noch keine vollständige Geldbudget-
 Reservierung. Vor kostenpflichtigen Versuchen müssen bestätigte Preisregeln,
 konservative Reservierungen, gemeinsame Deckel und Router-Fallback-Grenzen

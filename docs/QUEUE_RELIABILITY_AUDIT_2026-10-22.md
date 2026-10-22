@@ -64,11 +64,15 @@ Repositorytests oder ein neu gebauter Container aktivieren keine autonomen Worke
 
 ## Offene Punkte aus dem eingefügten Bericht
 
-Die DNS-Prüfung vor dem Verbinden pinnt die Ziel-IP weiterhin nicht. Vollständiges
-IP-Pinning mit korrekter TLS-Hostprüfung ist ein eigener offener Arbeitspunkt.
-Image-Digest-Bindung ist weiterhin keine Image-Signaturprüfung. Der
-Plan-Gate-Frühabbruch, die Pipe-Behandlung und eine mögliche scrypt-Anpassung
-wurden durch diese Korrekturen nicht als erledigt erklärt. Ebenso offen bleiben
+Zum ursprünglichen Auditstand blieb IP-Pinning offen. In der anschließenden
+Korrektur verbindet der Seitenabruf direkt zu geprüften IPs und behält TLS-SNI,
+Zertifikats-/Hostprüfung und Redirect-Revalidierung bei; Umfang und Grenzen stehen
+in [WEB_FETCH_PINNING.md](WEB_FETCH_PINNING.md). Ein endgültig abgelehnter Plan
+stoppt nun ebenfalls vor Ausführung und optionalen Modellaufrufen, dokumentiert
+in [IMPROVEMENTS_IMPLEMENTATION.md](IMPROVEMENTS_IMPLEMENTATION.md).
+
+Image-Digest-Bindung ist weiterhin keine Image-Signaturprüfung. Die
+Pipe-Behandlung und eine mögliche scrypt-Anpassung bleiben offen. Ebenso offen bleiben
 Geldreservierung über Router-Fallbacks, dauerhafte Chat-Schrittaufträge und die
 unabhängige fachliche Abnahme des eingefrorenen Korpus.
 
