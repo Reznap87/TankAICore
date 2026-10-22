@@ -38,13 +38,14 @@ def test_memory_provider_failure_preserves_result_and_verification(tmp_path, mon
         runtime = manager.get(tenant_id=str(uuid4()), workspace_id=str(uuid4()))
         result = runtime.tank.run("Berechne 31 mal 13 ohne Websuche")
         assert result.verification_passed is passes
+        assert result.release_ready is passes
         assert result.status.value == ("completed" if passes else "failed")
         assert result.final_answer.endswith("403")
         deferred = next(r for r in result.receipts if r.action == "defer_memory_consolidation")
         assert deferred.success is False
         assert deferred.details == {"error_type": "RuntimeError", "episode_stored": True,
                                     "deferred": True, "retry_scheduled": False}
-        assert "private-marker" not in deferred.model_dump_json()
+        assert "private-marker" not in result.model_dump_json()
         saved = runtime.tank.run_store.list_recent(1)[0]
         assert saved["final_answer"] == result.final_answer
         assert saved["verification_passed"] is passes
