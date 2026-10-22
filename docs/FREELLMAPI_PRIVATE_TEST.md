@@ -137,8 +137,31 @@ Platz. Ein abgebrochener oder abgelehnter Lauf gilt weiterhin nicht als Erfolg.
 Schlägt erst die zusätzliche Memory-Aufbereitung nach dem gespeicherten
 Ergebnis fehl (zum Beispiel wegen eines Ratenlimits), bleibt die ursprüngliche
 Antwort samt Prüfstatus erhalten. Ein fehlgeschlagenes Receipt
-`defer_memory_consolidation` weist die ausstehende Aufbereitung aus; ein
-automatischer Wiederholungsauftrag wird dadurch nicht angelegt.
+`defer_memory_consolidation` weist die ausstehende Aufbereitung aus. Neue
+Aufbereitungen werden zusätzlich dauerhaft in der Workspace-Datenbank als
+`consolidation_jobs` vorgemerkt. Das aktiviert keinen automatischen Modell-Retry.
+`LongTermMemory.pending_consolidations()` liest diesen Arbeitsstand ohne
+Modellaufruf. Ein expliziter erneuter Aufruf von `consolidate(run_id, llm=...)`
+kann ihn fortsetzen; der Betreiber muss dafür denselben Budget-, Kosten- und
+Zugriffsschutz wie beim ursprünglichen Lauf bereitstellen. Es gibt dafür noch
+keinen Hintergrunddienst und keinen Knopf in der Chatoberfläche.
+
+Bereits strukturierte, vollständig validierte Einträge werden vor der
+Indexierung zwischengespeichert. `consolidate(run_id, prepared_only=True)` kann
+diesen Schritt ohne Modell fortsetzen; ohne vorbereiteten Stand bricht es ab.
+Ein Retry schaltet nicht still auf eine heuristische Aufbereitung um. Stabile
+Eintrags-IDs und eine gemeinsame SQL-Transaktion verhindern doppelte oder
+teilweise freigegebene Einträge. Eine fünfminütige Claim-Lease verhindert die
+doppelte Bearbeitung desselben Auftrags; ein nach Prozessabbruch verwaister
+Claim kann danach explizit neu übernommen werden. Workspace-Zugriffe bleiben
+wie bisher serialisiert; dies ist kein allgemeiner Mehrprozess-VectorStore.
+
+Nur abgeschlossene, geprüfte und freigegebene Live-Läufe sind für neue
+Wissenseinträge geeignet. Bei Altdaten ohne gespeicherten Prüfstatus wird dieser
+nicht nachträglich angenommen. Historische ausstehende Hinweise werden nicht
+automatisch zu neuen Aufträgen umgedeutet. Ungültiges Modell-JSON wird als Fehler
+vorgemerkt und nicht als Rohtext-Wissen gespeichert. Die Strukturprüfung ersetzt
+keine unabhängige inhaltliche Prüfung der extrahierten Aussagen.
 Der Chat zeigt die ausstehende Wissensaufbereitung direkt bei der Antwort und
 erneut beim Öffnen aus dem Verlauf an. Der Gesprächsexport enthält denselben
 Hinweis.

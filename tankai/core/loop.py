@@ -440,7 +440,7 @@ class TankAI:
                         details={"error_type": type(exc).__name__, "episode_stored": True,
                                  "deferred": True, "retry_scheduled": False},
                     ))
-                if final_critique.passed and plan is not None:
+                if result.release_ready and plan is not None:
                     self.ltm.promote_to_procedure(
                         plan, success_score=final_critique.score, goal_description=goal.description
                     )

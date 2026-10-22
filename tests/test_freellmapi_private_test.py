@@ -54,7 +54,7 @@ def test_private_compose_budget_completes_five_steps_and_memory(tmp_path, monkey
             if "critic" in system.lower():
                 return '{"passed":true,"score":1.0,"issues":[],"suggestions":[]}'
             if "memory-consolidator" in system.lower():
-                return "[]"
+                return '{"entries":[]}'
             return "23 * 17 = 391"
 
     compose = (ROOT / "docker-compose.freellmapi.yml").read_text(encoding="utf-8")
@@ -73,6 +73,8 @@ def test_private_compose_budget_completes_five_steps_and_memory(tmp_path, monkey
         assert len(result.plan.steps) == 5
         assert result.verification_passed
         assert result.final_answer == "23 * 17 = 391"
+        assert not runtime.tank.ltm.pending_consolidations()
+        assert not any(r.action == "defer_memory_consolidation" for r in result.receipts)
         budget_receipt = next(r for r in result.receipts if r.action == "llm_call_budget")
         assert 14 <= budget_receipt.details["used"] <= int(budget.group(1))
         assert runtime.tank.run_store.list_recent(1)[0]["final_answer"] == result.final_answer

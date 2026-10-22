@@ -41,10 +41,22 @@ def test_memory_provider_failure_preserves_result_and_verification(tmp_path, mon
         assert result.release_ready is passes
         assert result.status.value == ("completed" if passes else "failed")
         assert result.final_answer.endswith("403")
-        deferred = next(r for r in result.receipts if r.action == "defer_memory_consolidation")
-        assert deferred.success is False
-        assert deferred.details == {"error_type": "RuntimeError", "episode_stored": True,
-                                    "deferred": True, "retry_scheduled": False}
+        deferred = [r for r in result.receipts if r.action == "defer_memory_consolidation"]
+        if passes:
+            assert len(deferred) == 1
+            assert deferred[0].success is False
+            assert deferred[0].details == {"error_type": "RuntimeError", "episode_stored": True,
+                                          "deferred": True, "retry_scheduled": False}
+            pending = runtime.tank.ltm.pending_consolidations()
+            assert len(pending) == 1
+            assert pending[0]["run_id"] == result.goal_id
+            assert pending[0]["last_error_type"] == "RuntimeError"
+        else:
+            assert not deferred
+            assert not runtime.tank.ltm.pending_consolidations()
+            assert not runtime.tank.ltm._conn.execute(
+                "SELECT id FROM memory_entries WHERE memory_type IN ('semantic', 'procedural')"
+            ).fetchall()
         assert "private-marker" not in result.model_dump_json()
         saved = runtime.tank.run_store.list_recent(1)[0]
         assert saved["final_answer"] == result.final_answer
