@@ -197,6 +197,38 @@ def test_snapshot_schema_and_foreign_keys_are_validated(tmp_path, remote, kind):
     assert AuthStore(path).list_users() == original
 
 
+@pytest.mark.parametrize("kind", ["view", "trigger"])
+def test_snapshot_auth_objects_must_be_passive_tables(tmp_path, remote, kind):
+    state, client = remote
+    path = tmp_path / "auth.db"
+    store = AuthStore(path)
+    bootstrap_owner(store, owner_config())
+    original = store.list_users()
+
+    incompatible = tmp_path / f"{kind}.db"
+    AuthStore(incompatible)
+    with sqlite3.connect(incompatible) as connection:
+        if kind == "view":
+            connection.execute("DROP TABLE sessions")
+            connection.execute(
+                "CREATE VIEW sessions AS SELECT "
+                "NULL AS id,NULL AS token_hash,NULL AS csrf_hash,NULL AS csrf_token,"
+                "NULL AS user_id,NULL AS active_workspace_id,NULL AS created_at,"
+                "NULL AS expires_at,NULL AS last_seen_at,NULL AS revoked_at,"
+                "NULL AS user_agent_hash,NULL AS ip_hash WHERE 0"
+            )
+        else:
+            connection.execute(
+                "CREATE TRIGGER mutate_users AFTER INSERT ON audit_events "
+                "BEGIN DELETE FROM users; END"
+            )
+    state.update(data=incompatible.read_bytes(), revision=1)
+
+    with pytest.raises(RuntimeError, match="Invalid auth state database"):
+        client().restore(path)
+    assert AuthStore(path).list_users() == original
+
+
 def test_login_does_not_issue_a_cookie_until_session_is_durable(tmp_path, remote, monkeypatch):
     from tankai.web import server as web
     state, client = remote

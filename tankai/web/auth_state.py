@@ -73,6 +73,12 @@ def _validate_snapshot(path: str) -> None:
 
     connection = sqlite3.connect(path)
     try:
+        required_names = tuple(_REQUIRED_AUTH_COLUMNS)
+        placeholders = ",".join("?" for _ in required_names)
+        object_types = dict(connection.execute(
+            f"SELECT name,type FROM sqlite_schema WHERE name IN ({placeholders})",
+            required_names,
+        ))
         table_columns = {
             table: {
                 str(row[1])
@@ -85,12 +91,18 @@ def _validate_snapshot(path: str) -> None:
         ).fetchone()
         if (
             connection.execute("PRAGMA quick_check").fetchone() != ("ok",)
+            or any(object_types.get(table) != "table" for table in required_names)
             or any(
                 not required.issubset(table_columns[table])
                 for table, required in _REQUIRED_AUTH_COLUMNS.items()
             )
             or version != (str(AuthStore.SCHEMA_VERSION),)
             or connection.execute("PRAGMA foreign_key_check").fetchone() is not None
+            or connection.execute(
+                f"SELECT 1 FROM sqlite_schema WHERE type='trigger' "
+                f"AND tbl_name IN ({placeholders}) LIMIT 1",
+                required_names,
+            ).fetchone() is not None
         ):
             raise RuntimeError("Invalid auth state database")
     except sqlite3.DatabaseError as exc:
