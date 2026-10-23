@@ -1,11 +1,20 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.52
+Version: 5.7.53
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 22. Oktober 2026
+Statusdatum: 23. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 22. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
+
+5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als
+gewöhnliche SQLite-Tabellen und weist Trigger auf diesen Tabellen zurück. Views mit
+passenden Spalten oder nachgelagerte Trigger können damit keine Kontodatenbank ersetzen
+und spätere Auth-Schreibzugriffe beeinflussen. Ausgangsstand:
+cea6f42965bc10f3a39090794c5552ff34161057,
+Tree 32fc47a9656c3df39f1d3e16e2ec29d45ea4d3d0; main-CI #198 erfolgreich.
+Die Entwurfs-PRs #84 und #96 sowie Issue #25 bleiben getrennt offen. Keine
+Produktions-, Provider-, Secret-, Berechtigungs- oder Abrechnungsänderung.
 
 5.7.52: Der Restore-Vertrag des Kontospeichers prüft zusätzlich die für das
 aktuelle Auth-Schema erforderlichen Spalten und sämtliche SQLite-Fremdschlüssel.

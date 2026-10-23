@@ -29,7 +29,9 @@ supports the configured single Core container; multiple independent writers
 require a different storage adapter. Snapshot or restoration errors fail closed.
 Before replacement, a restored file must also pass SQLite integrity checking,
 contain every required TankAI authentication table and column, declare the current
-authentication schema version, and have no broken foreign-key relationships. A
+authentication schema version, and have no broken foreign-key relationships. Required
+authentication objects must be ordinary tables rather than views, and snapshots may
+not attach triggers to them. A
 healthy but foreign or incompatible SQLite file is rejected without replacing the
 local account database.
 
