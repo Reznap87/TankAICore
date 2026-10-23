@@ -22,7 +22,9 @@ import socket
 import threading
 import time
 from dataclasses import dataclass, field
+from http.client import HTTPConnection, HTTPException
 from html.parser import HTMLParser
+import ssl
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -299,7 +301,10 @@ def _normalize_public_url(url: str) -> str:
     candidate = url.strip()
     if re.search(r"[\x00-\x20\x7f]", candidate):
         raise WebResearchError("Kontroll- oder Leerzeichen in URL sind nicht erlaubt")
-    parsed = urlsplit(candidate)
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError as exc:
+        raise WebResearchError("Ungültige URL") from exc
     if parsed.scheme.lower() not in {"http", "https"}:
         raise WebResearchError("Nur http/https sind erlaubt")
     if not parsed.hostname:
@@ -307,6 +312,8 @@ def _normalize_public_url(url: str) -> str:
     if parsed.username or parsed.password:
         raise WebResearchError("Credentials in URLs sind nicht erlaubt")
     host = parsed.hostname.rstrip(".").lower()
+    if "%" in host:
+        raise WebResearchError("Kodierte Hosts und IPv6-Zonen sind nicht erlaubt")
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
         raise WebResearchError("Lokale Hosts sind nicht erlaubt")
     try:
@@ -337,6 +344,7 @@ def _normalize_public_url(url: str) -> str:
 def _is_forbidden_ip(ip: ipaddress._BaseAddress) -> bool:
     return any(
         (
+            not ip.is_global,
             ip.is_private,
             ip.is_loopback,
             ip.is_link_local,
@@ -347,35 +355,130 @@ def _is_forbidden_ip(ip: ipaddress._BaseAddress) -> bool:
     )
 
 
-def assert_public_url(url: str, *, resolver=socket.getaddrinfo) -> str:
-    """Validiert Schema, Host und alle aktuell aufgelösten IP-Adressen."""
+@dataclass(frozen=True, slots=True)
+class _PinnedAddress:
+    family: int
+    sockaddr: tuple
+
+
+@dataclass(frozen=True, slots=True)
+class _PublicTarget:
+    url: str
+    hostname: str
+    port: int
+    addresses: tuple[_PinnedAddress, ...]
+
+
+def _resolve_public_target(url: str, *, resolver=None) -> _PublicTarget:
+    """Prüft alle Antworten und bewahrt die numerischen Verbindungsziele auf."""
     normalized = _normalize_public_url(url)
     parsed = urlsplit(normalized)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
-        infos = resolver(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        family = socket.AF_INET if literal.version == 4 else socket.AF_INET6
+        sockaddr = (str(literal), port) if literal.version == 4 else (str(literal), port, 0, 0)
+        return _PublicTarget(normalized, host, port, (_PinnedAddress(family, sockaddr),))
+
+    resolver = resolver or socket.getaddrinfo
+    try:
+        infos = resolver(host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM,
+                         proto=socket.IPPROTO_TCP)
+    except OSError as exc:
         raise WebResearchError("Host konnte nicht aufgelöst werden") from exc
-    addresses = {item[4][0] for item in infos}
-    if not addresses:
-        raise WebResearchError("Host lieferte keine IP-Adresse")
-    for address in addresses:
+    if len(infos) > 128:
+        raise WebResearchError("Zu viele DNS-Adressen")
+    addresses: list[_PinnedAddress] = []
+    for family, socktype, protocol, _, sockaddr in infos:
+        if family not in {socket.AF_INET, socket.AF_INET6} or socktype != socket.SOCK_STREAM:
+            raise WebResearchError("Ungültige DNS-Adressfamilie")
+        if protocol not in {0, socket.IPPROTO_TCP}:
+            raise WebResearchError("Ungültiges DNS-Verbindungsprotokoll")
+        address = sockaddr[0]
+        if "%" in address or (family == socket.AF_INET6 and len(sockaddr) > 3 and sockaddr[3]):
+            raise WebResearchError("IPv6-Zonen sind nicht erlaubt")
         try:
             ip = ipaddress.ip_address(address)
         except ValueError as exc:
             raise WebResearchError("Ungültige Ziel-IP") from exc
-        if _is_forbidden_ip(ip):
+        if ip.version != (4 if family == socket.AF_INET else 6) or _is_forbidden_ip(ip):
             raise WebResearchError("Private, lokale oder reservierte Ziel-IP blockiert")
-    return normalized
+        # Use the URL's port and canonical numeric address, never a resolver hostname.
+        pinned_sockaddr = (str(ip), port) if ip.version == 4 else (str(ip), port, 0, 0)
+        pinned = _PinnedAddress(family, pinned_sockaddr)
+        if pinned not in addresses:
+            addresses.append(pinned)
+    if not addresses:
+        raise WebResearchError("Host lieferte keine IP-Adresse")
+    return _PublicTarget(normalized, host, port, tuple(addresses))
 
 
-class _SafeRedirectHandler(HTTPRedirectHandler):
-    def __init__(self, validator) -> None:
-        super().__init__()
-        self.validator = validator
+def assert_public_url(url: str, *, resolver=None) -> str:
+    """Validiert eine URL; allein ist diese Prüfung noch keine sichere Verbindung."""
+    return _resolve_public_target(url, resolver=resolver).url
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        validated = self.validator(urljoin(req.full_url, newurl))
-        return super().redirect_request(req, fp, code, msg, headers, validated)
+
+class _PinnedHTTPConnection(HTTPConnection):
+    """Direkter Socket zu geprüften IPs, mit ursprünglichem TLS-Hostnamen.
+
+    No proxy, CONNECT tunnel, environment lookup or hostname-based reconnect is
+    used. A fresh connection is built for each redirect hop.
+    """
+
+    def __init__(self, target: _PublicTarget, *, timeout: float) -> None:
+        super().__init__(target.hostname, target.port, timeout=timeout)
+        self.target = target
+        self.tls_context = None
+        if urlsplit(target.url).scheme == "https":
+            self.tls_context = ssl.create_default_context()
+            self.tls_context.set_alpn_protocols(["http/1.1"])
+
+    def connect(self) -> None:
+        last_error = None
+        deadline = time.monotonic() + self.timeout
+        # All DNS answers have been validated, but connection work must remain
+        # bounded when many public addresses are unreachable.
+        for address in self.target.addresses[:8]:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Verbindungszeitlimit erreicht")
+            sock = socket.socket(address.family, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+            try:
+                sock.settimeout(remaining)
+                # Unlike create_connection(hostname), this cannot re-resolve DNS.
+                sock.connect(address.sockaddr)
+                peer = ipaddress.ip_address(sock.getpeername()[0])
+                if peer != ipaddress.ip_address(address.sockaddr[0]):
+                    raise WebResearchError("Verbindungsziel stimmt nicht mit geprüfter IP überein")
+            except OSError as exc:
+                sock.close()
+                last_error = exc
+                continue
+            except BaseException:
+                sock.close()
+                raise
+            try:
+                if self.tls_context is not None:
+                    # The DNS hostname, not the selected IP, controls SNI and the
+                    # default context's certificate/hostname verification.
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("Verbindungszeitlimit erreicht")
+                    sock.settimeout(remaining)
+                    sock = self.tls_context.wrap_socket(sock, server_hostname=self.target.hostname)
+                sock.settimeout(self.timeout)
+                self.sock = sock
+                return
+            except BaseException:
+                sock.close()
+                raise
+        if last_error is not None:
+            raise last_error
+        raise WebResearchError("Keine geprüfte Ziel-IP verfügbar")
 
 
 class WebPageFetcher:
@@ -395,35 +498,18 @@ class WebPageFetcher:
         max_bytes: int = 750_000,
         user_agent: str = DEFAULT_USER_AGENT,
         validator=assert_public_url,
+        resolver=None,
+        max_redirects: int = 5,
     ) -> None:
         self.timeout = max(1.0, min(float(timeout), 60.0))
         self.max_bytes = max(16_384, min(int(max_bytes), 5_000_000))
         self.user_agent = user_agent
         self.validator = validator
-        self.opener = build_opener(_SafeRedirectHandler(self.validator))
+        self.resolver = resolver
+        self.max_redirects = max(0, min(int(max_redirects), 10))
 
     def fetch(self, url: str) -> str:
-        validated = self.validator(url)
-        request = Request(
-            validated,
-            headers={
-                "User-Agent": self.user_agent,
-                "Accept": "text/html,text/plain,application/xhtml+xml,application/json;q=0.9",
-            },
-        )
-        try:
-            with self.opener.open(request, timeout=self.timeout) as response:
-                content_type = response.headers.get_content_type().lower()
-                if content_type not in self.allowed_content_types:
-                    raise WebResearchError(f"Nicht unterstützter Content-Type: {content_type}")
-                raw = response.read(self.max_bytes + 1)
-                if len(raw) > self.max_bytes:
-                    raise WebResearchError("Seite überschreitet das Größenlimit")
-                charset = response.headers.get_content_charset() or "utf-8"
-        except HTTPError as exc:
-            raise WebResearchError(f"Zielseite antwortete mit HTTP {exc.code}") from exc
-        except (URLError, TimeoutError, OSError) as exc:
-            raise WebResearchError(f"Zielseite nicht erreichbar: {type(exc).__name__}") from exc
+        content_type, raw, charset = self._fetch_bytes(url)
         try:
             text = raw.decode(charset, errors="replace")
         except LookupError:
@@ -438,6 +524,54 @@ class WebPageFetcher:
             except json.JSONDecodeError:
                 pass
         return _clean_text(text, 200_000)
+
+    def _fetch_bytes(self, url: str) -> tuple[str, bytes, str]:
+        current_url = url
+        try:
+            for hop in range(self.max_redirects + 1):
+                # Custom validators can add policy, but cannot disable pinning.
+                if self.validator is not assert_public_url:
+                    current_url = self.validator(current_url)
+                target = _resolve_public_target(current_url, resolver=self.resolver)
+                parsed = urlsplit(target.url)
+                connection = _PinnedHTTPConnection(target, timeout=self.timeout)
+                try:
+                    connection.request(
+                        "GET", urlunsplit(("", "", parsed.path, parsed.query, "")),
+                        headers={
+                            "Host": parsed.netloc,
+                            "User-Agent": self.user_agent,
+                            "Accept": "text/html,text/plain,application/xhtml+xml,application/json;q=0.9",
+                            "Connection": "close",
+                        },
+                    )
+                    response = connection.getresponse()
+                    try:
+                        if response.status in {301, 302, 303, 307, 308}:
+                            location = response.getheader("Location")
+                            if not location:
+                                raise WebResearchError("Redirect ohne Ziel-URL")
+                            if hop == self.max_redirects:
+                                raise WebResearchError("Zu viele Redirects")
+                            current_url = urljoin(target.url, location)
+                            continue
+                        if not 200 <= response.status < 300:
+                            raise WebResearchError(f"Zielseite antwortete mit HTTP {response.status}")
+                        content_type = response.headers.get_content_type().lower()
+                        if content_type not in self.allowed_content_types:
+                            raise WebResearchError(f"Nicht unterstützter Content-Type: {content_type}")
+                        raw = response.read(self.max_bytes + 1)
+                        if len(raw) > self.max_bytes:
+                            raise WebResearchError("Seite überschreitet das Größenlimit")
+                        charset = response.headers.get_content_charset() or "utf-8"
+                        return content_type, raw, charset
+                    finally:
+                        response.close()
+                finally:
+                    connection.close()
+        except (HTTPException, TimeoutError, OSError, UnicodeError) as exc:
+            raise WebResearchError(f"Zielseite nicht erreichbar: {type(exc).__name__}") from exc
+        raise WebResearchError("Kein Seitenabruf abgeschlossen")
 
 
 class WebResearchTool:

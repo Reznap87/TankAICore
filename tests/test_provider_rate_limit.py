@@ -101,3 +101,43 @@ def test_call_guard_rejection_does_not_consume_run_budget() -> None:
 
     budget.set_call_guard(None)
     assert budget.consume("openai:model") == 1
+
+
+def test_shared_upstream_survives_restart_and_different_users_aliases_protocols(tmp_path):
+    path = tmp_path / "auth.db"
+    clock = FakeClock()
+    first = ProviderCallRateLimiter(AuthStore(path), clock=clock, shared_scope="private-router")
+    first.consume("user-a", "openai:auto:main")
+    restarted = ProviderCallRateLimiter(AuthStore(path), clock=clock, shared_scope="private-router")
+    restarted.consume("user-b", "anthropic:critic")
+    with pytest.raises(LLMRateLimitExceeded) as error:
+        restarted.consume("user-c", "openai:different-alias")
+    assert error.value.provider == "shared-upstream"
+    assert error.value.retry_after_seconds == 60
+    # Boundary is exclusive of expired events, not one extra second of denial.
+    clock.advance(60)
+    restarted.consume("user-c", "openai:different-alias")
+    other = ProviderCallRateLimiter(AuthStore(path), clock=clock, shared_scope="other-egress")
+    other.consume("user-d", "openai:model")
+
+
+def test_shared_upstream_admission_is_atomic_across_store_instances(tmp_path):
+    clock = FakeClock()
+    limiters = [ProviderCallRateLimiter(AuthStore(tmp_path / "auth.db"), clock=clock,
+                                      shared_scope="same-egress", shared_limit=3) for _ in range(4)]
+    def attempt(index):
+        try:
+            limiters[index % 4].consume("user-" + str(index), "openai:auto:alias-" + str(index))
+            return 1
+        except LLMRateLimitExceeded:
+            return 0
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        assert sum(pool.map(attempt, range(20))) == 3
+
+
+def test_shared_limit_does_not_count_local_mock_calls(tmp_path):
+    limiter = ProviderCallRateLimiter(AuthStore(tmp_path / "auth.db"), shared_scope="egress", shared_limit=1)
+    limiter.consume("user-a", "mock:model")
+    limiter.consume("user-a", "openai:model")
+    with pytest.raises(ValueError):
+        ProviderCallRateLimiter(AuthStore(tmp_path / "auth.db"), shared_scope="http://secret/")

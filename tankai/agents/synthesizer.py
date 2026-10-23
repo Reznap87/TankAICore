@@ -4,6 +4,7 @@ Synthesizer: führt alle geprüften Ergebnisse zu einer finalen Antwort zusammen
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..core.llm import BaseLLM
@@ -21,17 +22,29 @@ class Synthesizer(BaseAgent):
         step_results: list[tuple[str, str]],  # (step_description, result)
         critiques_summary: str = "",
         goal_analysis: GoalAnalysis | None = None,
+        source_ids: list[str] | None = None,
     ) -> tuple[str, Any]:
         """
         Erzeugt die finale Antwort.
         Gibt (final_answer, receipt) zurück.
         """
+        allowed_sources = sorted({value.upper() for value in (source_ids or [])
+                                  if re.fullmatch(r"SRC-[A-F0-9]{8}", value, re.IGNORECASE)})
+        source_instruction = (
+            "Verwende ausschließlich diese bestätigten Quellen-IDs: "
+            + ", ".join(f"[{value}]" for value in allowed_sources)
+            + ". Behalte Belege unmittelbar an den zugehörigen Aussagen und führe "
+            "eine kompakte Quellenliste aus den vorhandenen Zwischenergebnissen auf."
+            if allowed_sources else
+            "Es liegen keine bestätigten externen Quellen vor. Erstelle keinen "
+            "Quellenabschnitt und keine Quellenmarkierungen oder Quellenplatzhalter."
+        )
         system = (
             "Du bist der Synthesizer. Deine Aufgabe ist es, aus den "
             "geprüften Zwischenergebnissen eine einzige klare, "
             "überprüfbare Endantwort zu formulieren, die die "
-            "Definition of Done erfüllt. Vorhandene Quellen-IDs im Format "
-            "[SRC-XXXXXXXX] müssen exakt erhalten bleiben; erfinde keine neuen IDs oder URLs."
+            "Definition of Done erfüllt. Erfinde keine Quellen-IDs oder URLs. "
+            + source_instruction
         )
 
         results_text = "\n\n".join(
@@ -70,7 +83,8 @@ Geprüfte Zwischenergebnisse:
 Critic-Zusammenfassung:
 {critiques_summary or "Keine kritischen Issues"}
 
-Formuliere eine klare, vollständige Endantwort. Behalte die Quellenbelege unmittelbar an den zugehörigen Aussagen und führe eine kompakte Quellenliste aus den vorhandenen Zwischenergebnissen auf.
+Formuliere eine klare, vollständige Endantwort.
+{source_instruction}
 """
 
         final = self.llm.complete(prompt, system=system)
@@ -79,7 +93,7 @@ Formuliere eine klare, vollständige Endantwort. Behalte die Quellenbelege unmit
             action="synthesize",
             input_summary=f"Goal: {goal.description[:100]}",
             output_summary=final[:200],
-            details={"num_steps_used": len(step_results)},
+            details={"num_steps_used": len(step_results), "available_source_ids": allowed_sources},
         )
         return final, receipt
 

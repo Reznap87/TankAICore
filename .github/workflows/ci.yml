@@ -55,6 +55,8 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.local-llm.yml config --quiet
       - name: Build production container
         run: docker build --iidfile "${RUNNER_TEMP}/tankai-core-production.iid" --tag "tankai-core-ci:${GITHUB_SHA}" .
+      - name: Test private router startup without providers or network access
+        run: python scripts/test_freellmapi_startup.py
       - name: Smoke-test production web container
         run: >-
           python .github/scripts/production_web_container_smoke.py

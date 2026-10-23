@@ -68,7 +68,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Benutzerkonten | Scrypt-Passwörter, widerrufbare HttpOnly-Sessions, CSRF-Schutz und Origin-Cleanup beim Logout |
 | Mandantentrennung | Verifizierte Workspace-Mitgliedschaft und getrennte Persistenzpfade |
 | Rollen | Owner, Admin, Member; serverseitige Prüfung |
-| Produktionsreife | Kontrollierter Single-Host-Betrieb möglich; reale Runtime-E2E-Prüfung, Multi-Host-Koordination, Image-Signaturprüfung, Credential-Broker und Monitoring fehlen |
+| Produktionsreife | Kontrollierter Single-Host-Betrieb möglich; reale Worker-Runtime-E2E-Abnahme, Multi-Host-Koordination, Aktivierung signierter Image-Releases, Credential-Broker und Monitoring bleiben offen |
 
 ## Was 1.10.0 zusätzlich umsetzt
 
@@ -377,7 +377,7 @@ nur einmal beim Erzeugen.
 
 ### Sicherheitsgrenze
 
-Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root Runner-Prozess** vorgesehen. Der öffentliche Webserver darf weder `/var/run/docker.sock` noch gleichwertige Runtime-Rechte erhalten. Für den öffentlichen Mehrmandantenbetrieb sind zusätzlich ein rootless Runtime-Dienst, Image-Signaturprüfung, ein kurzlebiger Credential-Broker, zentrale Metriken und für Multi-Host-Betrieb eine serverbasierte Queue erforderlich.
+Der Container-Executor ist ausschließlich für einen **dedizierten nicht-root Runner-Prozess** vorgesehen. Der öffentliche Webserver darf weder `/var/run/docker.sock` noch gleichwertige Runtime-Rechte erhalten. Rootless-Queue-Executor verlangen vor jedem Start eine geprüfte Image-Signatur aus einer Betreiber-Richtlinie; ohne sie wird blockiert. [Signaturprüfung und manueller Releaseworkflow](docs/WORKER_IMAGE_SIGNATURES.md) beschreiben Einrichtung und Grenzen. Für den öffentlichen Mehrmandantenbetrieb sind weiterhin ein abgenommener rootless Runtime-Dienst, ein eigener signierter Image-Release, ein kurzlebiger Credential-Broker, zentrale Metriken und für Multi-Host-Betrieb eine serverbasierte Queue erforderlich.
 
 ## Was 1.1.0 zusätzlich umsetzt
 
@@ -730,13 +730,13 @@ tankai/
 ## Bekannte Grenzen
 
 - Der Seitenabruf verarbeitet derzeit HTML, Text, XHTML und JSON, aber keine PDFs oder clientseitig gerenderten JavaScript-Seiten.
-- DNS-Prüfung reduziert SSRF-Risiken, pinnt die Ziel-IP während der Verbindung aber noch nicht kryptografisch gegen DNS-Rebinding.
+- Der öffentliche Seitenabruf verbindet direkt zu zuvor geprüften IP-Adressen; HTTPS behält die Zertifikats- und Hostprüfung. Redirects werden erneut geprüft und gepinnt. Umgebungsproxys werden dafür nicht verwendet. DNS-Laufzeit, lokale Netzwerkrouten und Inhaltsprüfung bleiben eigene Grenzen; siehe [Transportnachweis](docs/WEB_FETCH_PINNING.md).
 - Search-API-Quoten, Kostenbudgets und Provider-Rate-Limits müssen extern überwacht werden.
 - Der Critic prüft Inhalte modellbasiert; die Quellen-ID-Prüfung beweist Provenance, nicht automatisch die Wahrheit jeder Aussage.
 - Benutzerkonten und Workspace-Trennung sind umgesetzt; allgemeine Provider-Kostenbudgets, Abrechnung, MFA und E-Mail-basierte Kontowiederherstellung fehlen weiterhin.
 - Die Development-Queue verwendet SQLite auf lokalem Dateisystem und ist nicht für mehrere Hosts oder NFS ausgelegt.
 - Lease-Heartbeats und verlängerte Laufzeitleases reduzieren Doppelstarts. Ein externes Fencing-Token, das einen nach Lease-Verlust weiterlaufenden Git-Prozess auf Kernel- oder Repository-Ebene sicher stoppt, fehlt noch. Der Queue-Runner muss deshalb exklusiv pro Repository betrieben und bei längerem Queue-Datenbankausfall angehalten werden.
-- Worker-Images sind exakt per Digest freigegeben, werden aber noch nicht gegen eine externe Signatur- oder Attestierungsrichtlinie geprüft.
+- Worker-Images sind per Digest gebunden. Produktive Rootless-Queue-Executor prüfen zusätzlich Cosign-Identität, Aussteller und Digest-Claims gegen eine Betreiber-Richtlinie. Eigene signierte Releases und die echte Worker-Betriebsabnahme sind separat erforderlich; lokale Entwicklungs-Executor behalten ausdrücklich ihre Kompatibilität.
 - Inline-Secrets sind blockiert; ein externer Broker für kurzlebige, auf einzelne Jobs begrenzte Credentials fehlt.
 - Das Development-Audit ist persistent, aber noch nicht kryptografisch verkettet oder extern unveränderbar gespeichert.
 - Der befehlsbasierte Worker-Runner und echte Git-Integration sind vorhanden; ein autonomer LLM-Code-Worker, der selbst Änderungen plant, ist noch nicht eingebaut.

@@ -66,15 +66,19 @@ class VectorStore:
         query: str,
         k: int = 5,
         min_score: float = 0.05,
+        *,
+        allowed_ids: Optional[set[str]] = None,
     ) -> list[tuple[str, float, dict]]:
-        if self.vectors is None or len(self.ids) == 0:
+        if self.vectors is None or len(self.ids) == 0 or k <= 0 or allowed_ids == set():
             return []
 
         q = np.asarray(self.embedder.embed(query), dtype=np.float32)
         if q.shape != (self.dim,):
             raise ValueError(f"Query-Embedding hat ungültige Shape {q.shape}")
         scores = self.vectors @ q
-        top_idx = np.argsort(scores)[::-1][: max(0, int(k))]
+        candidates = np.asarray([i for i, entry_id in enumerate(self.ids)
+                                 if allowed_ids is None or entry_id in allowed_ids], dtype=int)
+        top_idx = candidates[np.argsort(scores[candidates])[::-1][: max(0, int(k))]]
 
         results = []
         for i in top_idx:

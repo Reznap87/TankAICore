@@ -12,6 +12,10 @@
   let selectedIndex = -1;
   let theme = 'dark';
   let toastTimer;
+  let memoryRequest = 0;
+  let workRequest = 0;
+  let workOffset = 0;
+  let workNext = null;
   try { const stored = localStorage.getItem('tankai.ui.theme'); if (['dark', 'light', 'system'].includes(stored)) theme = stored; }
   catch (error) { console.info('TankAI: appearance preference is unavailable.'); }
   function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = String(text); return node; }
@@ -28,8 +32,9 @@
     return data;
   }
   function resetResult() {
+    memoryRequest += 1; byId('memory-recovery').hidden = true;
     selectedResult = null; selectedIndex = -1;
-    ['questionRow', 'outCard', 'planCard', 'receiptCard'].forEach(id => { byId(id).hidden = true; });
+    ['questionRow', 'outCard', 'planCard', 'receiptCard', 'usageCard'].forEach(id => { byId(id).hidden = true; });
     ['question', 'answer', 'badges', 'planBody', 'receiptBody', 'rationale'].forEach(id => byId(id).replaceChildren());
     byId('export-chat').disabled = true;
     byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true;
@@ -37,6 +42,7 @@
     document.title = 'TankAI – Dein Chat';
   }
   function resetWorkspace() {
+    workRequest += 1; workOffset = 0; workNext = null; byId('work-items').replaceChildren(); byId('work-status').textContent = ''; if (byId('work-dialog').open) byId('work-dialog').close();
     historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren();
     byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = '';
     byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft';
@@ -59,7 +65,7 @@
   }
   function setBusy(value) {
     busy = value; byId('goal').disabled = value;
-    ['new-chat', 'workspace'].forEach(id => { byId(id).disabled = value; });
+    ['new-chat', 'workspace', 'memory-resume', 'memory-refresh', 'work-open', 'work-refresh', 'work-prev', 'work-next'].forEach(id => { byId(id).disabled = value; });
     document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; });
     byId('runBtn').disabled = value || !byId('goal').value.trim();
     byId('composer').setAttribute('aria-busy', String(value));
@@ -107,7 +113,7 @@
     if (!historyItems.length) { const empty = element('div', 'empty-history'); empty.append(icon('chat'), element('span', '', 'Deine Gespräche aus diesem Workspace erscheinen hier.')); root.append(empty); return; }
     historyItems.forEach((item, index) => { const button = element('button', 'history-item' + (index === selectedIndex ? ' active' : ''), String(item.goal || 'Ohne Titel').slice(0, 65)); button.type = 'button'; button.disabled = busy; if (index === selectedIndex) button.setAttribute('aria-current', 'page'); button.addEventListener('click', () => { selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
   }
-  function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
+  function resultKey(item) { return item.goal_id || item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
   async function loadHistory() {
     const requestEpoch = epoch;
     try { const data = await jsonFetch('/api/history'); if (requestEpoch !== epoch) return; historyItems = Array.isArray(data) ? data : []; selectedIndex = selectedResult ? historyItems.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; renderHistory(); }
@@ -115,20 +121,145 @@
   }
   function textCell(value) { return element('td', '', value ?? ''); }
   function badge(value, className) { return element('span', 'badge ' + className, value); }
+  function resultInfo(data) {
+    const receipts = Array.isArray(data.receipts) ? data.receipts : [];
+    const trustedIds = new Set((Array.isArray(data.source_ids) ? data.source_ids : []).filter(value => typeof value === 'string' && /^SRC-[A-F0-9]{8}$/i.test(value)).map(value => value.toUpperCase()));
+    // Historical runs can predate the server's source-integrity gate. Keep the
+    // stored answer visible, but never display an unsupported marker as passed.
+    const unverifiedSources = [...String(data.final_answer || '').matchAll(/\[\s*(SRC-[^\]\r\n]*)\]/gi)].map(match => match[1].trim().toUpperCase()).filter(value => !trustedIds.has(value));
+    const simulated = data.status === 'simulated' || data.execution_mode === 'simulation';
+    const memoryWasDeferred = receipts.some(receipt => receipt.action === 'defer_memory_consolidation' && receipt.success === false && receipt.details?.deferred === true);
+    const memoryCompleted = data.memory_consolidation?.state === 'completed';
+    return { receipts, simulated, memoryWasDeferred, memoryCompleted, memoryDeferred: memoryWasDeferred && !memoryCompleted, unverifiedSources, released: Boolean(data.release_ready) && !unverifiedSources.length && !simulated };
+  }
+  function resultStatus(data, info = resultInfo(data)) {
+    const status = info.simulated ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : info.unverifiedSources.length ? 'Die Antwort enthält nicht bestätigte Quellenangaben. Bitte nicht als belegtes Ergebnis übernehmen.' : info.released ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
+    return status + (info.memoryCompleted ? ' Die zusätzliche Wissensaufbereitung ist abgeschlossen.' : info.memoryDeferred ? ' Die Antwort bleibt gespeichert; die zusätzliche Wissensaufbereitung steht noch aus.' : '');
+  }
+  function renderBadges(data) {
+    const info = resultInfo(data); const badges = byId('badges'); badges.replaceChildren();
+    badges.append(badge(info.simulated ? 'Simulation · keine verifizierte KI-Antwort' : info.unverifiedSources.length ? 'Quellenbelege nicht bestätigt' : info.released ? 'Prüfung bestanden' : 'Nicht freigegeben', info.released ? 'b-ok' : 'b-warn'));
+    if (info.memoryCompleted) badges.append(badge('Wissensaufbereitung abgeschlossen', 'b-ok'));
+    else if (info.memoryDeferred) badges.append(badge('Wissensaufbereitung ausstehend', 'b-warn'));
+    badges.append(badge(String(data.duration_seconds ?? 0) + ' s', 'b-info'));
+    byId('status').textContent = resultStatus(data, info);
+  }
+  function memoryRunId(data) { return typeof data?.goal_id === 'string' && /^[0-9a-f-]{36}$/i.test(data.goal_id) ? data.goal_id : ''; }
+  function renderMemoryState(data, error = '') {
+    const state = data.memory_consolidation;
+    const messages = {
+      prepared: state?.local_index ? 'Die Wissenseinträge sind vorbereitet. Du kannst das Speichern ohne neue Modellanfrage abschließen.' : 'Dieser Suchindex unterstützt die Wiederaufnahme ohne Modellzugriff nicht. Es werden keine zusätzlichen Anfragen gestartet.',
+      completed: Number(state?.entries_count) > 0 ? 'Die Wissensaufbereitung ist abgeschlossen. Die gespeicherte Antwort und ihr Prüfstatus bleiben erhalten.' : 'Die Wissensaufbereitung ist abgeschlossen. Es wurden keine zusätzlichen Wissenseinträge angelegt.',
+      running: 'Die Wissensaufbereitung wird bereits bearbeitet. Du kannst den Status später erneut prüfen.',
+      needs_inference: 'Für diese Aufbereitung wäre ein neuer Modellversuch nötig. Die Antwort bleibt gespeichert; hier werden keine zusätzlichen Anfragen gestartet.',
+      not_started: 'Für diesen Lauf liegt kein vorbereiteter Arbeitsstand vor. Es wird keine zusätzliche Modellanfrage gestartet.',
+      not_eligible: 'Für diesen Lauf kann die Wissensaufbereitung nicht wiederaufgenommen werden. Die ursprüngliche Antwort bleibt erhalten.'
+    };
+    byId('memory-recovery').hidden = false;
+    byId('memory-status').textContent = error || (state ? messages[state.state] || 'Der Aufbereitungsstatus ist nicht verfügbar.' : memoryRunId(data) ? 'Aufbereitungsstatus wird geprüft …' : 'Dieser ältere Lauf hat noch keinen wiederaufnehmbaren Arbeitsstand. Die Antwort bleibt gespeichert.');
+    byId('memory-resume').hidden = !(state?.state === 'prepared' && state.can_resume === true) || Boolean(error);
+    byId('memory-resume').disabled = busy;
+    byId('memory-refresh').hidden = !memoryRunId(data) || (!error && state?.state !== 'running');
+    byId('memory-refresh').disabled = busy;
+    renderBadges(data);
+  }
+  async function loadMemoryState(data) {
+    const request = ++memoryRequest; const requestEpoch = epoch; const runId = memoryRunId(data);
+    renderMemoryState(data);
+    if (!runId) return;
+    try {
+      const result = await jsonFetch('/api/memory/consolidation/' + encodeURIComponent(runId));
+      if (request !== memoryRequest || requestEpoch !== epoch || selectedResult !== data) return;
+      data.memory_consolidation = result.memory_consolidation;
+      renderMemoryState(data);
+    } catch (error) {
+      if (request !== memoryRequest || requestEpoch !== epoch || selectedResult !== data) return;
+      if (error.status === 401) showLogin();
+      else renderMemoryState(data, 'Aufbereitungsstatus nicht verfügbar. Die Antwort bleibt gespeichert.');
+    }
+  }
+  async function resumeMemory() {
+    const data = selectedResult;
+    if (busy || !memoryRunId(data) || data.memory_consolidation?.can_resume !== true) return;
+    const requestEpoch = epoch; const request = ++memoryRequest;
+    setBusy(true); renderHistory();
+    byId('memory-status').textContent = 'Vorbereitete Wissenseinträge werden gespeichert …';
+    try {
+      const result = await jsonFetch('/api/memory/consolidation/' + encodeURIComponent(data.goal_id) + '/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (request !== memoryRequest || requestEpoch !== epoch || selectedResult !== data) return;
+      data.memory_consolidation = result.memory_consolidation;
+      renderMemoryState(data);
+    } catch (error) {
+      if (request !== memoryRequest || requestEpoch !== epoch || selectedResult !== data) return;
+      if (error.status === 401) showLogin();
+      else renderMemoryState(data, 'Speichern nicht bestätigt. Bitte zuerst den Status aktualisieren. Die Antwort bleibt erhalten.');
+    } finally {
+      if (requestEpoch === epoch) { setBusy(false); renderHistory(); }
+    }
+  }
+  async function loadWork(offset = 0) {
+    if (busy || !currentUser) return;
+    const request = ++workRequest; const requestEpoch = epoch;
+    byId('work-items').replaceChildren(); byId('work-status').textContent = 'Offene Aufbereitungen werden geladen …';
+    byId('work-prev').hidden = true; byId('work-next').hidden = true;
+    try {
+      const page = await jsonFetch('/api/memory/work?offset=' + offset);
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      workOffset = page.offset; workNext = page.next_offset;
+      byId('work-status').textContent = page.items.length ? 'Einträge ' + (offset + 1) + ' bis ' + (offset + page.items.length) + '. Die Liste zeigt den aktuellen Stand.' : 'Keine offenen Aufbereitungen auf dieser Seite.';
+      const labels = { prepared: 'Vorbereitet', needs_inference: 'Neue Modellanfrage nötig', running: 'In Bearbeitung', not_eligible: 'Nicht fortsetzbar', not_started: 'Nicht begonnen' };
+      page.items.forEach(item => {
+        const row = element('div', 'work-item'); row.append(element('strong', '', labels[item.state] || 'Status unbekannt'));
+        row.append(element('p', 'muted', 'Lauf ' + item.goal_id.slice(0, 8) + ' · ' + new Date(item.updated_at).toLocaleString('de-DE')));
+        if (item.can_resume === true) { const button = element('button', 'secondary-button', 'Wissen fertig speichern'); button.type = 'button'; button.disabled = busy; button.addEventListener('click', () => resumeWork(item.goal_id)); row.append(button); }
+        byId('work-items').append(row);
+      });
+      byId('work-prev').hidden = offset === 0; byId('work-next').hidden = workNext === null;
+    } catch (error) {
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      if (error.status === 401) showLogin(); else byId('work-status').textContent = 'Übersicht nicht verfügbar. Bitte erneut aktualisieren.';
+    }
+  }
+  async function resumeWork(runId) {
+    if (busy || !currentUser) return;
+    const requestEpoch = epoch; const request = ++workRequest; const workspaceResult = selectedResult;
+    setBusy(true); byId('work-items').querySelectorAll('button').forEach(button => { button.disabled = true; });
+    byId('work-status').textContent = 'Vorbereitete Einträge werden gespeichert …';
+    try {
+      const result = await jsonFetch('/api/memory/consolidation/' + encodeURIComponent(runId) + '/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      if (workspaceResult && selectedResult === workspaceResult && memoryRunId(workspaceResult) === runId) { memoryRequest += 1; workspaceResult.memory_consolidation = result.memory_consolidation; renderMemoryState(workspaceResult); }
+      toast('Wissensaufbereitung abgeschlossen.');
+    } catch (error) {
+      if (request !== workRequest || requestEpoch !== epoch) return;
+      if (error.status === 401) showLogin(); else toast('Speichern nicht bestätigt. Der Status wird neu geladen.');
+    } finally {
+      if (requestEpoch === epoch) { setBusy(false); await loadWork(0); }
+    }
+  }
   function renderResult(data) {
     selectedResult = data; byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
     byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
     byId('outCard').hidden = false; byId('answer').textContent = String(data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
-    const badges = byId('badges'); badges.replaceChildren(); const simulated = data.status === 'simulated' || data.execution_mode === 'simulation';
-    badges.append(badge(simulated ? 'Simulation · keine verifizierte KI-Antwort' : data.release_ready ? 'Prüfung bestanden' : 'Nicht freigegeben', simulated ? 'b-warn' : data.release_ready ? 'b-ok' : 'b-warn'));
-    badges.append(badge(String(data.duration_seconds ?? 0) + ' s', 'b-info'));
+    const info = resultInfo(data); renderBadges(data);
+    memoryRequest += 1; byId('memory-recovery').hidden = true;
+    if (info.memoryWasDeferred) loadMemoryState(data);
     const steps = data.plan?.steps; const planBody = byId('planBody'); planBody.replaceChildren(); byId('planCard').hidden = !Array.isArray(steps) || !steps.length;
     byId('rationale').textContent = String(data.plan?.rationale || '');
     if (Array.isArray(steps)) steps.forEach((step, index) => { const row = element('tr'); row.append(textCell(index + 1), textCell(step.specialist_type), textCell(step.description), textCell(step.status || '—')); planBody.append(row); });
-    const receiptBody = byId('receiptBody'); receiptBody.replaceChildren(); const receipts = Array.isArray(data.receipts) ? data.receipts : []; byId('receiptCard').hidden = !receipts.length;
+    const receiptBody = byId('receiptBody'); receiptBody.replaceChildren(); const receipts = info.receipts; byId('receiptCard').hidden = !receipts.length;
+    const usage = receipts.find(receipt => receipt.action === 'llm_usage')?.details;
+    byId('usageCard').hidden = !usage;
+    byId('usageInfo').textContent = usage ? usageText(usage) : '';
     receipts.forEach(receipt => { const row = element('tr'); row.append(textCell(receipt.actor), textCell(receipt.action), textCell(receipt.success ? '✓' : '✗'), textCell(String(receipt.output_summary || '').slice(0, 300))); receiptBody.append(row); });
     const title = String(data.goal || 'Gespräch').replace(/\s+/g, ' ').slice(0, 55); byId('topbar-title').textContent = title; document.title = title + ' – TankAI'; byId('export-chat').disabled = false;
+    byId('status').textContent = resultStatus(data, info);
     requestAnimationFrame(() => { byId('messages').scrollTop = byId('messages').scrollHeight; });
+  }
+  function usageText(usage) {
+    const tokens = usage.reported_tokens || {};
+    const models = [...new Set((Array.isArray(usage.attempts) ? usage.attempts : []).map(attempt => attempt.reported_model).filter(value => typeof value === 'string' && value))];
+    return 'Gemeldete Modelle: ' + (models.length ? models.join(', ') : 'nicht gemeldet') + '\nGemeldete Eingabetokens: ' + (tokens.input_tokens ?? 'nicht gemeldet') + '\nGemeldete Ausgabetokens: ' + (tokens.output_tokens ?? 'nicht gemeldet') + '\nBei ' + String(usage.attempts_with_incomplete_usage ?? 0) + ' von ' + String(usage.adapter_attempts ?? 0) + ' Versuchen fehlen vollständige Verbrauchsdaten.\nKosten sind noch nicht berechnet. Interne Versuche des Routers sind nicht bestätigt.';
   }
   async function runTank(event) {
     event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
@@ -140,7 +271,6 @@
       const data = await jsonFetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal, definition_of_done: definition, parallel }) });
       if (requestEpoch !== epoch) return;
       if (!data.goal) data.goal = goal; renderResult(data); byId('goal').value = '';
-      byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
       await loadHistory();
     } catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
     finally { if (requestEpoch === epoch) { setBusy(false); renderHistory(); byId('goal').focus(); } }
@@ -155,11 +285,17 @@
     if (!matches.length) { root.append(element('div', 'no-results', historyItems.length ? 'Keine passenden Gespräche gefunden.' : 'Noch keine Gespräche in diesem Workspace.')); return; }
     matches.forEach(({ item, index }) => { const button = element('button', 'search-result'); button.type = 'button'; button.disabled = busy; button.append(icon('chat')); const text = element('div'); text.append(element('strong', '', String(item.goal || 'Ohne Titel').slice(0, 90)), element('p', '', String(item.final_answer || '').slice(0, 120))); button.append(text); button.addEventListener('click', () => { byId('search-dialog').close(); selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
   }
-  function exportChat() { if (!selectedResult) return; const data = selectedResult; const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nStatus: ' + String(data.status || 'unbekannt') + '\nFreigegeben: ' + (data.release_ready ? 'Ja' : 'Nein') + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
+  function exportChat() { if (!selectedResult) return; const data = selectedResult; const info = resultInfo(data); const usage = info.receipts.find(receipt => receipt.action === 'llm_usage')?.details; const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nGespeicherter Laufstatus: ' + String(data.status || 'unbekannt') + '\nAktuelle Ergebnisanzeige freigegeben: ' + (info.released ? 'Ja' : 'Nein') + '\nHinweis: ' + resultStatus(data, info) + '\n' + (usage ? '\nVerbrauch\n' + usageText(usage) + '\n' : ''); const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
   byId('login-form').addEventListener('submit', login); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
   byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
   byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });
   byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEventListener('click', exportChat);
+  byId('memory-resume').addEventListener('click', resumeMemory);
+  byId('memory-refresh').addEventListener('click', () => { if (!busy && selectedResult) loadMemoryState(selectedResult); });
+  byId('work-open').addEventListener('click', () => { if (!busy) { showDialog('work-dialog'); loadWork(0); } });
+  byId('work-refresh').addEventListener('click', () => loadWork(0));
+  byId('work-prev').addEventListener('click', () => loadWork(Math.max(0, workOffset - 20)));
+  byId('work-next').addEventListener('click', () => { if (workNext !== null) loadWork(workNext); });
   byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
   byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
   byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));

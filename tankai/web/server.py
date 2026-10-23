@@ -50,6 +50,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager
+from tankai.web.execution_policy import execution_path
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -303,6 +304,9 @@ class AppContext:
             ),
             provider_limiter=ProviderCallRateLimiter(
                 auth,
+                shared_scope=os.environ.get("TANKAI_SHARED_UPSTREAM_SCOPE", "").strip(),
+                shared_limit=_safe_int("TANKAI_SHARED_UPSTREAM_CALLS_PER_WINDOW", 2, 1, 240),
+                shared_window_seconds=_safe_int("TANKAI_SHARED_UPSTREAM_WINDOW_SECONDS", 60, 1, 3600),
                 limit=_safe_int("TANKAI_PROVIDER_CALLS_PER_WINDOW", 40, 1, 240),
                 window_seconds=_safe_int(
                     "TANKAI_PROVIDER_RATE_WINDOW_SECONDS", 60, 1, 3600
@@ -948,6 +952,48 @@ class Handler(BaseHTTPRequestHandler):
             except (PermissionError, QueueError, ValueError) as exc:
                 self._json({"error": str(exc)}, 403)
             return
+        if path == "/api/memory/work":
+            context = self._auth_context()
+            if not context:
+                return
+            try:
+                query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(query) - {"offset"} or len(query.get("offset", [])) > 1:
+                    raise ValueError("Invalid pagination")
+                offset = int(query.get("offset", ["0"])[0])
+                runtime = self.app.runtimes.get(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
+                with runtime.lock:
+                    page = runtime.tank.ltm.consolidation_work_page(offset=offset)
+                self._json(page)
+            except ValueError:
+                self._json({"error": "Ungültige Seitenauswahl"}, 400)
+            except Exception:
+                self._internal_error("memory_work")
+            return
+        match = re.fullmatch(r"/api/memory/consolidation/([0-9a-fA-F-]{36})", path)
+        if match:
+            context = self._auth_context()
+            if context:
+                self._memory_consolidation(context, match.group(1))
+            return
+        match = re.fullmatch(r"/api/runs/([0-9a-fA-F-]{36})/usage", path)
+        if match:
+            context = self._auth_context()
+            if not context:
+                return
+            try:
+                run_id = str(UUID(match.group(1)))
+                runtime = self.app.runtimes.get(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
+                summary = runtime.usage_ledger.summary(run_id)
+                if not summary["adapter_attempts"]:
+                    self._json({"error": "Keine Verbrauchsdaten in diesem Arbeitsraum"}, 404)
+                else:
+                    self._json({"goal_id": run_id, "usage": summary})
+            except ValueError:
+                self._json({"error": "Ungültige Laufkennung"}, 400)
+            except Exception:
+                self._internal_error("usage_summary")
+            return
         if path == "/api/history":
             context = self._auth_context()
             if not context:
@@ -1217,6 +1263,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(exc)}, 403)
             except (QueueError, ValueError) as exc:
                 self._json({"error": str(exc)}, 409)
+            return
+        match = re.fullmatch(r"/api/memory/consolidation/([0-9a-fA-F-]{36})/resume", path)
+        if match:
+            self._memory_consolidation(context, match.group(1), resume=True)
             return
         if path == "/api/run":
             self._run(context)
@@ -1978,6 +2028,46 @@ class Handler(BaseHTTPRequestHandler):
         remaining = max(1, int((session.context.expires_at.timestamp() - time.time())))
         self._json(self._me_payload(session.context), 201, set_cookie=self._session_cookie(session.token, remaining))
 
+    def _memory_consolidation(self, context: AuthContext, run_id: str, *, resume: bool = False) -> None:
+        try:
+            run_id = str(UUID(run_id))
+        except ValueError:
+            self._json({"error": "Ungültige Laufkennung"}, 400)
+            return
+        if resume:
+            data = self._read_json(max_bytes=1000)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Die Wiederaufnahme erwartet keine zusätzlichen Einstellungen"}, 400)
+                return
+        try:
+            runtime = self.app.runtimes.get(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
+            with runtime.lock:
+                memory = runtime.tank.ltm
+                status = memory.consolidation_status(run_id) if memory else None
+                if status is None:
+                    self._json({"error": "Kein gespeicherter Lauf in diesem Arbeitsraum"}, 404)
+                    return
+                created = []
+                if resume and status["state"] != "completed":
+                    if not status["can_resume"]:
+                        self._json({"error": "Für diesen Lauf ist kein lokal fortsetzbarer Arbeitsstand verfügbar",
+                                    "memory_consolidation": status}, 409)
+                        return
+                    created = memory.consolidate(run_id, prepared_only=True)
+                    status = memory.consolidation_status(run_id)
+                if resume:
+                    self.app.auth.audit(
+                        "memory_consolidation_resume", user_id=context.user_id,
+                        workspace_id=context.workspace_id, success=True,
+                        details=json.dumps({"goal_id": run_id, "entries_created": len(created),
+                                            "provider_inference_requested": False}),
+                    )
+            self._json({"memory_consolidation": status, "entries_created": len(created)})
+        except Exception:
+            self._internal_error("memory_consolidation_resume" if resume else "memory_consolidation_status")
+
     def _run(self, context: AuthContext) -> None:
         data = self._read_json()
         if data is None:
@@ -2003,6 +2093,10 @@ class Handler(BaseHTTPRequestHandler):
             with runtime.lock:
                 tank = runtime.tank
                 tank.parallel = parallel
+                path_choice = execution_path(goal, dod)
+                old_path, old_retries = tank.verified_single_step, tank.max_retries
+                if path_choice == "verified_single_step":
+                    tank.verified_single_step, tank.max_retries = True, 0
                 tank.llm_call_budget.set_call_guard(
                     lambda identity: self.app.provider_limiter.consume(context.user_id, identity)
                 )
@@ -2010,6 +2104,7 @@ class Handler(BaseHTTPRequestHandler):
                     result = tank.run(goal_description=goal, definition_of_done=dod)
                 finally:
                     tank.llm_call_budget.set_call_guard(None)
+                    tank.verified_single_step, tank.max_retries = old_path, old_retries
                 plan_data = None
                 if result.plan:
                     plan_data = {
@@ -2028,11 +2123,13 @@ class Handler(BaseHTTPRequestHandler):
                     "details": receipt.details,
                 } for receipt in result.receipts]
                 payload = {
+                    "goal_id": result.goal_id,
                     "workspace_id": context.workspace_id,
                     "goal": goal,
                     "final_answer": result.final_answer,
                     "status": result.status.value if hasattr(result.status, "value") else str(result.status),
                     "execution_mode": result.execution_mode,
+                    "execution_path": path_choice,
                     "duration_seconds": result.duration_seconds,
                     "receipts_count": len(result.receipts),
                     "receipts": receipts,

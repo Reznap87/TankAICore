@@ -384,3 +384,49 @@ def test_search_api_redirects_are_rejected() -> None:
 
     handler = _NoRedirectHandler()
     assert handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/") is None
+
+
+@pytest.mark.parametrize("marker", ["SRC-XXXXXXXX", "SRC-DEADBEEF", "src-deadbeef",
+                                  "SRC-123", "SRC-1234GGGG", "SRC-"])
+@pytest.mark.parametrize("require_research", [True, False])
+def test_non_research_answer_cannot_release_unverified_source_marker(marker, require_research):
+    class CitingMain(SimpleMainLLM):
+        def complete(self, prompt, *, system="", **kwargs):
+            if "synthesizer" in system.lower():
+                return f"31 * 13 = 403. [{marker}]"
+            return super().complete(prompt, system=system, **kwargs)
+
+    tank = TankAI(llm=CitingMain(), critic_llm=CriticLLM(), verbose=False,
+                  require_research_evidence=require_research, max_retries=0,
+                  enable_tools=False, use_ltm=False, run_store_path=None)
+    result = tank.run("Berechne 31 mal 13 ohne Websuche")
+    assert result.status == TaskStatus.FAILED
+    assert result.verification_passed is False
+    assert result.release_ready is False
+    assert f"[{marker}]" in result.final_answer  # Evidence is not silently removed.
+    final_receipt = [r for r in result.receipts if r.action == "critique_result"][-1]
+    assert final_receipt.details["source_integrity_checked"] is True
+    assert final_receipt.details["unverified_source_markers"] == [marker.upper()]
+
+
+def test_real_research_citation_does_not_make_extra_placeholder_valid():
+    class ExtraPlaceholder(MainLLM):
+        def complete(self, prompt, *, system="", **kwargs):
+            result = super().complete(prompt, system=system, **kwargs)
+            return result + " [SRC-XXXXXXXX]" if "synthesizer" in system.lower() else result
+
+    tank = build_tank()
+    tank.llm.delegate = ExtraPlaceholder()
+    result = tank.run("Current test fact")
+    assert result.source_ids
+    assert result.source_ids[0] in result.final_answer
+    assert result.verification_passed is False
+    assert result.release_ready is False
+
+
+def test_source_free_analysis_does_not_require_a_citation():
+    tank = TankAI(llm=SimpleMainLLM(), critic_llm=CriticLLM(), verbose=False,
+                  max_retries=0, enable_tools=False, use_ltm=False, run_store_path=None)
+    result = tank.run("Analyse ohne Webrecherche")
+    assert result.status == TaskStatus.COMPLETED
+    assert result.verification_passed is True

@@ -1,0 +1,71 @@
+name: Build and sign reviewed worker image
+
+# Deliberate release operation. No image publication on pushes or pull requests.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed main commit (40 lowercase hexadecimal characters)
+        required: true
+        type: string
+      python_base_image:
+        description: Reviewed python base image pinned with @sha256 digest
+        required: true
+        type: string
+      confirmation:
+        description: Enter SIGN_WORKER_IMAGE to publish and sign this worker
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'SIGN_WORKER_IMAGE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Bind release to reviewed source and base image
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          BASE_IMAGE: ${{ inputs.python_base_image }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          [[ "$BASE_IMAGE" =~ ^(docker.io/library/)?python:[a-zA-Z0-9._-]+@sha256:[0-9a-f]{64}$ ]]
+      - name: Install pinned Cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        with:
+          cosign-release: v3.1.4
+      - name: Build, publish, sign and verify exact image digest
+        env:
+          BASE_IMAGE: ${{ inputs.python_base_image }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${REPOSITORY,,}-worker"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          docker build --file Dockerfile.worker --build-arg "PYTHON_BASE_IMAGE=$BASE_IMAGE" --tag "$image:$GITHUB_SHA" .
+          docker push "$image:$GITHUB_SHA"
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$image:$GITHUB_SHA")"
+          [[ "$ref" == "$image@sha256:"* ]]
+          cosign sign --yes "$ref"
+          identity="https://github.com/$REPOSITORY/.github/workflows/worker-image-sign.yml@refs/heads/main"
+          cosign verify --check-claims=true --certificate-identity="$identity" --certificate-oidc-issuer=https://token.actions.githubusercontent.com "$ref" > "$RUNNER_TEMP/worker-image-verification.json"
+          {
+            printf '### Signed worker image\n\n'
+            printf 'Image: `%s`\n\nSigner: `%s`\n' "$ref" "$identity"
+            printf '\nThe runner trust policy and workspace allowlist must be updated separately after review.\n'
+          } >> "$GITHUB_STEP_SUMMARY"

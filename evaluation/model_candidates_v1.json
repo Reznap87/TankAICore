@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "observed_on": "2026-10-22",
+  "status": "research_candidates_not_loaded",
+  "purpose": "First reproducible own-model development baseline, not frontier parity",
+  "weights_downloaded": false,
+  "training_started": false,
+  "candidates": [
+    {
+      "repository": "Qwen/Qwen3.5-2B",
+      "revision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+      "model_card": "https://huggingface.co/Qwen/Qwen3.5-2B",
+      "declared_license": "Apache-2.0",
+      "priority": "first_small_inference_baseline",
+      "hardware_fit_measured": false,
+      "quality_measured": false
+    },
+    {
+      "repository": "Qwen/Qwen3.5-4B",
+      "revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+      "model_card": "https://huggingface.co/Qwen/Qwen3.5-4B",
+      "declared_license": "Apache-2.0",
+      "priority": "comparison_if_measured_memory_budget_allows",
+      "hardware_fit_measured": false,
+      "quality_measured": false
+    }
+  ],
+  "gates_before_execution": [
+    "Review license and artifact inventory at exact revision",
+    "Pin a supported inference runtime and review any quantized derivative provenance",
+    "Measure full process plus context memory within an explicit local capacity limit",
+    "Keep evaluation cases separate from training data",
+    "Record actual outputs, latency, resource use and independent review",
+    "No paid compute or external reference inference without an approved budget"
+  ]
+}

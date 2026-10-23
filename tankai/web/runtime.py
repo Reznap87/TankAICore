@@ -12,6 +12,7 @@ from typing import Any
 from tankai import TankAI, get_llm
 from tankai.core.llm import get_critic_llm
 from tankai.core.long_term_memory import LongTermMemory
+from tankai.core.usage import UsageLedger
 
 
 def _env(name: str, default: str = "") -> str:
@@ -74,11 +75,14 @@ class WorkspaceRuntime:
     tank: TankAI
     history: WorkspaceHistory
     lock: threading.RLock
+    usage_ledger: UsageLedger | None = None
 
     def close(self) -> None:
         if self.tank.ltm:
             self.tank.ltm.close()
         self.tank.memory.close()
+        if self.usage_ledger:
+            self.usage_ledger.close()
 
 
 class WorkspaceRuntimeManager:
@@ -146,7 +150,10 @@ class WorkspaceRuntimeManager:
                 enable_web_research=True,
                 strict_web_research=_env_bool("TANKAI_STRICT_WEB_RESEARCH", False),
             )
+            usage_ledger = UsageLedger(root / "usage.db")
+            tank.llm_call_budget.set_usage_sink(usage_ledger.record)
             runtime = WorkspaceRuntime(
+                usage_ledger=usage_ledger,
                 workspace_id=workspace_id,
                 tenant_id=tenant_id,
                 root=root,

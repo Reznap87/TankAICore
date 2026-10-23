@@ -13,16 +13,17 @@ Consolidation wandelt episodische Runs in Semantic-Einträge um.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
-from uuid import uuid4
+from uuid import uuid4, uuid5, NAMESPACE_URL
 
 from .models import MemoryEntry, Plan, Receipt, RunResult, utcnow
 from .llm import BaseLLM
 from .vector_store import VectorStore
-from .embeddings import BaseEmbedder, get_embedder
+from .embeddings import BaseEmbedder, HashingEmbedder, get_embedder
 
 
 class LongTermMemory:
@@ -83,7 +84,7 @@ class LongTermMemory:
 
     # ────────────────────────── Schema ──────────────────────────
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def _table_columns(self, table: str) -> set[str]:
         rows = self._conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -98,6 +99,19 @@ class LongTermMemory:
     def _init_schema(self) -> None:
         """Erstellt und migriert das SQLite-Schema atomar und idempotent."""
         table_statements = [
+            """
+            CREATE TABLE IF NOT EXISTS consolidation_jobs (
+                run_id TEXT PRIMARY KEY REFERENCES runs(id),
+                status TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                claim_token TEXT,
+                lease_until TEXT,
+                prepared_entries TEXT,
+                last_error_type TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """,
             """
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
@@ -206,7 +220,10 @@ class LongTermMemory:
                 result.final_answer,
                 result.duration_seconds,
                 utcnow().isoformat(),
-                json.dumps({"num_receipts": len(result.receipts)}),
+                json.dumps({"num_receipts": len(result.receipts),
+                            "verification_passed": result.verification_passed,
+                            "release_ready": result.release_ready,
+                            "execution_mode": result.execution_mode}),
             ),
         )
 
@@ -305,22 +322,186 @@ class LongTermMemory:
 
     # ────────────────────────── Consolidation ──────────────────────────
 
-    def consolidate(self, run_id: str, llm: "BaseLLM | None" = None) -> list[MemoryEntry]:
-        """
-        Wandelt einen episodischen Run in hochwertige Semantic-Einträge um.
+    def consolidate(
+        self, run_id: str, llm: "BaseLLM | None" = None, *, prepared_only: bool = False,
+    ) -> list[MemoryEntry]:
+        """Explicit, resumable consolidation; never starts a background retry.
 
-        Mit LLM:
-          Das Modell extrahiert 2–5 klare, wiederverwendbare Fakten/Insights.
-        Ohne LLM:
-          Fallback auf einfache Heuristik (Final-Answer + erfolgreiche Receipts).
+        Only released live runs are eligible. The caller supplies a budgeted LLM
+        for inference. Omitting it selects heuristics for a NEW job, never a
+        silent fallback for an existing LLM job. A validated batch is checkpointed
+        before indexing, so retrying an interrupted write needs no new inference.
+        Workspace access must remain serialized, as for other LTM operations.
         """
         row = self._conn.execute(
             "SELECT * FROM runs WHERE id = ?", (run_id,)
         ).fetchone()
         if not row:
             return []
+        metadata = json.loads(row["metadata"] or "{}")
+        if not (row["status"] == "completed"
+                and metadata.get("verification_passed") is True
+                and metadata.get("release_ready") is True
+                and metadata.get("execution_mode") == "live"):
+            return []
 
-        created: list[MemoryEntry] = []
+        mode = "llm" if llm is not None else "heuristic"
+        if prepared_only:
+            if type(self.vectors.embedder) is not HashingEmbedder:
+                raise ValueError("Prepared-only recovery requires the local hashing index")
+            cached = self._conn.execute(
+                "SELECT mode, prepared_entries FROM consolidation_jobs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if cached is None or cached["prepared_entries"] is None:
+                raise ValueError("No prepared memory checkpoint; inference is not permitted")
+            mode = cached["mode"]
+        now = utcnow()
+        token = str(uuid4())
+        # The lease prevents another connection from issuing the same inference.
+        # An interrupted owner can be retried explicitly after the lease expires.
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            self._conn.execute(
+                "INSERT OR IGNORE INTO consolidation_jobs "
+                "(run_id, status, mode, updated_at) VALUES (?, 'pending', ?, ?)",
+                (run_id, mode, now.isoformat()),
+            )
+            job = self._conn.execute(
+                "SELECT * FROM consolidation_jobs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if job["status"] == "completed":
+                return []
+            if job["mode"] != mode:
+                raise ValueError("Memory consolidation mode cannot change on retry")
+            if job["status"] == "running" and job["lease_until"] > now.isoformat():
+                raise RuntimeError("Memory consolidation is already running")
+            self._conn.execute(
+                "UPDATE consolidation_jobs SET status = 'running', claim_token = ?, "
+                "lease_until = ?, attempts = attempts + 1, updated_at = ? WHERE run_id = ?",
+                (token, (now + timedelta(minutes=5)).isoformat(), now.isoformat(), run_id),
+            )
+
+        try:
+            batch = json.loads(job["prepared_entries"]) if job["prepared_entries"] is not None else None
+            if batch is None:
+                if prepared_only:
+                    raise ValueError("No prepared memory checkpoint; inference is not permitted")
+                batch = self._prepare_consolidation(row, llm)
+                with self._conn:
+                    saved = self._conn.execute(
+                        "UPDATE consolidation_jobs SET prepared_entries = ? "
+                        "WHERE run_id = ? AND claim_token = ? AND status = 'running'",
+                        (json.dumps(batch), run_id, token),
+                    )
+                    if saved.rowcount != 1:
+                        raise RuntimeError("Memory consolidation claim expired")
+
+            # Stable IDs repair an interrupted index without creating duplicates.
+            # Vector orphans from a crash are ignored by retrieve until SQL commits.
+            entries = [MemoryEntry(
+                id=str(uuid5(NAMESPACE_URL, f"tankai:consolidation:{run_id}:{i}")),
+                content=item["content"], source=item["source"], validity="valid",
+                confidence=item["confidence"], metadata=item["metadata"],
+            ) for i, item in enumerate(batch)]
+            for entry in entries:
+                self.vectors.add(entry.id, entry.content, metadata={
+                    "memory_type": "semantic", "source": entry.source,
+                    "confidence": entry.confidence,
+                })
+            with self._conn:
+                self._conn.execute("BEGIN IMMEDIATE")
+                finished = self._conn.execute(
+                    "UPDATE consolidation_jobs SET status = 'completed', claim_token = NULL, "
+                    "lease_until = NULL, last_error_type = NULL, updated_at = ? "
+                    "WHERE run_id = ? AND claim_token = ? AND status = 'running'",
+                    (utcnow().isoformat(), run_id, token),
+                )
+                if finished.rowcount != 1:
+                    raise RuntimeError("Memory consolidation claim expired")
+                for entry, item in zip(entries, batch):
+                    self._conn.execute(
+                        "INSERT INTO memory_entries "
+                        "(id, content, source, memory_type, validity, confidence, related_run_id, "
+                        "provenance, created_at, last_accessed, metadata) "
+                        "VALUES (?, ?, ?, 'semantic', 'valid', ?, ?, ?, ?, ?, ?)",
+                        (entry.id, entry.content, entry.source, entry.confidence, run_id,
+                         json.dumps(item["provenance"]), entry.created_at.isoformat(),
+                         entry.created_at.isoformat(), json.dumps(entry.metadata)),
+                    )
+            return entries
+        except Exception as exc:
+            with self._conn:
+                self._conn.execute(
+                    "UPDATE consolidation_jobs SET status = 'pending', claim_token = NULL, "
+                    "lease_until = NULL, last_error_type = ?, updated_at = ? "
+                    "WHERE run_id = ? AND claim_token = ?",
+                    (type(exc).__name__, utcnow().isoformat(), run_id, token),
+                )
+            raise
+
+    def pending_consolidations(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Read-only durable work inventory. Does not call a model or schedule work."""
+        rows = self._conn.execute(
+            "SELECT run_id, status, mode, attempts, last_error_type, updated_at, "
+            "prepared_entries IS NOT NULL AS prepared FROM consolidation_jobs "
+            "WHERE status != 'completed' ORDER BY updated_at LIMIT ?",
+            (max(0, min(int(limit), 500)),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def consolidation_work_page(self, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
+        """Bounded metadata inventory, including runs outside recent history."""
+        if type(offset) is not int or not 0 <= offset <= 10000:
+            raise ValueError("Invalid work offset")
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise ValueError("Invalid work limit")
+        rows = self._conn.execute(
+            "SELECT run_id, updated_at FROM consolidation_jobs WHERE status != 'completed' "
+            "ORDER BY updated_at, run_id LIMIT ? OFFSET ?", (limit + 1, offset),
+        ).fetchall()
+        items = []
+        for row in rows[:limit]:
+            status = self.consolidation_status(row["run_id"])
+            if status is not None:
+                items.append({**status, "updated_at": row["updated_at"]})
+        return {"items": items, "offset": offset,
+                "next_offset": offset + limit if len(rows) > limit and offset + limit <= 10000 else None}
+
+    def consolidation_status(self, run_id: str) -> dict[str, Any] | None:
+        """Current recovery state without reading checkpoint contents or inference."""
+        row = self._conn.execute("SELECT status, metadata FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if row is None:
+            return None
+        metadata = json.loads(row["metadata"] or "{}")
+        eligible = (row["status"] == "completed" and metadata.get("verification_passed") is True
+                    and metadata.get("release_ready") is True and metadata.get("execution_mode") == "live")
+        job = self._conn.execute(
+            "SELECT status, lease_until, prepared_entries IS NOT NULL AS prepared "
+            "FROM consolidation_jobs WHERE run_id = ?", (run_id,),
+        ).fetchone()
+        local_index = type(self.vectors.embedder) is HashingEmbedder
+        if not eligible:
+            state = "not_eligible"
+        elif job is None:
+            state = "not_started"
+        elif job["status"] == "completed":
+            state = "completed"
+        elif (job["status"] == "running" and job["lease_until"]
+              and job["lease_until"] > utcnow().isoformat()):
+            state = "running"
+        else:
+            state = "prepared" if job["prepared"] else "needs_inference"
+        count = self._conn.execute(
+            "SELECT COUNT(*) FROM memory_entries WHERE related_run_id = ? "
+            "AND memory_type = 'semantic' AND source LIKE 'consolidation:%'", (run_id,),
+        ).fetchone()[0] if state == "completed" else 0
+        return {"goal_id": run_id, "state": state,
+                "can_resume": state == "prepared" and local_index,
+                "local_index": local_index, "entries_count": count,
+                "provider_calls_allowed": False}
+
+    def _prepare_consolidation(self, row: sqlite3.Row, llm: "BaseLLM | None") -> list[dict]:
+        run_id = row["id"]
         goal = row["goal_description"] or ""
         final = row["final_answer"] or ""
         status = row["status"] or ""
@@ -331,11 +512,8 @@ class LongTermMemory:
         ).fetchall()
 
         if llm is not None:
-            created.extend(self._consolidate_with_llm(llm, run_id, goal, final, status, receipts))
-        else:
-            created.extend(self._consolidate_heuristic(run_id, goal, final, receipts))
-
-        return created
+            return self._consolidate_with_llm(llm, run_id, goal, final, status, receipts)
+        return self._consolidate_heuristic(run_id, goal, final, receipts)
 
     def _consolidate_with_llm(
         self,
@@ -345,11 +523,8 @@ class LongTermMemory:
         final: str,
         status: str,
         receipts: list,
-    ) -> list[MemoryEntry]:
+    ) -> list[dict]:
         """LLM extrahiert strukturierte, wiederverwendbare Insights."""
-        import json
-        import re as _re
-
         receipt_lines = []
         for r in receipts:
             if r["success"] and r["output_summary"]:
@@ -395,33 +570,28 @@ Regeln:
 """
 
         raw = llm.complete(prompt, system=system)
-        created: list[MemoryEntry] = []
-
         try:
-            match = _re.search(r"\{[\s\S]*\}", raw)
-            data = json.loads(match.group(0) if match else raw)
-            entries = data.get("entries", [])
-        except Exception:
-            # Fallback: ganze Antwort als einen Eintrag
-            entries = [{"content": raw[:600], "confidence": 0.5, "tags": ["fallback"]}]
-
-        for e in entries:
-            content = (e.get("content") or "").strip()
-            if len(content) < 20:
-                continue
-            conf = float(e.get("confidence", 0.7))
-            tags = e.get("tags") or []
-            entry = self.add_semantic(
-                content=content,
-                source="consolidation:llm",
-                confidence=min(max(conf, 0.0), 1.0),
-                related_run_id=run_id,
-                provenance=[run_id],
-                metadata={"tags": tags, "goal_snippet": goal[:120]},
-            )
-            created.append(entry)
-
-        return created
+            data = json.loads(raw)
+            entries = data["entries"]
+            if not isinstance(entries, list) or len(entries) > 5:
+                raise ValueError("Invalid memory entries")
+            prepared = []
+            for item in entries:
+                content = item["content"]
+                conf = item.get("confidence", 0.7)
+                tags = item.get("tags", [])
+                if (not isinstance(content, str) or not 20 <= len(content.strip()) <= 2000
+                        or type(conf) not in (float, int) or not math.isfinite(conf)
+                        or not 0 <= conf <= 1 or not isinstance(tags, list)
+                        or len(tags) > 20 or any(not isinstance(tag, str) or len(tag) > 100 for tag in tags)):
+                    raise ValueError("Invalid memory entry")
+                prepared.append({"content": content.strip(), "source": "consolidation:llm",
+                                 "confidence": conf, "provenance": [run_id],
+                                 "metadata": {"tags": tags, "goal_snippet": goal[:120]}})
+            return prepared
+        except (ValueError, TypeError, KeyError, AttributeError):
+            # Never promote raw provider errors, reasoning text or partial batches.
+            raise ValueError("Memory consolidation returned invalid structured data") from None
 
     def _consolidate_heuristic(
         self,
@@ -429,20 +599,14 @@ Regeln:
         goal: str,
         final: str,
         receipts: list,
-    ) -> list[MemoryEntry]:
+    ) -> list[dict]:
         """Einfacher Fallback ohne LLM."""
-        created: list[MemoryEntry] = []
+        created: list[dict] = []
 
         if final and len(final) > 40:
-            entry = self.add_semantic(
-                content=final[:800],
-                source="consolidation:final_answer",
-                confidence=0.7,
-                related_run_id=run_id,
-                provenance=[run_id],
-                metadata={"goal_snippet": goal[:120]},
-            )
-            created.append(entry)
+            created.append({"content": final[:800], "source": "consolidation:final_answer",
+                            "confidence": 0.7, "provenance": [run_id],
+                            "metadata": {"goal_snippet": goal[:120]}})
 
         for r in receipts:
             if (
@@ -450,14 +614,9 @@ Regeln:
                 and str(r["action"]).startswith("execute_step")
                 and len(r["output_summary"] or "") > 50
             ):
-                entry = self.add_semantic(
-                    content=r["output_summary"],
-                    source=f"consolidation:{r['actor']}",
-                    confidence=0.6,
-                    related_run_id=run_id,
-                    provenance=[r["id"]],
-                )
-                created.append(entry)
+                created.append({"content": r["output_summary"],
+                                "source": f"consolidation:{r['actor']}",
+                                "confidence": 0.6, "provenance": [r["id"]], "metadata": {}})
 
         return created
 
@@ -475,14 +634,28 @@ Regeln:
         1. Vector-Suche über Semantic + Procedural
         2. Anreicherung mit Metadaten aus der DB
         """
-        hits = self.vectors.search(query, k=k * 2, min_score=min_score)
+        if k <= 0:
+            return []
+        types = set(memory_types or ["semantic", "procedural"]) & {"semantic", "procedural"}
+        if not types:
+            return []
+        placeholders = ",".join("?" for _ in types)
+        allowed_ids = {row["id"] for row in self._conn.execute(
+            "SELECT id FROM memory_entries WHERE validity = 'valid' "
+            "AND retention_policy IN ('hot', 'warm') "
+            f"AND memory_type IN ({placeholders})", tuple(sorted(types)),
+        ).fetchall()}
+        # Filter before top-k: invalid or archived vectors must not crowd out
+        # usable knowledge, even when their similarity scores are higher.
+        hits = self.vectors.search(query, k=k, min_score=min_score, allowed_ids=allowed_ids)
         results = []
 
         for entry_id, score, meta in hits:
             row = self._conn.execute(
                 "SELECT * FROM memory_entries WHERE id = ?", (entry_id,)
             ).fetchone()
-            if not row:
+            if (not row or row["validity"] != "valid"
+                    or row["retention_policy"] not in {"hot", "warm"}):
                 continue
             mtype = row["memory_type"]
             if memory_types and mtype not in memory_types:

@@ -17,13 +17,13 @@ import re
 import stat
 import tempfile
 import threading
-import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator, Mapping, Sequence
 from urllib.parse import urlparse
+from .local_lock import exclusive_local_lock, LocalLockTimeout
 
 
 class PublicationError(RuntimeError):
@@ -256,7 +256,7 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 class PublicationLedgerStore:
-    """Atomic local store with a stale-aware inter-process lock."""
+    """Atomic local store with a process-owned inter-process lock."""
 
     def __init__(
         self,
@@ -299,32 +299,11 @@ class PublicationLedgerStore:
 
     @contextmanager
     def _process_lock(self) -> Iterator[None]:
-        deadline = time.monotonic() + self.lock_timeout_seconds
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        while True:
-            try:
-                descriptor = os.open(
-                    self.lock_path,
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                    0o600,
-                )
-                with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                    handle.write(f"pid={os.getpid()} created={time.time()}\n")
-                break
-            except FileExistsError:
-                try:
-                    if time.time() - self.lock_path.stat().st_mtime > self.stale_lock_seconds:
-                        self.lock_path.unlink(missing_ok=True)
-                        continue
-                except OSError:
-                    pass
-                if time.monotonic() >= deadline:
-                    raise PublicationError(f"Timeout beim Sperren von {self.path}")
-                time.sleep(0.05)
         try:
-            yield
-        finally:
-            self.lock_path.unlink(missing_ok=True)
+            with exclusive_local_lock(self.lock_path, timeout_seconds=self.lock_timeout_seconds):
+                yield
+        except LocalLockTimeout as error:
+            raise PublicationError(f"Timeout beim Sperren von {self.path}") from error
 
 
 def create_publication_ledger(

@@ -7,6 +7,7 @@ Der Commander hält das Ziel und orchestriert den gesamten Ablauf.
 from __future__ import annotations
 
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
@@ -91,6 +92,7 @@ class TankAI:
         if use_ltm:
             self.ltm = LongTermMemory(db_path=ltm_db, vector_path=ltm_vectors)
         self.max_retries = max_retries
+        self._run_lock = threading.Lock()
         self.verbose = verbose
         self.parallel = parallel
         self.run_store = RunStore(run_store_path) if run_store_path else None
@@ -124,11 +126,29 @@ class TankAI:
         definition_of_done: str = "Eine klare, überprüfbare Antwort liegt vor.",
         constraints: Optional[list[str]] = None,
     ) -> RunResult:
+        """One run owns this instance's goal, receipts and shared call budget.
+
+        Specialist threads within that run still share the atomic budget. A
+        second caller cannot reset it while those requests are in flight.
+        Independent concurrent goals require separate TankAI instances.
+        """
+        if not self._run_lock.acquire(blocking=False):
+            raise RuntimeError("Diese TankAI-Instanz bearbeitet bereits einen Lauf")
+        try:
+            return self._run(goal_description, definition_of_done, constraints)
+        finally:
+            self._run_lock.release()
+
+    def _run(
+        self,
+        goal_description: str,
+        definition_of_done: str,
+        constraints: Optional[list[str]],
+    ) -> RunResult:
         """
         Führt den kompletten PLAN → ROUTE → VERIFY → LEARN Zyklus aus.
         """
         start = time.perf_counter()
-        self.llm_call_budget.reset()
 
         goal = Goal(
             description=goal_description,
@@ -137,6 +157,7 @@ class TankAI:
             status=TaskStatus.PLANNING,
         )
         self.current_goal = goal
+        self.llm_call_budget.reset(run_id=goal.id)
         self.receipts = []
 
         self._log_header(goal)
@@ -221,6 +242,8 @@ class TankAI:
             plan_critiques.append(plan_critique)
         plan_gate_passed = bool(plan_critique.passed)
         self._log_plan(plan)
+        if not plan_gate_passed:
+            return self._reject_plan(goal, plan, plan_critiques, start)
 
         # 2. ROUTE + EXECUTE + VERIFY
         step_results: list[tuple[str, str]] = []
@@ -328,6 +351,7 @@ class TankAI:
                 step_results,
                 critiques_summary,
                 goal_analysis=plan.goal_analysis,
+                source_ids=self._research_provenance()[0],
             )
         final_answer = self._append_source_catalog(final_answer)
         synth_receipt.output_summary = final_answer[:300]
@@ -340,6 +364,7 @@ class TankAI:
 
         # Deterministische Quellenprüfung der Synthese. Ein LLM-Critic darf fehlende
         # Provenance nicht versehentlich durchwinken.
+        final_critique = self._apply_source_integrity_gate(final_critique, final_answer)
         final_critique = self._apply_final_research_gate(final_critique, final_answer, plan)
         final_critique = self._apply_execution_gate(
             final_critique, plan, plan_gate_passed=plan_gate_passed
@@ -349,6 +374,8 @@ class TankAI:
             f"passed={final_critique.passed}, score={final_critique.score}"
         )
         final_crit_receipt.details["deterministic_research_gate"] = True
+        final_crit_receipt.details["source_integrity_checked"] = True
+        final_crit_receipt.details["unverified_source_markers"] = self._unverified_source_markers(final_answer)
         final_crit_receipt.details["deterministic_execution_gate"] = True
         final_crit_receipt.details["plan_gate_passed"] = plan_gate_passed
         final_crit_receipt.details["failed_step_ids"] = [
@@ -358,15 +385,8 @@ class TankAI:
         all_critiques.append(final_critique)
 
         # 4. LEARN — Kurzzeit + Langzeit
-        main_simulation = bool(getattr(self.llm, "is_simulation", False))
-        critic_simulation = bool(getattr(self.critic_llm, "is_simulation", False))
-        any_simulation = main_simulation or critic_simulation
-        if main_simulation and critic_simulation:
-            execution_mode = "simulation"
-        elif any_simulation:
-            execution_mode = "mixed"
-        else:
-            execution_mode = "live"
+        execution_mode = self._execution_mode()
+        any_simulation = execution_mode != "live"
 
         self.memory.add(
             content=f"Run abgeschlossen für Ziel: {goal.description}\nAntwort: {final_answer[:300]}",
@@ -421,8 +441,22 @@ class TankAI:
             run_id = self.ltm.store_episode(result, goal.description)
             created = []
             if not any_simulation:
-                created = self.ltm.consolidate(run_id, llm=self.llm)
-                if final_critique.passed and plan is not None:
+                # The episode already contains the final answer and verification.
+                # Optional extra inference must not turn that result into an HTTP
+                # failure when the provider or shared call budget is exhausted.
+                try:
+                    created = self.ltm.consolidate(run_id, llm=self.llm)
+                except Exception as exc:
+                    self.receipts.append(Receipt(
+                        action="defer_memory_consolidation",
+                        actor=Role.MEMORY,
+                        input_summary=goal.description,
+                        output_summary="Memory-Aufbereitung ausstehend; Ergebnis bleibt erhalten",
+                        success=False,
+                        details={"error_type": type(exc).__name__, "episode_stored": True,
+                                 "deferred": True, "retry_scheduled": False},
+                    ))
+                if result.release_ready and plan is not None:
                     self.ltm.promote_to_procedure(
                         plan, success_score=final_critique.score, goal_description=goal.description
                     )
@@ -442,6 +476,62 @@ class TankAI:
                 if ret_stats.get("to_cold") or ret_stats.get("to_warm"):
                     console.print(f"[dim]   Retention: {ret_stats}[/dim]")
 
+        return self._complete_run(result, goal)
+
+    def _execution_mode(self) -> str:
+        main = bool(getattr(self.llm, "is_simulation", False))
+        critic = bool(getattr(self.critic_llm, "is_simulation", False))
+        return "simulation" if main and critic else "mixed" if main or critic else "live"
+
+    def _reject_plan(self, goal: Goal, plan: Plan, critiques: list[Critique], start: float) -> RunResult:
+        """Persist a failed admission without dispatch, synthesis or memory inference."""
+        issues = [item[:1000] for item in critiques[-1].issues[:5]]
+        suggestions = [item[:1000] for item in critiques[-1].suggestions[:5]]
+        answer = (
+            "Die Aufgabe wurde nicht ausgeführt, weil der Plan die Prüfung auch nach "
+            "den vorgesehenen Korrekturen nicht bestanden hat. "
+            "Es wurde kein fachliches Ergebnis erzeugt. Bitte präzisiere die Aufgabe "
+            "oder die Erfolgskriterien und starte sie anschließend erneut."
+        )
+        if issues:
+            answer += "\n\nHinweise aus der Planprüfung:\n" + "\n".join(f"- {item}" for item in issues)
+        if suggestions:
+            answer += "\n\nVorschläge zur Überarbeitung:\n" + "\n".join(f"- {item}" for item in suggestions)
+        rejection = Critique(
+            target_id=plan.id, passed=False, score=0.0,
+            issues=["Der finale Plan hat die Plan-Prüfung nicht bestanden; Ausführung blockiert."],
+            suggestions=["Plan anhand der gespeicherten Critic-Hinweise überarbeiten."],
+        )
+        self.receipts.append(Receipt(
+            action="reject_plan", actor=Role.COMMANDER,
+            input_summary=f"Plan {plan.id}", output_summary=answer, success=False,
+            details={"plan_gate_passed": False, "plan_version": plan.version,
+                     "plan_checks": len(critiques), "reason": "plan_gate_failed",
+                     "issues": issues, "suggestions": suggestions,
+                     "skipped_step_ids": [step.id for step in plan.steps]},
+        ))
+        mode = self._execution_mode()
+        goal.status = TaskStatus.FAILED if mode == "live" else TaskStatus.SIMULATED
+        result = RunResult(
+            goal_id=goal.id, final_answer=answer, status=goal.status,
+            definition_of_done=goal.definition_of_done, execution_mode=mode,
+            main_llm_identity=self.main_llm_identity,
+            critic_llm_identity=self.critic_llm_identity,
+            critic_independent=self.critic_independent,
+            verification_passed=False, release_ready=False, plan_gate_passed=False,
+            web_research_provider=self.tools.web_research_status(),
+            plan=plan, critiques=[*critiques, rejection], receipts=list(self.receipts),
+            memory_entries_created=0, duration_seconds=round(time.perf_counter() - start, 3),
+        )
+        result = self._complete_run(result, goal)
+        if self.ltm:
+            # Keep the unknown episode for diagnosis; no semantic knowledge, consolidation
+            # job, retention mutation or learned procedure follows a rejected plan.
+            self.ltm.store_episode(result, goal.description)
+        return result
+
+    def _complete_run(self, result: RunResult, goal: Goal) -> RunResult:
+        """Attach actual usage and persist normal and rejected runs consistently."""
         budget_snapshot = self.llm_call_budget.snapshot()
         budget_receipt = Receipt(
             action="llm_call_budget",
@@ -459,6 +549,14 @@ class TankAI:
             },
         )
         self.receipts.append(budget_receipt)
+        usage = self.llm_call_budget.usage_snapshot()
+        self.receipts.append(Receipt(
+            action="llm_usage", actor=Role.COMMANDER,
+            input_summary="Metadaten der Adapterversuche",
+            output_summary=(f"attempts={usage['adapter_attempts']}, "
+                            f"incomplete_usage={usage['attempts_with_incomplete_usage']}; costs not priced"),
+            success=True, details=usage,
+        ))
         result.receipts = list(self.receipts)
 
         if self.run_store is not None:
@@ -540,6 +638,30 @@ class TankAI:
     @staticmethod
     def _citation_ids(text: str) -> set[str]:
         return set(re.findall(r"\[(SRC-[A-F0-9]{8})\]", text or "", flags=re.IGNORECASE))
+
+    def _unverified_source_markers(self, text: str) -> list[str]:
+        # Include malformed markers: a hex-only parser silently ignored the
+        # literal placeholder from the synthesis prompt in non-research runs.
+        markers = {value.strip().upper() for value in
+                   re.findall(r"\[\s*(SRC-[^\]\r\n]*)\]", text or "", flags=re.IGNORECASE)}
+        trusted_ids = set(self._research_provenance()[0])
+        return sorted(markers - trusted_ids)
+
+    def _apply_source_integrity_gate(self, critique: Critique, final_answer: str) -> Critique:
+        unverified = self._unverified_source_markers(final_answer)
+        if not unverified:
+            return critique
+        return Critique(
+            id=critique.id,
+            target_id=critique.target_id,
+            passed=False,
+            issues=list(dict.fromkeys([*critique.issues,
+                "Finale Antwort enthält unbestätigte Quellenmarkierungen: " + ", ".join(unverified)])),
+            suggestions=list(dict.fromkeys([*critique.suggestions,
+                "Nur bestätigte Quellenbelege verwenden; Aufgaben ohne Quellen ohne Quellenabschnitt beantworten"])),
+            score=min(critique.score, 0.25),
+            timestamp=critique.timestamp,
+        )
 
     def _apply_step_research_gate(
         self,

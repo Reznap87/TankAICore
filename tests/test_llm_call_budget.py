@@ -164,3 +164,32 @@ def test_verified_single_step_requires_budget_for_all_verification_calls() -> No
             max_llm_calls_per_run=4,
             verified_single_step=True,
         )
+
+
+def test_concurrent_runs_cannot_reset_one_instances_budget_or_goal():
+    entered, proceed = threading.Event(), threading.Event()
+    class Blocking(ScriptedLLM):
+        first = True
+        def complete(self, prompt, **kwargs):
+            if self.first:
+                self.first = False
+                entered.set()
+                assert proceed.wait(5)
+            return super().complete(prompt, **kwargs)
+    tank = TankAI(llm=Blocking(), max_retries=0, max_llm_calls_per_run=7,
+                  require_research_evidence=False, enable_tools=False, verbose=False, run_store_path=None)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(tank.run, "First isolated goal")
+        try:
+            assert entered.wait(5)
+            before = tank.llm_call_budget.snapshot()
+            goal_id = tank.current_goal.id
+            with pytest.raises(RuntimeError, match="bereits einen Lauf"):
+                tank.run("Concurrent goal must not reset anything")
+            assert tank.llm_call_budget.snapshot() == before
+            assert tank.current_goal.id == goal_id
+        finally:
+            proceed.set()
+        result = first.result(timeout=5)
+    assert _budget_receipt(result).details["used"] == 6
+    assert _budget_receipt(tank.run("Next sequential goal")).details["used"] == 6

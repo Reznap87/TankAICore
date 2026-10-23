@@ -11,3 +11,6 @@ dialog{background:var(--surface);color:var(--text);border:1px solid var(--border
 @media(max-width:390px){.topbar{padding:0 10px}.topbar-title{max-width:105px;font-size:14px}.connection-badge{max-width:135px;font-size:8px}.model-label{max-width:175px}.welcome h1{font-size:28px}}
 @media(max-height:670px){.welcome{padding-top:10px;margin-bottom:23px}.welcome-mark{margin-bottom:18px}.welcome h1{font-size:29px}.suggestions{margin-top:18px;padding-bottom:17px}.app-footer{padding:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+.memory-recovery{margin:0 0 20px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}.memory-recovery p{font-size:12px;line-height:1.7;color:var(--muted);margin:0 0 10px}.memory-recovery p:last-child{margin-bottom:0}.memory-recovery button{margin:0 8px 0 0}
+.usage-info{white-space:pre-wrap;font-size:12px;line-height:1.8;color:var(--muted);padding:0 16px 14px}
+.work-item{padding:14px 0;border-bottom:1px solid var(--border)}

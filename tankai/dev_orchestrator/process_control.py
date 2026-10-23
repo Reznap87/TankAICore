@@ -58,6 +58,7 @@ def run_bounded_process(
     env: Mapping[str, str] | None = None,
     timeout_seconds: float,
     output_limit: int = 10_000,
+    stderr_to_stdout: bool = True,
     cancellation_check: Callable[[], None] | None = None,
     poll_interval_seconds: float = 0.1,
 ) -> BoundedProcessResult:
@@ -74,7 +75,7 @@ def run_bounded_process(
         cwd=str(cwd) if cwd is not None else None,
         env=dict(env) if env is not None else None,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.STDOUT if stderr_to_stdout else subprocess.DEVNULL,
         start_new_session=(os.name == "posix"),
     )
     buffer = bytearray()
