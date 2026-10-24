@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "candidate_id": "tankai-current-mock-candidate-v1",
+  "corpus_id": "tankai-cooperative-acceptance-v1",
+  "corpus_sha256": "8badde3d517fcd3491c0adb6f8ccf16998970393952393fa01c5056bbc5d98c3",
+  "observed_at": "2026-10-24T11:33:59.265072Z",
+  "execution_mode": "simulation",
+  "system_identity": "TankAI current MockLLM, tools disabled, max_retries=0, verified_single_step=true",
+  "source_revision": "4603e5f7172b94685370d5b273b25ff6cd635a13",
+  "human_reviewed": false,
+  "observations": [
+    {
+      "case_id": "coop-v1-idea-workshop",
+      "result_status": "simulated",
+      "output": "Die Aufgabe wurde nicht ausgeführt, weil der Plan die Prüfung auch nach den vorgesehenen Korrekturen nicht bestanden hat. Es wurde kein fachliches Ergebnis erzeugt. Bitte präzisiere die Aufgabe oder die Erfolgskriterien und starte sie anschließend erneut.\n\nHinweise aus der Planprüfung:\n- Simulierter Critic: keine unabhängige inhaltliche Verifikation möglich\n\nVorschläge zur Überarbeitung:\n- Run mit einem explizit konfigurierten Live-Provider erneut ausführen",
+      "output_sha256": "247227c698d0ff715831f98bb1b303f360ff94e85cd13735343a95fd92abaaa4",
+      "criteria_passed": [
+        "run_contract"
+      ],
+      "criteria_failed": [
+        "three_distinct_options",
+        "reasoned_recommendation",
+        "critical_uncertainty",
+        "bounded_experiment"
+      ],
+      "failures": [
+        "Die providerfreie Mock-Ausgabe belegt die fachlichen Kriterien nicht; sie bleibt eine Simulation ohne unabhängige menschliche Qualitätsfreigabe.",
+        "Die finale interne Prüfung wurde nicht bestanden; das Ergebnis ist nicht release-ready."
+      ],
+      "external_calls_made": false,
+      "metrics": {
+        "duration_seconds": 0.0,
+        "llm_calls": 2,
+        "external_cost_usd": 0.0,
+        "output_chars": 461,
+        "source_count": 0,
+        "receipt_count": 4
+      }
+    },
+    {
+      "case_id": "coop-v1-document-analysis",
+      "result_status": "simulated",
+      "output": "Die Aufgabe wurde nicht ausgeführt, weil der Plan die Prüfung auch nach den vorgesehenen Korrekturen nicht bestanden hat. Es wurde kein fachliches Ergebnis erzeugt. Bitte präzisiere die Aufgabe oder die Erfolgskriterien und starte sie anschließend erneut.\n\nHinweise aus der Planprüfung:\n- Simulierter Critic: keine unabhängige inhaltliche Verifikation möglich\n\nVorschläge zur Überarbeitung:\n- Run mit einem explizit konfigurierten Live-Provider erneut ausführen",
+      "output_sha256": "247227c698d0ff715831f98bb1b303f360ff94e85cd13735343a95fd92abaaa4",
+      "criteria_passed": [
+        "internal_data_boundary"
+      ],
+      "criteria_failed": [
+        "facts_separated",
+        "privacy_conflict",
+        "delivery_dependency",
+        "bounded_decision"
+      ],
+      "failures": [
+        "Die providerfreie Mock-Ausgabe belegt die fachlichen Kriterien nicht; sie bleibt eine Simulation ohne unabhängige menschliche Qualitätsfreigabe.",
+        "Die finale interne Prüfung wurde nicht bestanden; das Ergebnis ist nicht release-ready."
+      ],
+      "external_calls_made": false,
+      "metrics": {
+        "duration_seconds": 0.0,
+        "llm_calls": 2,
+        "external_cost_usd": 0.0,
+        "output_chars": 461,
+        "source_count": 0,
+        "receipt_count": 4
+      }
+    },
+    {
+      "case_id": "coop-v1-code-prototype",
+      "result_status": "simulated",
+      "output": "Die Aufgabe wurde nicht ausgeführt, weil der Plan die Prüfung auch nach den vorgesehenen Korrekturen nicht bestanden hat. Es wurde kein fachliches Ergebnis erzeugt. Bitte präzisiere die Aufgabe oder die Erfolgskriterien und starte sie anschließend erneut.\n\nHinweise aus der Planprüfung:\n- Simulierter Critic: keine unabhängige inhaltliche Verifikation möglich\n\nVorschläge zur Überarbeitung:\n- Run mit einem explizit konfigurierten Live-Provider erneut ausführen",
+      "output_sha256": "247227c698d0ff715831f98bb1b303f360ff94e85cd13735343a95fd92abaaa4",
+      "criteria_passed": [
+        "run_contract"
+      ],
+      "criteria_failed": [
+        "stable_deduplication",
+        "input_unchanged",
+        "strict_integer_validation",
+        "required_tests"
+      ],
+      "failures": [
+        "Die providerfreie Mock-Ausgabe belegt die fachlichen Kriterien nicht; sie bleibt eine Simulation ohne unabhängige menschliche Qualitätsfreigabe.",
+        "Die finale interne Prüfung wurde nicht bestanden; das Ergebnis ist nicht release-ready."
+      ],
+      "external_calls_made": false,
+      "metrics": {
+        "duration_seconds": 0.0,
+        "llm_calls": 2,
+        "external_cost_usd": 0.0,
+        "output_chars": 461,
+        "source_count": 0,
+        "receipt_count": 4
+      }
+    }
+  ]
+}

@@ -266,10 +266,14 @@ def test_candidate_case_diagnostics_match_aggregate_without_exposing_artifacts()
 
 def test_current_mock_execution_reproduces_checked_in_candidate_artifacts() -> None:
     corpus = load_corpus()
-    expected = load_candidate(corpus=corpus)
+    # Preserve the historical default candidate and its review bindings. The
+    # fail-closed plan gate changes rejection text and saves specialist calls;
+    # this separately versioned observation records that behavior honestly.
+    expected = load_candidate(
+        DEFAULT_CANDIDATE.with_name("cooperative_acceptance_v1_candidate_plan_gate.json"), corpus)
     current = run_mock_candidate(
         corpus,
-        source_revision="65e0b78054f756d0e08a2c2509377c2bdc6d9acc",
+        source_revision=expected.source_revision,
     )
 
     assert {
@@ -283,6 +287,13 @@ def test_current_mock_execution_reproduces_checked_in_candidate_artifacts() -> N
     assert [item.criteria_failed for item in current.observations] == [
         item.criteria_failed for item in expected.observations
     ]
+    assert [item.metrics.llm_calls for item in current.observations] == [
+        item.metrics.llm_calls for item in expected.observations
+    ]
+    assert all(item.metrics.llm_calls == 2 for item in current.observations)
+    receipt = candidate_receipt(corpus, load_baseline(corpus=corpus), current)
+    assert receipt["candidate_weighted_score"] == 0.1778
+    assert receipt["improves_baseline"] is False and receipt["pilot_eligible"] is False
 
 
 def test_candidate_rejects_tampered_artifact(tmp_path) -> None:

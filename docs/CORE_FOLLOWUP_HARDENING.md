@@ -45,5 +45,16 @@ on the pull-request revision. Local focused success does not substitute for them
 The cache bounds the number of instances, not arbitrary total process memory;
 TTL cleanup runs on access rather than in a new background scheduler.
 
+The first Linux CI run passed 547 tests and the complete Cloudflare/container job,
+but one regression expected the old mock rejection artifact. The plan gate now
+stops after plan review (two calls), instead of continuing to five calls before
+returning a different rejection. A separate observation file,
+`evaluation/cooperative_acceptance_v1_candidate_plan_gate.json`, records this
+provider-free measurement against source revision
+`4603e5f7172b94685370d5b273b25ff6cd635a13`. The frozen corpus, baseline and historical
+default candidate remain unchanged, including existing human-review bindings.
+The new observation retains the same 0.1778 score, no demonstrated quality gain
+and `pilot_eligible=false`. It is not a new successful benchmark or a live test.
+
 Public paid-provider activation, monetary budget admission, production backup/
 restore and a server release remain independent work with their existing gates.
