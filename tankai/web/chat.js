@@ -85,7 +85,7 @@
     catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('loginStatus').textContent = String(error.message || error); }
   }
   async function login(event) {
-    event.preventDefault(); const btn = byId('loginBtn'); btn.disabled = true; const requestEpoch = epoch;
+    event.preventDefault(); const btn = byId('loginBtn'); btn.disabled = true; const requestEpoch = ++epoch;
     const email = byId('email').value.trim(); const password = byId('password').value;
     byId('loginStatus').textContent = 'Anmeldung wird geprüft …';
     try { const data = await jsonFetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (requestEpoch !== epoch) return; byId('password').value = ''; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); byId('loginStatus').textContent = ''; }

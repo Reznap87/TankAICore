@@ -652,7 +652,7 @@ class Handler(BaseHTTPRequestHandler):
             "workspaces": workspaces,
             "csrf_token": context.csrf_token,
             "session_expires_at": context.expires_at.isoformat(),
-            "file_jobs_enabled": self.app.file_jobs is not None,
+            **({"file_jobs_enabled": True} if self.app.file_jobs is not None else {}),
         }
 
     @staticmethod

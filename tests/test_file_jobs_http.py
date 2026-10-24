@@ -81,6 +81,19 @@ def test_workspace_switch_or_missing_binding_blocks_upload(web):
     assert client.get('/api/file-jobs')[2]['jobs'] == []
 
 
+def test_disabled_feature_preserves_existing_login_contract(web):
+    app, base = web
+    app.file_jobs = None
+    client = Client(base)
+    status, _, me = client.post('/api/auth/login', {
+        'email': 'first@example.com', 'password': 'File-job-password-123',
+    })
+    assert status == 200
+    assert 'file_jobs_enabled' not in me
+    assert client.get('/api/file-jobs')[0] == 404
+    assert client.get('/files')[0] == 404
+
+
 def test_private_ui_nonce_and_untrusted_preview_text(web):
     _, base = web
     client, csrf = login(base)
