@@ -1,11 +1,24 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.53
+Version: 5.7.54
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 23. Oktober 2026
+Statusdatum: 24. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
 0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
+
+5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
+prüfbares SQLite-Fundament auf main-Ausgangsstand
+`b9eb349363889efe90e84460258ee19f0892b003` (übernommene Review-Korrekturen #100).
+Auftrags-, Tages- und Gesamtgrenzen gelten über mehrere lokale Prozesse; offene
+Reservierungen bleiben nach Neustart erhalten. Wiederholte Versuch-IDs erlauben
+keinen zweiten Versand. Ein Schemafilter-Fehler aus der privaten Vorarbeit wurde
+mit fünf zunächst fehlschlagenden Manipulationstests reproduziert und korrigiert.
+Vertrag, Prüfablauf und Grenzen: `docs/MONETARY_RESERVATIONS.md`.
+Dies ist ein isoliertes Fundament ohne Anbindung an den realen Provider-Versand,
+ohne Cloudflare-übergreifende Speicherkoordination und ohne Pilotfreigabe.
+Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
+Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 
 5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als
 gewöhnliche SQLite-Tabellen und weist Trigger auf diesen Tabellen zurück. Views mit
