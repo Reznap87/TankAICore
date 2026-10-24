@@ -5,7 +5,7 @@ Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/Ta
 Statusdatum: 24. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 24. Oktober 2026
 
 5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
 prüfbares SQLite-Fundament auf main-Ausgangsstand
