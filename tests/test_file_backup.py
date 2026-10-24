@@ -292,13 +292,15 @@ def test_cli_emits_receipts_without_rows_or_keys(original, tmp_path):
         args = [*command, action, '--source', str(input_path), '--key-file', str(key_path)]
         if output_path:
             args += ['--destination', str(output_path)]
-        process = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', timeout=20)
+        process = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', timeout=20,
+                                 cwd=Path(__file__).resolve().parents[1])
         assert process.returncode == 0, process.stderr
         assert json.loads(process.stdout)['jobs'] == 2
         assert key.hex() not in process.stdout + process.stderr
         assert 'saved-choice.csv' not in process.stdout + process.stderr
     key_path.write_bytes(secrets.token_bytes(32))
     process = subprocess.run([*command, 'verify', '--source', str(encrypted), '--key-file', str(key_path)],
-                             capture_output=True, text=True, encoding='utf-8', timeout=20)
+                             capture_output=True, text=True, encoding='utf-8', timeout=20,
+                             cwd=Path(__file__).resolve().parents[1])
     assert process.returncode == 1 and not process.stdout
     assert not json.loads(process.stderr)['ok']

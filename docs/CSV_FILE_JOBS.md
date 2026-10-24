@@ -95,7 +95,7 @@ part of validation. Full CI remains necessary in addition to local checks.
 
 ## Encrypted operator backups and fresh-directory restore
 
-Install the optional operator dependency with
+Run these commands from the Core checkout. Install the optional operator dependency with
 `python -m pip install -r requirements-backup.txt`. The web server does not import
 the encryption package or expose backup routes. A local server operator with
 filesystem access can run:
