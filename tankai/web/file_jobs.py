@@ -21,6 +21,13 @@ MAX_EXPORT = 4_000_000
 MAX_STORED_BYTES = 40_000_000
 DEFAULT_OPTIONS = {"trim": False, "removeBlank": False, "removeDuplicates": False,
                    "protectFormulas": True}
+CSV_SCHEMA = """CREATE TABLE IF NOT EXISTS csv_jobs (
+    id TEXT PRIMARY KEY, tenant TEXT NOT NULL, workspace TEXT NOT NULL,
+    owner TEXT NOT NULL, request_id TEXT NOT NULL, name TEXT NOT NULL,
+    goal TEXT NOT NULL, source BLOB NOT NULL, delimiter TEXT NOT NULL,
+    options TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+    created TEXT NOT NULL, csv BLOB, report TEXT,
+    UNIQUE(tenant,workspace,owner,request_id))"""
 
 
 class FileJobError(ValueError):
@@ -223,13 +230,7 @@ class FileJobStore:
         else:
             os.close(descriptor)
         with self._db() as db:
-            db.execute("""CREATE TABLE IF NOT EXISTS csv_jobs (
-                id TEXT PRIMARY KEY, tenant TEXT NOT NULL, workspace TEXT NOT NULL,
-                owner TEXT NOT NULL, request_id TEXT NOT NULL, name TEXT NOT NULL,
-                goal TEXT NOT NULL, source BLOB NOT NULL, delimiter TEXT NOT NULL,
-                options TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
-                created TEXT NOT NULL, csv BLOB, report TEXT,
-                UNIQUE(tenant,workspace,owner,request_id))""")
+            db.execute(CSV_SCHEMA)
 
     @contextmanager
     def _db(self, write=False):

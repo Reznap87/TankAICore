@@ -63,8 +63,8 @@ fails without applying a change.
 Admission is atomic: at most ten jobs per user/workspace, 100 overall and 40 MB
 of combined source/export payloads. SQLite file overhead and transaction journals
 are additional. Users can delete their jobs to reclaim admission capacity.
-SQLite deletion is not secure erasure; retention and encrypted backups are not
-implemented by this feature. The database is created with mode 0600 on systems
+SQLite deletion is not secure erasure. Retention scheduling is not implemented;
+operator-triggered encrypted backups are described below. The database is created with mode 0600 on systems
 that support POSIX modes. Windows deployment needs appropriate directory ACLs.
 
 No source text enters the chat history, logs or an external model. The UI inserts
@@ -92,6 +92,79 @@ real downloads against independently expected bytes and their report, reloads
 a selected draft, checks the BOM of the original file and verifies mobile layout.
 Only synthetic data is used. No paid inference, search, training or deployment is
 part of validation. Full CI remains necessary in addition to local checks.
+
+## Encrypted operator backups and fresh-directory restore
+
+Install the optional operator dependency with
+`python -m pip install -r requirements-backup.txt`. The web server does not import
+the encryption package or expose backup routes. A local server operator with
+filesystem access can run:
+
+```text
+python -m tankai.web.file_backup backup --source /private/data/csv-jobs.db --destination /protected/backups/jobs.tankai-backup --key-file /protected/keys/csv-backup.key
+python -m tankai.web.file_backup verify --source /protected/backups/jobs.tankai-backup --key-file /protected/keys/csv-backup.key
+python -m tankai.web.file_backup restore --source /protected/backups/jobs.tankai-backup --destination /private/recovered-csv --key-file /protected/keys/csv-backup.key
+```
+
+Paths are examples. Both parent directories must already exist and be under the
+operator's control. The key file must contain exactly 32 randomly generated
+binary bytes, not a password, text encoding or server credential. Keep it in
+separate protected key storage, outside source control and separate from backup
+copies. POSIX key files must be inaccessible to other accounts; Windows requires
+appropriate directory/file ACLs. The tool does not generate a deployment key,
+rotate credentials or configure a scheduler. Losing the key prevents recovery.
+
+The backup uses SQLite's online snapshot API, so committed WAL changes are
+included and uncommitted writes are excluded without stopping the application.
+Before encryption, the snapshot must have the exact supported v1 table/column/
+index structure, pass the integrity and quota checks, and reproduce every
+completed export and its report from the saved source/options. Unexpected tables,
+views, triggers, invalid identifiers or inconsistent deliveries fail validation.
+For a standalone snapshot, the serialized journal-mode header is set to rollback
+mode as prescribed by SQLite; the source database's journal mode is not changed.
+
+The envelope is `TANKAI-CSV-BACKUP\0\1`, a fresh 12-byte nonce and AES-256-GCM
+ciphertext with its authentication tag. The fixed format/cipher/scope header is
+authenticated as associated data. There is no compression or archive extraction.
+Only encrypted bytes are written during backup creation; the snapshot stays in
+process memory. The actual saved file is read back, authenticated and compared
+with the snapshot before success is returned. Snapshot size is limited to 64 MiB
+including SQLite overhead, with a 15-second snapshot deadline. Read size bounds
+also apply to encrypted input and key files.
+
+`verify` authenticates and validates the saved file without creating an output.
+`restore` performs those checks **before** creating its destination. It requires
+a new directory and writes only `csv-jobs.db` there. An existing directory, file
+or journal sidecar is never replaced. The new file is flushed and reread; success
+includes its verified snapshot hash. A failed write returns an error and may
+leave an incomplete new restore directory; inspect it and choose a different new
+destination for a retry. On supported POSIX systems, files start at mode 0600
+and the new restore directory at mode 0700. Windows ACLs remain an operator duty.
+
+JSON receipts contain operation, format, cipher, job counts, byte counts and
+hashes. They contain no cell values, filenames, key material or passwords. The
+backup covers **only the CSV job store**. Authentication, workspace history,
+budgets and other state need their own coordinated recovery procedure. Restored
+jobs retain the original tenant/workspace/user IDs and require those identities
+to be available in the separately recovered authentication store. Switching a
+running service to a recovered data root is a separate operator action.
+
+This protects backup contents; the running SQLite database remains plaintext.
+Automatic scheduled backups, offsite copies, deployment key storage and a full
+production/Cloudflare recovery drill are separate work. Tests use ephemeral
+synthetic keys and data. They include ten exact CSV deliveries, pending choices,
+committed/uncommitted WAL writes, wrong keys, corrupted ciphertext, malformed
+databases, output collisions and authenticated downloads from a fresh app context.
+The fresh-context test retains the authentication database separately and proves
+that another user still cannot access the restored file jobs.
+
+```text
+python -m pytest -q tests/test_file_backup.py tests/test_file_backup_http.py
+```
+
+References: [authenticated encryption in cryptography](https://cryptography.io/en/stable/hazmat/primitives/aead/),
+[SQLite online backup](https://www.sqlite.org/backup.html), and
+[standalone deserialization of WAL snapshots](https://www.sqlite.org/c3ref/deserialize.html).
 
 Implementation references: [Python CSV documentation](https://docs.python.org/3/library/csv.html)
 and [SQLite transaction handling in Python](https://docs.python.org/3/library/sqlite3.html).
