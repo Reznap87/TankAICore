@@ -35,6 +35,9 @@ class RunStore:
             "duration_seconds": result.duration_seconds,
             "receipts": len(result.receipts),
             "plan_steps": len(result.plan.steps) if result.plan else 0,
+            "plan_version": result.plan.version if result.plan else None,
+            "plan_parse_fallback": result.plan.parse_fallback if result.plan else False,
+            "plan_parse_error": result.plan.parse_error if result.plan else None,
             "rationale": result.plan.rationale if result.plan else "",
         }
         try:

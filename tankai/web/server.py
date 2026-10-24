@@ -49,7 +49,7 @@ from tankai.web.auth import (
     AuthStore,
     ProviderCallRateLimiter,
 )
-from tankai.web.runtime import WorkspaceRuntimeManager
+from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -507,6 +507,10 @@ class Handler(BaseHTTPRequestHandler):
             500,
         )
 
+    def _runtime_unavailable(self) -> None:
+        self._json({"error": "Arbeitsräume sind vorübergehend ausgelastet. Bitte erneut versuchen."},
+                   503, headers={"Retry-After": "1"})
+
     def _agent_error(
         self,
         code: str,
@@ -846,8 +850,7 @@ class Handler(BaseHTTPRequestHandler):
             }
             if context is not None:
                 try:
-                    runtime = self.app.runtimes.get(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
-                    with runtime.lock:
+                    with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
                         tank = runtime.tank
                         main_sim = bool(tank.llm.is_simulation)
                         critic_sim = bool(tank.critic_llm.is_simulation)
@@ -866,6 +869,9 @@ class Handler(BaseHTTPRequestHandler):
                             "tenant_isolation": True,
                             "ltm": tank.ltm.summary() if tank.ltm else "",
                         })
+                except WorkspaceRuntimeUnavailable:
+                    self._runtime_unavailable()
+                    return
                 except Exception:
                     self._internal_error("health")
                     return
@@ -952,8 +958,14 @@ class Handler(BaseHTTPRequestHandler):
             context = self._auth_context()
             if not context:
                 return
-            runtime = self.app.runtimes.get(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
-            self._json(runtime.history.list_recent(20))
+            try:
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    history = runtime.history.list_recent(20)
+                self._json(history)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("history")
             return
         self._json({"error": "Nicht gefunden"}, 404)
 
@@ -1999,8 +2011,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "parallel muss true oder false sein"}, 400)
             return
         try:
-            runtime = self.app.runtimes.get(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
-            with runtime.lock:
+            with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
                 tank = runtime.tank
                 tank.parallel = parallel
                 tank.llm_call_budget.set_call_guard(
@@ -2014,6 +2025,8 @@ class Handler(BaseHTTPRequestHandler):
                 if result.plan:
                     plan_data = {
                         "rationale": result.plan.rationale,
+                        "parse_fallback": result.plan.parse_fallback,
+                        "parse_error": result.plan.parse_error,
                         "steps": [{
                             "specialist_type": step.specialist_type,
                             "description": step.description,
@@ -2073,6 +2086,8 @@ class Handler(BaseHTTPRequestHandler):
                 429,
                 headers={"Retry-After": str(exc.retry_after_seconds)},
             )
+        except WorkspaceRuntimeUnavailable:
+            self._runtime_unavailable()
         except Exception:
             self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=False)
             self._internal_error("run")

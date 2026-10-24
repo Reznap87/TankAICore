@@ -4405,6 +4405,18 @@ Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht bloc
 begrenzte extern studentisierte/Deleted-Residual-Diagnostik oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
 
+## Core-Review: begrenzte Werkzeuge, Plan-Gate und Workspace-Ressourcen
+
+Die fünf Follow-up-Befunde werden in einem eigenen main-basierten Änderungsstand
+behoben: begrenzte numerische Calculator-Auswertung, korrigierte Textstatistik und
+Python-3.12-Mindestversion, ausdrücklich nicht ausführbare ungültige Pläne samt
+JSON-/Receipt-Nachweis, begrenzter Runtime-Cache mit geschützten aktiven/wartenden
+Zugriffen sowie feste Scrypt-Parameter. Fehlgeschlagene SQLite-Initialisierung
+schließt ihre Ressourcen. Die lokale gezielte Prüfung besteht mit 262 Tests;
+die Linux-/Container-CI des konkreten PR-Stands bleibt gesondert erforderlich.
+Details: [Core follow-up hardening](docs/CORE_FOLLOWUP_HARDENING.md).
+Keine Anbieteraktivierung oder Produktionsveröffentlichung durch diese Korrektur.
+
 Umgesetzte R2-Scheibe: TankAI Web v0.43.0
 
 Status: Begrenzte OLS-Diagnostik berechnet extern studentisierte Residuen aus der jeweils ohne

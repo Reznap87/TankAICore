@@ -473,6 +473,7 @@ def test_request_ids_are_server_generated_unique_and_correlate_errors(
         (b"GET /client-controlled HTTP/9.0\r\n\r\n", 505, False),
         (b"HEAD / HTTP/1.1\r\nX-Test: " + b"x" * 65536 + b"\r\n\r\n", 431, True),
     ],
+    ids=["malformed-request", "long-path", "long-header", "bad-version", "head-long-header"],
 )
 def test_http_parser_errors_are_neutral_secure_json(
     tmp_path, monkeypatch, raw_request, expected_status, head

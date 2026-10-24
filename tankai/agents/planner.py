@@ -123,17 +123,25 @@ recommended_option_id sowie smallest_experiment null sein.
 
         reused = False
         try:
-            match = re.search(r"\{[\s\S]*\}", raw)
-            data = json.loads(match.group(0) if match else raw)
-            reused = bool(data.get("reused_pattern", False))
-        except Exception:
+            data = self._decode_plan(raw)
+            reused = (
+                not plan.parse_fallback
+                and isinstance(data, dict)
+                and data.get("reused_pattern") is True
+            )
+        except (json.JSONDecodeError, TypeError):
             pass
 
         receipt = self._create_receipt(
             action="create_plan",
             input_summary=goal.description,
-            output_summary=f"Plan mit {len(plan.steps)} Schritten erstellt"
-            + (" (Pattern wiederverwendet)" if reused else ""),
+            output_summary=(
+                f"Planstruktur ungültig: {plan.parse_error}; Ausführung blockiert"
+                if plan.parse_fallback
+                else f"Plan mit {len(plan.steps)} Schritten erstellt"
+                + (" (Pattern wiederverwendet)" if reused else "")
+            ),
+            success=not plan.parse_fallback,
             details={
                 "plan_id": plan.id,
                 "version": plan.version,
@@ -149,67 +157,57 @@ recommended_option_id sowie smallest_experiment null sein.
                 ),
                 "alternative_count": len(plan.goal_analysis.options) if plan.goal_analysis else 0,
                 "max_steps": max_steps,
+                "parse_fallback": plan.parse_fallback,
+                "parse_error": plan.parse_error,
+                "executable_plan": not plan.parse_fallback and bool(plan.steps),
             },
         )
         return plan, receipt
 
     def _parse_plan(self, raw: str, goal: Goal, *, max_steps: int = 5) -> Plan:
-        """Versucht JSON aus der LLM-Antwort zu extrahieren."""
+        """Reject malformed plan structure without inventing executable work."""
+        def invalid(reason: str) -> Plan:
+            return Plan(
+                goal_id=goal.id,
+                steps=[],
+                rationale="Planstruktur ungültig; es wurden keine Ersatzschritte erzeugt.",
+                parse_fallback=True,
+                parse_error=reason,
+            )
+
         try:
-            match = re.search(r"\{[\s\S]*\}", raw)
-            if match:
-                data = json.loads(match.group(0))
-            else:
-                data = json.loads(raw)
+            data = self._decode_plan(raw)
         except (json.JSONDecodeError, TypeError):
-            data = {
-                "rationale": "Fallback-Plan wegen Parse-Fehler",
-                "steps": [
-                    {
-                        "description": "Informationen zum Ziel sammeln",
-                        "specialist_type": "research",
-                        "expected_output": "Zusammenfassung der relevanten Fakten",
-                    },
-                    {
-                        "description": "Ergebnis formulieren",
-                        "specialist_type": "writing",
-                        "expected_output": "Klare Endantwort",
-                    },
-                ],
-            }
+            return invalid("invalid_json")
+        if not isinstance(data, dict):
+            return invalid("invalid_root")
 
         allowed_types = {"research", "analysis", "code", "writing", "other"}
         raw_steps = data.get("steps", [])
-        if not isinstance(raw_steps, list):
-            raw_steps = []
+        if not isinstance(raw_steps, list) or not raw_steps:
+            return invalid("invalid_steps")
         if len(raw_steps) > max_steps:
-            raise ValueError(
-                f"Planner lieferte {len(raw_steps)} Schritte; erlaubt sind höchstens {max_steps}"
-            )
+            return invalid("step_limit_exceeded")
         steps = []
-        for item in raw_steps[:max_steps]:
+        for item in raw_steps:
             if not isinstance(item, dict):
-                continue
-            description = str(item.get("description") or "").strip()
-            expected = str(item.get("expected_output") or "").strip()
-            specialist_type = str(item.get("specialist_type") or "other").lower().strip()
-            if specialist_type not in allowed_types:
-                specialist_type = "other"
-            if not description:
-                continue
+                return invalid("invalid_step")
+            description = item.get("description")
+            expected = item.get("expected_output")
+            specialist_type = item.get("specialist_type")
+            if (
+                not isinstance(description, str) or not description.strip()
+                or len(description) > 2000
+                or not isinstance(expected, str) or not expected.strip() or len(expected) > 2000
+                or not isinstance(specialist_type, str)
+                or specialist_type.strip().lower() not in allowed_types
+            ):
+                return invalid("invalid_step")
             steps.append(PlanStep(
-                description=description[:2000],
-                specialist_type=specialist_type,
-                expected_output=expected[:2000],
+                description=description.strip(),
+                specialist_type=specialist_type.strip().lower(),
+                expected_output=expected.strip(),
             ))
-        if not steps:
-            steps = [
-                PlanStep(
-                    description="Ziel analysieren und überprüfbare Antwort erstellen",
-                    specialist_type="analysis",
-                    expected_output="Klare Antwort gegen die Definition of Done",
-                )
-            ]
 
         rationale = str(data.get("rationale") or "")[:4000]
         if data.get("reused_pattern") is True:
@@ -223,6 +221,14 @@ recommended_option_id sowie smallest_experiment null sein.
             rationale=rationale,
             goal_analysis=goal_analysis,
         )
+
+    @staticmethod
+    def _decode_plan(raw: str) -> object:
+        """Accept JSON or one complete JSON fence, never an embedded partial object."""
+        if not isinstance(raw, str):
+            raise TypeError("Planner-Antwort muss Text sein")
+        fenced = re.fullmatch(r"\s*```(?:json)?\s*([\s\S]*?)\s*```\s*", raw)
+        return json.loads(fenced.group(1) if fenced else raw)
 
     @staticmethod
     def _parse_goal_analysis(raw: object, goal: Goal) -> GoalAnalysis:

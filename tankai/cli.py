@@ -179,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
             f"Web research={tank.tools.web_research_status()}"
         )
     result = tank.run(goal_description=goal, definition_of_done=args.dod)
+    if result.plan and result.plan.parse_fallback and not args.quiet:
+        print(f"Planstruktur ungültig ({result.plan.parse_error}); Ausführung blockiert.")
 
     if args.json:
         import json
@@ -212,6 +214,9 @@ def main(argv: list[str] | None = None) -> int:
             ],
             "plan": {
                 "rationale": result.plan.rationale if result.plan else "",
+                "version": result.plan.version if result.plan else None,
+                "parse_fallback": result.plan.parse_fallback if result.plan else False,
+                "parse_error": result.plan.parse_error if result.plan else None,
                 "goal_analysis": (
                     result.plan.goal_analysis.model_dump(mode="json")
                     if result.plan and result.plan.goal_analysis
