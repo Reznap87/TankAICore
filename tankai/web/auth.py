@@ -30,6 +30,14 @@ AGENT_TOKEN_SCOPES = frozenset(
     {"repositories:read", "jobs:submit", "jobs:read", "jobs:cancel"}
 )
 _AGENT_TOKEN_PREFIX = "tkai_v1_"
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
+_PASSWORD_SALT_BYTES, _PASSWORD_DIGEST_BYTES = 16, 32
+_PASSWORD_HASH_PREFIX = f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}$"
+_PASSWORD_HASH_LENGTH = len(_PASSWORD_HASH_PREFIX) + 2 * _PASSWORD_SALT_BYTES + 1 + 2 * _PASSWORD_DIGEST_BYTES
+_PASSWORD_HASH_RE = re.compile(
+    re.escape(_PASSWORD_HASH_PREFIX)
+    + rf"([0-9a-f]{{{2 * _PASSWORD_SALT_BYTES}}})\$([0-9a-f]{{{2 * _PASSWORD_DIGEST_BYTES}}})"
+)
 
 
 def _utcnow() -> datetime:
@@ -74,28 +82,34 @@ def validate_password(password: str) -> None:
 
 def hash_password(password: str) -> str:
     validate_password(password)
-    salt = secrets.token_bytes(16)
-    n, r, p = 2**14, 8, 1
-    derived = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=32)
-    return f"scrypt${n}${r}${p}${salt.hex()}${derived.hex()}"
+    salt = secrets.token_bytes(_PASSWORD_SALT_BYTES)
+    derived = hashlib.scrypt(
+        password.encode("utf-8"), salt=salt,
+        n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=_PASSWORD_DIGEST_BYTES,
+    )
+    return f"{_PASSWORD_HASH_PREFIX}{salt.hex()}${derived.hex()}"
 
 
 def verify_password(password: str, encoded: str) -> bool:
+    # This version has only ever written this fixed scheme. Reject other work
+    # factors and oversized encodings before decoding or calling scrypt.
+    if (
+        not isinstance(password, str) or len(password) > 256
+        or not isinstance(encoded, str) or len(encoded) != _PASSWORD_HASH_LENGTH
+    ):
+        return False
+    match = _PASSWORD_HASH_RE.fullmatch(encoded)
+    if match is None:
+        return False
     try:
-        algorithm, n_raw, r_raw, p_raw, salt_hex, digest_hex = encoded.split("$", 5)
-        if algorithm != "scrypt":
-            return False
-        n, r, p = int(n_raw), int(r_raw), int(p_raw)
-        if n < 2**14 or n > 2**18 or r < 1 or p < 1:
-            return False
-        expected = bytes.fromhex(digest_hex)
+        expected = bytes.fromhex(match[2])
         actual = hashlib.scrypt(
             password.encode("utf-8"),
-            salt=bytes.fromhex(salt_hex),
-            n=n,
-            r=r,
-            p=p,
-            dklen=len(expected),
+            salt=bytes.fromhex(match[1]),
+            n=_SCRYPT_N,
+            r=_SCRYPT_R,
+            p=_SCRYPT_P,
+            dklen=_PASSWORD_DIGEST_BYTES,
         )
         return hmac.compare_digest(actual, expected)
     except (ValueError, TypeError, MemoryError):

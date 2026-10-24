@@ -190,7 +190,7 @@ class TankAI:
 
         # Critic prüft den Plan. Abgelehnte Pläne werden mit konkretem Feedback repariert.
         plan_critiques = []
-        plan_critique, plan_crit_receipt = self.critic.critique_plan(plan, goal)
+        plan_critique, plan_crit_receipt = self._review_plan(plan, goal)
         self.receipts.append(plan_crit_receipt)
         plan_critiques.append(plan_critique)
         for repair_attempt in range(self.max_retries):
@@ -215,12 +215,15 @@ class TankAI:
                 max_steps=1 if self.verified_single_step else 5,
             )
             plan.version = repair_attempt + 2
+            plan_receipt.details["version"] = plan.version
             self.receipts.append(plan_receipt)
-            plan_critique, plan_crit_receipt = self.critic.critique_plan(plan, goal)
+            plan_critique, plan_crit_receipt = self._review_plan(plan, goal)
             self.receipts.append(plan_crit_receipt)
             plan_critiques.append(plan_critique)
-        plan_gate_passed = bool(plan_critique.passed)
+        plan_gate_passed = bool(plan_critique.passed and not plan.parse_fallback and plan.steps)
         self._log_plan(plan)
+        if not plan_gate_passed:
+            return self._reject_plan(goal, plan, plan_critiques, start)
 
         # 2. ROUTE + EXECUTE + VERIFY
         step_results: list[tuple[str, str]] = []
@@ -442,6 +445,91 @@ class TankAI:
                 if ret_stats.get("to_cold") or ret_stats.get("to_warm"):
                     console.print(f"[dim]   Retention: {ret_stats}[/dim]")
 
+        return self._complete_run(result, goal)
+
+    def _execution_mode(self) -> str:
+        main = bool(getattr(self.llm, "is_simulation", False))
+        critic = bool(getattr(self.critic_llm, "is_simulation", False))
+        return "simulation" if main and critic else "mixed" if main or critic else "live"
+
+    def _review_plan(self, plan: Plan, goal: Goal) -> tuple[Critique, Receipt]:
+        """Structural admission cannot be overridden by a permissive LLM critic."""
+        if not plan.parse_fallback and plan.steps:
+            return self.critic.critique_plan(plan, goal)
+        critique = Critique(
+            target_id=plan.id,
+            passed=False,
+            score=0.0,
+            issues=[f"Ungültige Planstruktur ({plan.parse_error or 'empty_steps'}); Ausführung blockiert."],
+            suggestions=["Vollständiges JSON-Objekt mit gültigen, nichtleeren Planschritten liefern."],
+        )
+        receipt = Receipt(
+            action="critique_plan",
+            actor=Role.COMMANDER,
+            input_summary=f"Plan {plan.id}",
+            output_summary="Deterministische Strukturprüfung fehlgeschlagen; kein Critic-Aufruf.",
+            success=False,
+            details={
+                "critique_id": critique.id,
+                "deterministic_plan_structure_gate": True,
+                "parse_fallback": plan.parse_fallback,
+                "parse_error": plan.parse_error,
+                "llm_called": False,
+            },
+        )
+        return critique, receipt
+
+    def _reject_plan(self, goal: Goal, plan: Plan, critiques: list[Critique], start: float) -> RunResult:
+        """Persist a failed admission without dispatch, synthesis or memory inference."""
+        issues = [item[:1000] for item in critiques[-1].issues[:5]]
+        suggestions = [item[:1000] for item in critiques[-1].suggestions[:5]]
+        answer = (
+            "Die Aufgabe wurde nicht ausgeführt, weil der Plan die Prüfung auch nach "
+            "den vorgesehenen Korrekturen nicht bestanden hat. "
+            "Es wurde kein fachliches Ergebnis erzeugt. Bitte präzisiere die Aufgabe "
+            "oder die Erfolgskriterien und starte sie anschließend erneut."
+        )
+        if issues:
+            answer += "\n\nHinweise aus der Planprüfung:\n" + "\n".join(f"- {item}" for item in issues)
+        if suggestions:
+            answer += "\n\nVorschläge zur Überarbeitung:\n" + "\n".join(f"- {item}" for item in suggestions)
+        rejection = Critique(
+            target_id=plan.id, passed=False, score=0.0,
+            issues=["Der finale Plan hat die Plan-Prüfung nicht bestanden; Ausführung blockiert."],
+            suggestions=["Plan anhand der gespeicherten Critic-Hinweise überarbeiten."],
+        )
+        self.receipts.append(Receipt(
+            action="reject_plan", actor=Role.COMMANDER,
+            input_summary=f"Plan {plan.id}", output_summary=answer, success=False,
+            details={"plan_gate_passed": False, "plan_version": plan.version,
+                     "plan_checks": len(critiques),
+                     "reason": "plan_parse_failed" if plan.parse_fallback else "plan_gate_failed",
+                     "parse_fallback": plan.parse_fallback, "parse_error": plan.parse_error,
+                     "issues": issues, "suggestions": suggestions,
+                     "skipped_step_ids": [step.id for step in plan.steps]},
+        ))
+        mode = self._execution_mode()
+        goal.status = TaskStatus.FAILED if mode == "live" else TaskStatus.SIMULATED
+        result = RunResult(
+            goal_id=goal.id, final_answer=answer, status=goal.status,
+            definition_of_done=goal.definition_of_done, execution_mode=mode,
+            main_llm_identity=self.main_llm_identity,
+            critic_llm_identity=self.critic_llm_identity,
+            critic_independent=self.critic_independent,
+            verification_passed=False, release_ready=False, plan_gate_passed=False,
+            web_research_provider=self.tools.web_research_status(),
+            plan=plan, critiques=[*critiques, rejection], receipts=list(self.receipts),
+            memory_entries_created=0, duration_seconds=round(time.perf_counter() - start, 3),
+        )
+        result = self._complete_run(result, goal)
+        if self.ltm:
+            # Keep the unknown episode for diagnosis; no semantic knowledge, consolidation
+            # job, retention mutation or learned procedure follows a rejected plan.
+            self.ltm.store_episode(result, goal.description)
+        return result
+
+    def _complete_run(self, result: RunResult, goal: Goal) -> RunResult:
+        """Attach bounded call counts and persist normal and rejected runs consistently."""
         budget_snapshot = self.llm_call_budget.snapshot()
         budget_receipt = Receipt(
             action="llm_call_budget",

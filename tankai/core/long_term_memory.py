@@ -66,19 +66,24 @@ class LongTermMemory:
                 self._conn = sqlite3.connect(":memory:", check_same_thread=False)
                 self._in_memory = True
 
-        self._conn.row_factory = sqlite3.Row
-        self._init_schema()
-
-        # Vector-Persistenz nur wenn nicht pure in-memory
-        vpath = None if self._in_memory else str(self.vector_path)
-        if isinstance(embedder, str):
-            emb = get_embedder(embedder, dim=embedding_dim) if embedder == "hashing" else get_embedder(embedder)
-        else:
-            emb = embedder
         try:
+            self._conn.row_factory = sqlite3.Row
+            self._init_schema()
+
+            # Vector-Persistenz nur wenn nicht pure in-memory
+            vpath = None if self._in_memory else str(self.vector_path)
+            if isinstance(embedder, str):
+                emb = get_embedder(embedder, dim=embedding_dim) if embedder == "hashing" else get_embedder(embedder)
+            else:
+                emb = embedder
             self.vectors = VectorStore(dim=emb.dim, persist_path=vpath, embedder=emb)
-        except Exception:
-            self._conn.close()
+        except BaseException:
+            # A failed constructor never hands its connection to the caller.
+            # Preserve the initialization error even if cleanup also fails.
+            try:
+                self._conn.close()
+            except Exception:
+                pass
             raise
 
     # ────────────────────────── Schema ──────────────────────────

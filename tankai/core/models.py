@@ -143,8 +143,22 @@ class Plan(BaseModel):
     steps: list[PlanStep]
     rationale: str
     goal_analysis: Optional[GoalAnalysis] = None
+    # A parse failure is diagnostic state, never an invented executable plan.
+    parse_fallback: bool = False
+    parse_error: Optional[Literal[
+        "invalid_json", "invalid_root", "invalid_steps", "step_limit_exceeded", "invalid_step"
+    ]] = None
     created_at: datetime = Field(default_factory=utcnow)
     version: int = 1
+
+    @model_validator(mode="after")
+    def validate_parse_state(self) -> "Plan":
+        if self.parse_fallback:
+            if self.steps or self.parse_error is None:
+                raise ValueError("Ungültige Pläne benötigen einen Parse-Fehler und dürfen keine Schritte haben")
+        elif self.parse_error is not None:
+            raise ValueError("Ein gültiger Plan darf keinen Parse-Fehler enthalten")
+        return self
 
 
 class Critique(BaseModel):

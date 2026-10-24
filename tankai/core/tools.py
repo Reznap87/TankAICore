@@ -33,6 +33,16 @@ class CalculatorTool(BaseTool):
     name = "calculator"
     description = "Berechnet mathematische Ausdrücke (z.B. '2+2*3', 'sqrt(16)')."
 
+    # Keep parsing, intermediate arithmetic, and rendered results bounded even
+    # when the expression is produced by an untrusted model or document.
+    MAX_EXPRESSION_LENGTH = 1024
+    MAX_AST_NODES = 128
+    MAX_AST_DEPTH = 24
+    MAX_INTEGER_BITS = 1024
+    MAX_FLOAT_ABS = 1e100
+    MAX_EXPONENT = 1000
+    MAX_ROUND_DIGITS = 100
+
     _ops = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
@@ -40,6 +50,7 @@ class CalculatorTool(BaseTool):
         ast.Div: operator.truediv,
         ast.Pow: operator.pow,
         ast.USub: operator.neg,
+        ast.UAdd: operator.pos,
         ast.Mod: operator.mod,
     }
     _funcs = {
@@ -54,24 +65,87 @@ class CalculatorTool(BaseTool):
     def run(self, expression: str = "", **kwargs: Any) -> str:
         expression = expression or kwargs.get("expr", "")
         try:
+            if not isinstance(expression, str):
+                raise ValueError("Der Ausdruck muss Text sein.")
+            if len(expression) > self.MAX_EXPRESSION_LENGTH:
+                raise ValueError("Der Ausdruck ist zu lang.")
             tree = ast.parse(expression, mode="eval")
+            self._validate_tree(tree.body)
             result = self._eval(tree.body)
             return f"Ergebnis: {result}"
         except Exception as e:
             return f"Rechenfehler: {e}"
 
-    def _eval(self, node):
+    def _validate_tree(self, root: ast.AST) -> None:
+        pending = [(root, 1)]
+        count = 0
+        allowed = (
+            ast.Constant, ast.BinOp, ast.UnaryOp, ast.Call, ast.Name, ast.Load,
+            *self._ops,
+        )
+        while pending:
+            node, depth = pending.pop()
+            count += 1
+            if count > self.MAX_AST_NODES or depth > self.MAX_AST_DEPTH:
+                raise ValueError("Der Ausdruck ist zu komplex.")
+            if not isinstance(node, allowed):
+                raise ValueError(f"Nicht erlaubt: {type(node).__name__}")
+            pending.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+
+    def _number(self, value: Any) -> int | float:
+        # bool is an int subclass, so use exact types rather than isinstance.
+        if type(value) is int:
+            if value.bit_length() > self.MAX_INTEGER_BITS:
+                raise ValueError("Ganzzahl überschreitet die Größenbegrenzung.")
+        elif type(value) is float:
+            if not math.isfinite(value) or abs(value) > self.MAX_FLOAT_ABS:
+                raise ValueError("Zahl überschreitet die Größenbegrenzung.")
+        else:
+            raise ValueError("Nur reelle Zahlen sind erlaubt.")
+        return value
+
+    def _power(self, base: int | float, exponent: int | float) -> int | float:
+        if abs(exponent) > self.MAX_EXPONENT:
+            raise ValueError("Exponent überschreitet die Begrenzung.")
+        if type(base) is int and type(exponent) is int and exponent >= 0:
+            # Check before operator.pow: a result-size check afterwards would
+            # already have allocated an attacker-controlled large integer.
+            magnitude = abs(base)
+            if magnitude > 1 and exponent:
+                estimated_bits = math.ceil(math.log2(magnitude) * exponent) + 1
+                if estimated_bits > self.MAX_INTEGER_BITS:
+                    raise ValueError("Potenz überschreitet die Größenbegrenzung.")
+        return self._number(operator.pow(base, exponent))
+
+    def _eval(self, node: ast.AST, depth: int = 0) -> int | float:
+        if depth > self.MAX_AST_DEPTH:
+            raise ValueError("Der Ausdruck ist zu komplex.")
         if isinstance(node, ast.Constant):
-            return node.value
+            return self._number(node.value)
         if isinstance(node, ast.BinOp):
-            return self._ops[type(node.op)](self._eval(node.left), self._eval(node.right))
+            if type(node.op) not in self._ops or isinstance(node.op, (ast.USub, ast.UAdd)):
+                raise ValueError("Rechenoperation ist nicht erlaubt.")
+            left = self._eval(node.left, depth + 1)
+            right = self._eval(node.right, depth + 1)
+            if isinstance(node.op, ast.Pow):
+                return self._power(left, right)
+            return self._number(self._ops[type(node.op)](left, right))
         if isinstance(node, ast.UnaryOp):
-            return self._ops[type(node.op)](self._eval(node.operand))
+            if not isinstance(node.op, (ast.USub, ast.UAdd)):
+                raise ValueError("Rechenoperation ist nicht erlaubt.")
+            return self._number(self._ops[type(node.op)](self._eval(node.operand, depth + 1)))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             fn = self._funcs.get(node.func.id)
             if not fn:
                 raise ValueError(f"Unbekannte Funktion: {node.func.id}")
-            return fn(*[self._eval(a) for a in node.args])
+            allowed_arity = (1, 2) if node.func.id in ("log", "round") else (1,)
+            if node.keywords or len(node.args) not in allowed_arity:
+                raise ValueError("Ungültige Funktionsargumente.")
+            args = [self._eval(a, depth + 1) for a in node.args]
+            if node.func.id == "round" and len(args) == 2:
+                if type(args[1]) is not int or abs(args[1]) > self.MAX_ROUND_DIGITS:
+                    raise ValueError("Rundungsstellen überschreiten die Begrenzung.")
+            return self._number(fn(*args))
         if isinstance(node, ast.Name) and node.id in ("pi", "e"):
             return math.pi if node.id == "pi" else math.e
         raise ValueError(f"Nicht erlaubt: {type(node).__name__}")
@@ -107,9 +181,10 @@ class TextStatsTool(BaseTool):
         text = text or kwargs.get("input", "")
         lines = text.splitlines() or [text]
         words = re.findall(r"\w+", text, flags=re.UNICODE)
+        no_whitespace = len(re.sub(r"\s", "", text))
         return (
             f"Zeichen: {len(text)} | Wörter: {len(words)} | "
-            f"Zeilen: {len(lines)} | Ohne Leerzeichen: {len(re.sub(r'\\s', '', text))}"
+            f"Zeilen: {len(lines)} | Ohne Leerzeichen: {no_whitespace}"
         )
 
 

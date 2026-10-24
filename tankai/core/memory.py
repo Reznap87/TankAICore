@@ -29,8 +29,15 @@ class Memory:
         self._conn: Optional[sqlite3.Connection] = None
 
         if self.db_path:
-            self._init_db()
-            self._load_from_db()
+            try:
+                self._init_db()
+                self._load_from_db()
+            except BaseException:
+                try:
+                    self.close()
+                except Exception:
+                    pass
+                raise
 
     # ────────────────────────── Public API ──────────────────────────
 

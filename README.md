@@ -507,6 +507,9 @@ python -m tankai.dev_orchestrator.cli \
 
 ## Installation
 
+Der Core benötigt **Python 3.12 oder neuer**. Docker und die reguläre CI verwenden
+Python 3.12; Python 3.11 ist kein zugesagtes Laufzeitziel.
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
@@ -524,6 +527,15 @@ Provider-Adapter zusätzlich installieren:
 ```bash
 pip install openai anthropic
 ```
+
+Die Web-Laufzeit hält standardmäßig höchstens 32 Workspace-Instanzen im Speicher.
+`TANKAI_RUNTIME_CACHE_MAX` setzt die Obergrenze (1–1024),
+`TANKAI_RUNTIME_IDLE_TTL_SECONDS` das Leerlaufalter (standardmäßig 900 Sekunden,
+zulässig 1–86400). Ablauf und LRU-Verdrängung werden bei Zugriffen geprüft;
+laufende und auf denselben Workspace wartende Anfragen halten ihre Instanz fest.
+Sind alle Plätze belegt, antworten betroffene Endpunkte mit HTTP 503 und
+`Retry-After`. Gespeicherte Verläufe und Datenbanken bleiben beim Entfernen einer
+Instanz erhalten und werden beim nächsten Zugriff erneut geöffnet.
 
 ## Minimale Live-Konfiguration
 
