@@ -121,9 +121,12 @@ class MonetaryDispatch:
                  tariffs: Mapping[tuple[str, str], TextTariff],
                  endpoints: Mapping[tuple[str, str], str],
                  input_token_bound: Callable[[FrozenTextRequest], int],
-                 clock: Callable[[], int] | None = None) -> None:
+                 clock: Callable[[], int] | None = None,
+                 authorize: Callable[[], None] | None = None) -> None:
         if type(ledger) is not MonetaryBudget or not callable(input_token_bound):
             raise DispatchDenied("initialized ledger and trusted input counter required")
+        if authorize is not None and not callable(authorize):
+            raise DispatchDenied("invalid trusted authorizer")
         if owner_id != ledger.policy.owner_id or type(job_id) is not str or not job_id:
             raise DispatchDenied("approved owner/job context required")
         if not tariffs or set(tariffs) != set(endpoints):
@@ -138,6 +141,7 @@ class MonetaryDispatch:
         self._endpoints = {key: _endpoint(value) for key, value in endpoints.items()}
         self._input_token_bound = input_token_bound
         self._clock = clock or (lambda: int(time.time()))
+        self._authorize = authorize
         self._uncertain_upstream = threading.Event()
         self._send_lock = threading.Lock()
 
@@ -185,11 +189,18 @@ class MonetaryDispatch:
         bounds = TextRequestBounds(provider, model, input_ceiling,
                                    request.parameters()["max_tokens"])
         quote = quote_text_request(self._tariffs[identity], bounds, now=self._clock())
+        # A slow offline counter must not preserve a revoked session/role.
+        if self._authorize is not None:
+            self._authorize()
         reservation = self.ledger.reserve(self.job_id, attempt_id,
                                           owner_id=self.owner_id, quote=quote)
         if not reservation.dispatch_allowed:
             raise DispatchDenied("attempt already admitted; automatic replay is forbidden")
         try:
+            # Recheck after the durable commit too, immediately before sending.
+            # Denial here keeps the hold and blocks this uncertain job context.
+            if self._authorize is not None:
+                self._authorize()
             return send_once(request.parameters())
         except BaseException:
             self._uncertain_upstream.set()

@@ -5,8 +5,8 @@ committed BEFORE dispatch. Replaying an attempt ID never authorizes another
 dispatch. Failures/timeouts retain their full reservation until a trustworthy
 settlement is available. Closing a job does not refund its unresolved attempts.
 
-This standalone foundation contains no provider client and is not yet wired into
-the provider adapters or public web runtime. Before using it for real requests,
+This module contains no provider client. Opt-in text dispatch and owner-pilot
+admission use it; default/public startup does not activate them. Before real requests,
 the caller must establish complete token bounds, validate current all-in tariffs,
 guard every actual outbound attempt, and durably preserve this database.
 It neither verifies provider invoices nor makes a local SQLite file distributed

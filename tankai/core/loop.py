@@ -395,6 +395,18 @@ class TankAI:
         goal.status = status
 
         source_ids, source_urls = self._research_provenance()
+        if self.ltm and self.llm_call_budget.monetary_dispatch is not None:
+            # The owner pilot has five admitted model attempts. Preserve its
+            # episode; do not silently add a sixth call for memory distillation
+            # or replace model-backed extraction with heuristic "knowledge".
+            self.receipts.append(Receipt(
+                action="memory_consolidation_deferred", actor=Role.COMMANDER,
+                input_summary="Begrenzter Besitzerpilot",
+                output_summary="Lauf wird gespeichert; zusätzliche Modellaufbereitung bleibt ausstehend",
+                success=False,
+                details={"deferred": True, "reason": "bounded_owner_pilot",
+                         "additional_model_calls": 0, "retry_scheduled": False},
+            ))
         failed_step_ids = [
             step.id for step in plan.steps if step.status != TaskStatus.COMPLETED
         ]
@@ -425,7 +437,7 @@ class TankAI:
         if self.ltm:
             run_id = self.ltm.store_episode(result, goal.description)
             created = []
-            if not any_simulation:
+            if not any_simulation and self.llm_call_budget.monetary_dispatch is None:
                 created = self.ltm.consolidate(run_id, llm=self.llm)
                 if final_critique.passed and plan is not None:
                     self.ltm.promote_to_procedure(

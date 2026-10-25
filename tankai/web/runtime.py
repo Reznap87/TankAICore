@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from tankai import TankAI, get_llm
-from tankai.core.llm import get_critic_llm
+from tankai.core.llm import AnthropicLLM, OpenAILLM, get_critic_llm
+from tankai.core.request_dispatch import DispatchDenied
 from tankai.core.long_term_memory import LongTermMemory
 
 
@@ -107,7 +108,11 @@ class WorkspaceRuntimeManager:
     """Cache ohne Autorität: IDs stammen ausschließlich aus dem AuthStore."""
 
     def __init__(self, data_root: str | Path, *, max_runtimes: int | None = None,
-                 idle_ttl_seconds: int | None = None, clock: Callable[[], float] | None = None) -> None:
+                 idle_ttl_seconds: int | None = None, clock: Callable[[], float] | None = None,
+                 require_request_admission: bool = False) -> None:
+        if type(require_request_admission) is not bool:
+            raise ValueError("require_request_admission must be a boolean")
+        self.require_request_admission = require_request_admission
         self.max_runtimes = (_env_int("TANKAI_RUNTIME_CACHE_MAX", 32, minimum=1, maximum=1024)
                              if max_runtimes is None else max_runtimes)
         self.idle_ttl_seconds = (_env_int("TANKAI_RUNTIME_IDLE_TTL_SECONDS", 900, minimum=1, maximum=86400)
@@ -237,6 +242,8 @@ class WorkspaceRuntimeManager:
             pass
         ltm = tank = None
         try:
+            if self.require_request_admission and _env("TANKAI_EMBEDDER", "hashing") != "hashing":
+                raise DispatchDenied("pilot requires deterministic local hashing embeddings")
             ltm = LongTermMemory(
                 db_path=root / "ltm.db",
                 vector_path=root / "vectors.npz",
@@ -246,12 +253,18 @@ class WorkspaceRuntimeManager:
             )
             llm = get_llm()
             critic_llm = get_critic_llm(default=llm)
+            if self.require_request_admission:
+                for adapter in (llm, critic_llm):
+                    if type(adapter) not in (OpenAILLM, AnthropicLLM):
+                        raise DispatchDenied("pilot requires reviewed guarded provider adapters")
+                    adapter.requires_request_admission = True
             tank = TankAI(
                 llm=llm,
                 critic_llm=critic_llm,
-                require_independent_critic=_env_bool("TANKAI_REQUIRE_INDEPENDENT_CRITIC", False),
+                require_independent_critic=(self.require_request_admission
+                                          or _env_bool("TANKAI_REQUIRE_INDEPENDENT_CRITIC", False)),
                 require_research_evidence=_env_bool("TANKAI_REQUIRE_RESEARCH_EVIDENCE", True),
-                max_llm_calls_per_run=_env_int(
+                max_llm_calls_per_run=5 if self.require_request_admission else _env_int(
                     "TANKAI_LLM_MAX_CALLS_PER_RUN", 40, minimum=7, maximum=40
                 ),
                 verbose=False,
@@ -260,11 +273,13 @@ class WorkspaceRuntimeManager:
                 enable_tools=False,
                 parallel=False,
                 run_store_path=str(root / "runs.jsonl"),
+                max_retries=0 if self.require_request_admission else 2,
+                verified_single_step=self.require_request_admission,
             )
             tank.ltm = ltm
             tank.tools.register_defaults(
                 ltm=ltm,
-                enable_web_research=True,
+                enable_web_research=not self.require_request_admission,
                 strict_web_research=_env_bool("TANKAI_STRICT_WEB_RESEARCH", False),
             )
             runtime = WorkspaceRuntime(

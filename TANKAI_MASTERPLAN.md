@@ -21,9 +21,15 @@ vollständige Request wird vor dem SDK-Versuch eingefroren und konservativ
 bepreist; erst die dauerhaft bestätigte Reservierung erlaubt den Versand.
 SDK-/Transport-Retries, Redirects und Umgebungsproxies sind im geschützten Pfad
 deaktiviert. Echte SDKs werden mit lokal abgefangenem HTTP geprüft. Die
-Web-Zulassung aktiviert diesen Pfad noch nicht; belegte reale Tarife/Tokenzähler,
-dauerhafte Wiederaufnahmeentscheidungen, Cloudflare-übergreifende
-Speicherkoordination und die konkrete Pilotfreigabe bleiben offene Gates.
+explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,
+Besitzerrolle, Mandant und freigegebene Arbeitsräume. Nach unsicheren Ausgängen
+oder Prozessabbruch bleibt der dauerhafte Auftragsplatz belegt; neue HTTP-Jobs
+umgehen ihn auch nach Neustart nicht. Zusätzliche Memory-Modellaufbereitung
+bleibt mit Nachweis ausstehend, der vollständige Lauf wird gespeichert.
+Die öffentliche Standardkonfiguration aktiviert diesen Pfad nicht. Belegte
+reale Tarife/Tokenzähler, freigegebene Quellen, geprüfte Wiederaufnahme,
+Cloudflare-übergreifende Speicherkoordination und die konkrete Pilotfreigabe
+bleiben offene Gates. Vertrag: `docs/OWNER_PILOT_ADMISSION.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
 Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 

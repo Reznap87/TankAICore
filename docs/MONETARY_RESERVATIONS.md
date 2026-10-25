@@ -3,8 +3,10 @@
 This change implements the local ledger required by Masterplan 0.11.7, under
 Issue #25. Trusted application code can now supply a `MonetaryDispatch` to
 `TankAI(..., monetary_dispatch=...)` (or `LLMCallBudget`) to protect the existing
-OpenAI and Anthropic text adapters. Web admission and production configuration
-do not activate this path. This is repository code, not live-provider approval.
+OpenAI and Anthropic text adapters. A programmatically supplied `OwnerPilot` now
+binds the same guard to session-authenticated `/api/run` admission; see
+[the owner admission contract](OWNER_PILOT_ADMISSION.md). Default startup and
+production configuration do not activate it. This code is not live-provider approval.
 
 ## Contract
 
@@ -85,8 +87,10 @@ hold; token usage never refunds it automatically. A send/parsing/settlement
 failure blocks subsequent sends through the same dispatcher, including queued
 siblings and a critic fallback. This stop flag is process-local, while the
 reservation/replay protection is durable. A new dispatcher must not be treated
-as permission to resume an uncertain job: persistent recovery/admission and
-upstream cancellation checks remain application-level gates. The dispatcher
+as permission to resume an uncertain job. The owner web admission now preserves
+the durable active-job slot on uncertainty and generates a fresh job ID for each
+new request, so a restart cannot bypass that slot. Operator recovery and proven
+upstream completion/cancellation remain separate gates. The dispatcher
 serializes its own job's sends; independently constructed dispatchers do not
 share that in-memory lock, but their reservations still share SQLite limits.
 
@@ -120,9 +124,10 @@ current provider prices, model quality or deployed runtime behavior.
   **every actual** path; direct legacy construction is still not a money guard.
 - Verify full input/output token bounds and current all-in tariffs (tax, currency
   conversion and every other billable item included). Unknown costs block sends.
-- Bind real owner/tenant/workspace/job identity at admission and on each attempt.
-- Persist recovery/uncertain-job decisions before any restart/resume; a local
-  stop flag alone does not prove upstream cancellation or safe job concurrency.
+- Approve the actual owner/tenant/workspace identities at rollout; the explicit
+  owner web path now enforces fresh session/membership checks on each attempt.
+- Review upstream completion/cancellation before any recovery/unlock. The web
+  pilot blocks unknown active work durably; it has no automatic resume or reset.
 - Configure trusted storage and prove restart and application restore in the
   actual deployment. A passing local reopen test is not production durability.
 - Audit upstream routing/retries and explicitly approve the bounded pilot before
