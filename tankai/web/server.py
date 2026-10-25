@@ -50,7 +50,9 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
-from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
+from tankai.web.auth_state import (
+    AuthState, AuthStateUnavailable, RESTORE_PENDING_FILE, RECOVERY_RECEIPT_FILE, bootstrap_owner,
+)
 from tankai.web.file_jobs import FileJobError, FileJobStore
 
 _SESSION_COOKIE = "tankai_session"
@@ -259,7 +261,18 @@ class AppContext:
         if mode == "disabled" and not is_loopback:
             raise RuntimeError("Deaktivierte Authentifizierung ist nur auf Loopback erlaubt")
         data_root = Path(_env("TANKAI_DATA_ROOT", ".tankai/data")).resolve()
+        if (data_root / RESTORE_PENDING_FILE).exists():
+            raise RuntimeError("Die Wiederherstellung des Datenbestands ist noch nicht abgeschlossen")
+        recovered_root = (data_root / RECOVERY_RECEIPT_FILE).exists()
+        if recovered_root and (
+                _env("TANKAI_AUTH_STATE_URL") or _env("TANKAI_AUTH_STATE_TOKEN")):
+            raise RuntimeError("Die wiederhergestellten Konten müssen zuerst mit der externen Kontensicherung abgeglichen werden")
         auth_db = Path(_env("TANKAI_AUTH_DB", str(data_root / "auth.db"))).resolve()
+        if recovered_root and (
+                auth_db != (data_root / "auth.db").resolve()
+                or any(path.is_symlink() or not path.is_file()
+                       for path in (data_root / "auth.db", data_root / "csv-jobs.db"))):
+            raise RuntimeError("Wiederhergestellte Konten und Dateiaufträge müssen gemeinsam aus dem neuen Datenordner geladen werden")
         cookie_secure = _env_bool("TANKAI_COOKIE_SECURE", not is_loopback)
         auth_state = AuthState.from_env()
         if auth_state is not None:

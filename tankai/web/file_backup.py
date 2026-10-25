@@ -134,10 +134,15 @@ def _validate_database(db) -> dict:
 
 
 def _snapshot(source: Path) -> tuple[bytes, dict]:
+    return _sqlite_snapshot(source, MAX_SNAPSHOT_BYTES, _validate_database)
+
+
+def _sqlite_snapshot(source: Path, max_bytes: int, validator, *, deadline=None) -> tuple[bytes, dict]:
     source = Path(source)
-    if source.is_symlink() or not source.is_file() or source.stat().st_size > MAX_SNAPSHOT_BYTES:
+    if source.is_symlink() or not source.is_file() or source.stat().st_size > max_bytes:
         raise FileBackupError("Die Quelldatenbank fehlt oder ist ungültig")
-    deadline = time.monotonic() + SNAPSHOT_TIMEOUT_SECONDS
+    if deadline is None:
+        deadline = time.monotonic() + SNAPSHOT_TIMEOUT_SECONDS
     src = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
     snapshot = sqlite3.connect(":memory:")
     try:
@@ -145,13 +150,13 @@ def _snapshot(source: Path) -> tuple[bytes, dict]:
         page_size = src.execute("PRAGMA page_size").fetchone()[0]
 
         def progress(status, remaining, total):
-            if time.monotonic() > deadline or total * page_size > MAX_SNAPSHOT_BYTES:
+            if time.monotonic() > deadline or total * page_size > max_bytes:
                 raise FileBackupError("Die Momentaufnahme überschreitet ihre Zeit- oder Speichergrenze")
 
         src.backup(snapshot, pages=128, progress=progress, sleep=0.05)
-        metadata = _validate_database(snapshot)
+        metadata = validator(snapshot)
         data = snapshot.serialize()
-        if len(data) > MAX_SNAPSHOT_BYTES:
+        if len(data) > max_bytes:
             raise FileBackupError("Die Momentaufnahme ist zu groß")
         # SQLite backup includes committed WAL pages. Its in-memory serialization can
         # still carry WAL header flags; SQLite explicitly requires rollback flags for

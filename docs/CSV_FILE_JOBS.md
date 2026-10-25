@@ -158,6 +158,11 @@ databases, output collisions and authenticated downloads from a fresh app contex
 The fresh-context test retains the authentication database separately and proves
 that another user still cannot access the restored file jobs.
 
+For recovery of **both** accounts and CSV jobs from one encrypted package,
+use the [coordinated account/CSV recovery tool](ACCOUNT_CSV_RECOVERY.md). Its fresh
+app test restores both stores and requires a new login; the CSV-only tool above
+continues to preserve its narrower format and restore contract.
+
 ```text
 python -m pytest -q tests/test_file_backup.py tests/test_file_backup_http.py
 ```
