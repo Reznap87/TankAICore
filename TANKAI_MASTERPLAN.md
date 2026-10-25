@@ -1803,7 +1803,11 @@ verbrauchen keinen weiteren Korrekturversuch. Ein gespeicherter Commit kann unte
 neuer Lease fortgesetzt und ein fertiger Run ohne erneute Implementierung als
 Queue-Ergebnis übernommen werden. Frühe unklare Unterbrechungen bleiben gesperrt.
 Regressionen verwenden echte Queue-/Fence-/Git-Persistenz mit Testexecutor;
-ein echter rootless Container-Korrekturdurchlauf ist noch nicht belegt.
+die zusätzliche reale Abnahme erfolgt im CI-Job rootless-worker. Dieser baut
+Dockerfile.worker, verwendet eine unveränderliche Image-ID mit rootless Podman
+und prüft Codekorrektur, Prozessneustart und tatsächliche Container-Schutzwerte.
+Nur ein erfolgreicher Lauf mit tankai-rootless-worker-receipt gilt als Beleg.
+Er ersetzt keinen Produktionsdeploy oder Dauerbetriebs-Pilot.
 
 Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
 Programmieragenten-Adapter, automatische Korrekturantworten und die Live-Abnahme

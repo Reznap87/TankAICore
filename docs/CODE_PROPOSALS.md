@@ -378,3 +378,43 @@ Rollenentzug, Payload-Manipulation, verwaiste Container und verlorene Fences ab.
 Diese Prüfungen sind kein Nachweis echter rootless Container-Korrektur oder eines
 öffentlichen Dauerbetriebs. Modellzugang und automatische Korrekturantworten
 bleiben eigenständige Integrationsschritte.
+
+### Reale rootless Abnahme in CI
+
+Der separate CI-Job `rootless-worker` verwendet auf einem Ubuntu-24.04-Runner
+den installierten Podman als unprivilegierter Hostbenutzer. Er baut das vorhandene
+`Dockerfile.worker` auf einem beim Pull aufgelösten Python-Basisdigest und fixiert
+den fertigen Worker anschließend auf seine unveränderliche Image-ID. Runtime-
+Profil und tatsächlich verwendete Image-Identitäten stehen im Prüfbeleg.
+
+Rootless Podman bildet den Host-Dateieigentümer über
+`--userns=keep-id:uid=<Worker-UID>,gid=<Worker-GID>` auf den konfigurierten
+Nicht-root-Benutzer im Container ab. Hostdateien werden nicht rekursiv umgechownt.
+Die bestehende Schreibbereichsauswahl und die unveränderbaren Mounts bleiben
+erhalten. Die lokale Podman-Version wird über `Client.Version` gelesen;
+`Server.Version` bleibt für Docker vorgesehen. Siehe die offiziellen
+[Podman-UID-Mappings](https://docs.podman.io/en/v4.9.3/markdown/podman-run.1.html#userns-mode)
+und [Versionsfelder](https://docs.podman.io/en/v4.9.3/markdown/podman-version.1.html).
+
+Der Live-Smoke nutzt den normalen Dispatcher mit echtem Container-Executor,
+eine private synthetische Auth-/Queue-/Fence-/Git-Umgebung und feste vier
+Unit-Tests. Er verlangt zunächst einen echten Testfehler und anschließend eine
+Korrektur. Ein Worker-Prozess endet nach gespeichertem Implementierungscommit;
+erst nach beobachtetem Prozessende und leerer Containerinventur lässt der Test
+seine private Fixture-Lease ablaufen. Ein neuer Prozess muss denselben Run und
+Commit mit weiter genau einem Korrekturversuch erfolgreich abschließen.
+
+Ein technischer Review-Befehl prüft im echten Container Nicht-root-UID/GID,
+fehlende Capabilities, `NoNewPrivs`, schreibgeschütztes Root-Dateisystem,
+maskierte Git-Metadaten, abwesende Hostumgebung, alleinige Loopback-Schnittstelle,
+256 MiB Speicherlimit, 64 PIDs, ein CPU-Kontingent und 1024 offene Dateien.
+Testdateien und README dürfen nicht schreibbar sein. Alle Schutzprüfungen sind
+Pflicht; ein fehlender Controller oder ein ignoriertes Limit ergibt keinen Pass.
+
+Nur ein erfolgreicher `rootless-worker`-Lauf mit dem Artefakt
+`tankai-rootless-worker-receipt` gilt als reale Abnahme dieses Pfads. Der Beleg
+enthält den geprüften Commit, Runtime, Images, tatsächliche Schutzwerte,
+Queue-/Run-Kennungen, Wiederanlauf und unveränderte Testhashes. Cleanup entfernt
+ausschließlich verwaltete Container mit der in der privaten Fixture gespeicherten
+Repository-ID. Es gibt keinen globalen Prune und kein rekursives Löschen von
+Hostverzeichnissen. Der Test veröffentlicht keine Anwendung und ruft kein Modell auf.
