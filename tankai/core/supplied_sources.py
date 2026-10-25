@@ -25,7 +25,7 @@ class SuppliedSourceError(ValueError):
 
 
 def _text(value: str, limit: int, *, multiline: bool = False) -> None:
-    if (type(value) is not str or not value.strip() or len(value) > limit
+    if (type(value) is not str or len(value) > limit or not value.strip()
             or any((ord(c) < 32 and not (multiline and c in "\n\r\t")) or ord(c) == 127 for c in value)):
         raise SuppliedSourceError("invalid supplied text")
     try:
