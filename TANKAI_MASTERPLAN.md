@@ -30,6 +30,12 @@ Die öffentliche Standardkonfiguration aktiviert diesen Pfad nicht. Belegte
 reale Tarife/Tokenzähler, freigegebene Quellen, geprüfte Wiederaufnahme,
 Cloudflare-übergreifende Speicherkoordination und die konkrete Pilotfreigabe
 bleiben offene Gates. Vertrag: `docs/OWNER_PILOT_ADMISSION.md`.
+Ein begrenzter Prüfbaustein für spätere Quellenfreigaben validiert nun
+unveränderliche Text-Snapshots, Inhalts-/Dateiprüfsummen sowie Besitzer-,
+Mandanten-, Arbeitsraum- und Zeitbindung. Es finden keine DNS-, Such- oder
+Modellaufrufe statt. Die Chat-/Core-Anbindung dieser Freigaben ist noch offen;
+Prüfsummen belegen Textidentität, nicht Wahrheit oder Aktualität.
+Vertrag und Grenze: `docs/SOURCE_GRANTS.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
 Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 

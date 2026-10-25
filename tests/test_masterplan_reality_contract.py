@@ -18,6 +18,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "Opt-in-Anbindung an den" in current
     assert "Die öffentliche Standardkonfiguration aktiviert diesen Pfad nicht" in current
     assert "docs/OWNER_PILOT_ADMISSION.md" in current
+    assert "docs/SOURCE_GRANTS.md" in current
+    assert "Chat-/Core-Anbindung dieser Freigaben ist noch offen" in current
     assert "cea6f42965bc10f3a39090794c5552ff34161057" in current
     assert "32fc47a9656c3df39f1d3e16e2ec29d45ea4d3d0" in current
     assert "5e51377259ea5e0281607f7f1a7ce6592353543e" in current
