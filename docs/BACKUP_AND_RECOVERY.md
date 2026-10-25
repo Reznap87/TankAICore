@@ -60,6 +60,13 @@ und SHA-256-Werte mit der lokalen `SHA256SUMS`-Datei verglichen werden.
 Diese Daten benötigen eine getrennte, verschlüsselte Betriebsdatensicherung mit
 eigenem Aufbewahrungs- und Wiederherstellungskonzept.
 
+Für die gemeinsame Geldbuchhaltung gibt es nun einen separat lokal geprüften
+Snapshot-/Restore-Baustein: [BUDGET_SNAPSHOTS.md](BUDGET_SNAPSHOTS.md). Er nimmt
+bestätigte WAL-Daten mit und erhält offene Reservierungen, Sperren und Quoten.
+Wiederhergestellt wird ausschließlich in eine neue isolierte Datei. Dies ist
+keine verschlüsselte Gesamtsicherung, kein Überschreiben eines laufenden
+Geldbuchs und kein Wiederherstellungsnachweis für den Produktionshost.
+
 ## Publikationsnachweis
 
 Ab Version `1.8.0-publication-ledger` wird nach dem lokalen Backup ein getrenntes Publikationsledger verwendet. Es unterscheidet zwischen lokal verifizierten Artefakten, tatsächlich nach Google Drive übertragenen Dateien und einem tatsächlich in GitHub vorhandenen Commit.

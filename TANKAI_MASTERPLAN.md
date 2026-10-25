@@ -43,6 +43,16 @@ Die öffentliche Standardkonfiguration aktiviert auch diesen Pfad nicht.
 Prüfsummen belegen Textidentität, nicht Wahrheit oder Aktualität; semantische
 Richtigkeit und echte Pilot-/Restore-Nachweise bleiben separat zu prüfen.
 Vertrag und Grenze: `docs/SOURCE_GRANTS.md`.
+Die Geldbuchhaltung besitzt jetzt zusätzlich einen begrenzten lokalen
+Snapshot-/Restore-Baustein mit WAL-Erfassung. Wiederherstellung in eine neue
+isolierte Datei erhält offene Reservierungen, aktive Auftragsplätze, Quoten,
+Preissperren und beobachtete Zeitgrenzen. Bestehende Dateien und SQLite-
+Begleitdateien werden nicht ersetzt. Ein frischer Prozess und die HTTP-
+Besitzerzulassung bleiben bei unklaren restaurierten Aufträgen gesperrt.
+Das ist kein produktiver Gesamtrestore, keine Verschlüsselung und kein Schutz
+gegen das absichtliche Zurückspielen alter Abbilder. Koordinierte Arbeitsraum-/
+Kontodaten, externer Aktualitätsnachweis und Host-Abnahme bleiben offen.
+Vertrag: `docs/BUDGET_SNAPSHOTS.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
 Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 

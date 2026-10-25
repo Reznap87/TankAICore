@@ -17,12 +17,14 @@ from __future__ import annotations
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
 import threading
+import tempfile
 import time
 from typing import Callable, Iterator
 from urllib.parse import urlsplit
@@ -556,6 +558,102 @@ class MonetaryBudget:
                 "active_jobs": conn.execute("SELECT COUNT(*) FROM jobs WHERE status='active'").fetchone()[0],
                 "halt_reason": conn.execute("SELECT halt_reason FROM pilot").fetchone()[0],
             }
+
+    def export_snapshot(self) -> bytes:
+        """Bounded committed SQLite image, including WAL, without releasing holds.
+
+        The reservation transaction excludes other writers while a separate
+        read connection backs up the committed image. Backing up the writing
+        connection itself would wait on its own transaction. This is a local
+        operator primitive, not encrypted storage or an automatic recovery job.
+        """
+        with self._transaction():
+            source = image = None
+            try:
+                source = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True,
+                                         isolation_level=None, timeout=5)
+                page_size = source.execute("PRAGMA page_size").fetchone()[0]
+                if source.execute("PRAGMA page_count").fetchone()[0] * page_size > MAX_LEDGER_BYTES:
+                    raise BudgetStateError("budget snapshot exceeds capacity")
+                deadline = time.monotonic() + 5
+                def bounded_copy(status: int, remaining: int, total: int) -> None:
+                    if total * page_size > MAX_LEDGER_BYTES or time.monotonic() > deadline:
+                        raise BudgetStateError("budget snapshot capacity or time limit exceeded")
+                image = sqlite3.connect(":memory:")
+                source.backup(image, pages=128, progress=bounded_copy, sleep=0.01)
+                data = image.serialize()
+                if len(data) > MAX_LEDGER_BYTES:
+                    raise BudgetStateError("budget snapshot exceeds capacity")
+                stat = self.path.stat()
+                if self.path.is_symlink() or (stat.st_dev, stat.st_ino) != self._file_identity:
+                    raise BudgetStateError("budget database changed during snapshot")
+                self._check_snapshot(data, self.policy)
+                return data
+            finally:
+                if image is not None:
+                    image.close()
+                if source is not None:
+                    source.close()
+
+    @staticmethod
+    def _check_snapshot(data: bytes, expected_policy: PilotPolicy) -> None:
+        # Validate in a private scratch directory before creating a destination.
+        # Reuse the complete ledger/schema/relationship checks, not just SQLite's
+        # structural integrity check. No pilot/job/attempt is initialized here.
+        with tempfile.TemporaryDirectory(prefix="tankai-budget-check-") as directory:
+            path = Path(directory) / "snapshot.sqlite"
+            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(data)
+            with MonetaryBudget(path) as checked:
+                if checked.policy != expected_policy:
+                    raise BudgetStateError("snapshot policy does not match approved pilot")
+
+    @classmethod
+    def restore_new(cls, path: Path, *, data: bytes, expected_sha256: str,
+                    expected_policy: PilotPolicy,
+                    clock: Callable[[], int] | None = None) -> "MonetaryBudget":
+        """Restore a pinned image only to a NEW isolated local database.
+
+        The operator must pin the intended recovery image and stop/fence old
+        writers before any later cutover. A matching digest is not evidence of
+        freshness or upstream completion. This never replaces a live file,
+        reconciles holds, renews policy or authorizes a resumed provider send.
+        """
+        if (type(data) is not bytes or not 100 <= len(data) <= MAX_LEDGER_BYTES
+                or not data.startswith(b"SQLite format 3\x00")
+                or type(expected_sha256) is not str
+                or re.fullmatch(r"[a-f0-9]{64}", expected_sha256) is None
+                or hashlib.sha256(data).hexdigest() != expected_sha256
+                or type(expected_policy) is not PilotPolicy):
+            raise BudgetStateError("invalid pinned budget snapshot")
+        try:
+            destination = Path(path).absolute()
+            def has_sidecars() -> bool:
+                return any(os.path.lexists(str(destination) + suffix)
+                           for suffix in ("-wal", "-shm", "-journal"))
+            if os.path.lexists(destination) or has_sidecars():
+                raise BudgetStateError("new isolated budget destination required")
+            cls._check_snapshot(data, expected_policy)
+            descriptor = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(data)
+                output.flush()
+                os.fsync(output.fileno())
+                identity = os.fstat(output.fileno())
+            current = destination.stat()
+            if (destination.is_symlink() or has_sidecars()
+                    or (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino)):
+                raise BudgetStateError("budget destination changed during restore")
+            restored = cls(destination, clock=clock)
+            if restored.policy != expected_policy:
+                restored.close()
+                raise BudgetStateError("restored policy does not match approved pilot")
+            return restored
+        except (OSError, ValueError, TypeError, sqlite3.Error):
+            # A failed new-file write may leave a diagnostic file. Never delete
+            # or retry over it: the existing-file rule must hold on every retry.
+            raise BudgetStateError("budget snapshot restore failed closed") from None
 
     def close(self) -> None:
         with self._lock:

@@ -120,6 +120,12 @@ current provider prices, model quality or deployed runtime behavior.
 
 ## Remaining gates
 
+The ledger now has explicit, locally verified bounded SQLite snapshot/export and
+new-destination recovery primitives; see [BUDGET_SNAPSHOTS.md](BUDGET_SNAPSHOTS.md).
+They preserve held attempts/active-job stops and include WAL commits. They do not
+perform a live cutover, encrypt/store backups, prove freshness against rollback
+or coordinate workspace/account state.
+
 - Make protected dispatch mandatory at authenticated production admission for
   **every actual** path; direct legacy construction is still not a money guard.
 - Verify full input/output token bounds and current all-in tariffs (tax, currency
