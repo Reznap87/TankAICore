@@ -511,6 +511,8 @@ class DevelopmentOrchestrator:
                 raise ValidationError("Worker-Run passt nicht zur Agent-/Task-Zuweisung")
             if agent.status != AgentStatus.ACTIVE or task.state != TaskState.ACTIVE:
                 raise TransitionError("Worker-Run kann nur für einen aktiven Agenten-Task starten")
+            if task.worker_run_id:
+                raise ConflictError("Task besitzt bereits einen Worker-Run; vorhandenen Run fortsetzen")
             if record.base_commit != agent.base_commit or record.base_commit != task.base_commit:
                 raise ValidationError("Worker-Run verwendet nicht die bestätigte Agent-/Task-Basis")
             stored = record.model_copy(deep=True)

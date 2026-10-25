@@ -7,9 +7,12 @@ marks the run ready after independent gate agent identities have approved it.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
+import json
 import shlex
 import uuid
+from collections import Counter
 from dataclasses import dataclass
 from typing import Callable
 
@@ -20,6 +23,9 @@ from .models import (
     CommandSpec,
     DevelopmentRole,
     GateJob,
+    ProjectState,
+    QAStatus,
+    ReviewDecision,
     TaskState,
     TestExecution,
     WorkerExecutionBackend,
@@ -50,6 +56,25 @@ def render_command(command: CommandSpec) -> str:
     return shlex.join(command.argv)
 
 
+def _resume_contract(state: ProjectState, job: WorkerPipelineJob) -> str:
+    agent = state.agents[job.worker.agent_id]
+    task = state.tasks[agent.task_id]
+    task_fields = {"task_id", "goal", "base_commit", "assigned_agent_id", "allowed_paths",
+                   "denied_paths", "required_tests", "acceptance_criteria", "requires_security_review",
+                   "dependencies", "capability_id", "capability_action", "affected_components"}
+    agent_fields = {"agent_id", "task_id", "base_commit", "role", "allowed_paths", "denied_paths",
+                    "read_access", "required_tests", "acceptance_criteria", "contract_version", "cycle_id"}
+    identities = [agent.agent_id, job.gates.reviewer_agent_id, job.gates.qa_agent_id]
+    if job.gates.security_agent_id:
+        identities.append(job.gates.security_agent_id)
+    contract = {"job": job.model_dump(mode="json"),
+                "task": task.model_dump(mode="json", include=task_fields),
+                "agents": {identity: state.agents[identity].model_dump(mode="json", include=agent_fields)
+                           for identity in identities}}
+    raw = json.dumps(contract, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class WorkerPipelineResult:
     run: WorkerRunRecord
@@ -75,6 +100,11 @@ class WorkerPipelineRunner:
         self.container_metadata = dict(container_metadata or {})
 
     def run(self, job: WorkerPipelineJob) -> WorkerPipelineResult:
+        job = WorkerPipelineJob.model_validate(job.model_dump(mode="json"))
+        with self.workspace_manager.worker_execution_lock(job.worker.agent_id):
+            return self._run(job)
+
+    def _run(self, job: WorkerPipelineJob) -> WorkerPipelineResult:
         self._validate_job(job.worker, job.gates, job.isolation)
         self._guard("prepare_workspace")
         state = self.orchestrator.state()
@@ -98,6 +128,7 @@ class WorkerPipelineRunner:
                 else WorkerExecutionBackend.HOST
             ),
             isolation=job.isolation.model_copy(deep=True) if job.isolation else None,
+            resume_contract_sha256=_resume_contract(state, job),
         )
 
         try:
@@ -175,6 +206,143 @@ class WorkerPipelineRunner:
                 implementation_commit=implementation_commit,
             )
 
+            return self._finish_committed_run(run_id, workspace, job)
+        except Exception as exc:
+            guard_active = self._guard_allows_persistence()
+            if guard_active:
+                self._persist_failure(run_id, exc)
+            should_cleanup = guard_active and (
+                (not run_started and not reused_workspace)
+                or (job.worker.cleanup_workspace_on_failure and not reused_workspace)
+            )
+            if should_cleanup:
+                try:
+                    self.workspace_manager.remove_workspace(workspace, delete_branch=True)
+                    current = self.orchestrator.state().agents.get(agent.agent_id)
+                    if current and (current.workspace_path or current.branch):
+                        self.orchestrator.unbind_workspace(agent.agent_id)
+                except Exception:
+                    pass
+            if isinstance(exc, WorkerExecutionError):
+                raise
+            raise WorkerExecutionError(str(exc), run_id=run_id) from exc
+
+    def resume(self, job: WorkerPipelineJob, *, run_id: str) -> WorkerPipelineResult:
+        """Continue a journaled commit; never replay implementation commands.
+
+        The caller owns the existing queue/fence policy. This local operation
+        neither claims a queue lease nor authorizes container/provider recovery.
+        """
+        job = WorkerPipelineJob.model_validate(job.model_dump(mode="json"))
+        with self.workspace_manager.worker_execution_lock(job.worker.agent_id):
+            self._guard("resume_pipeline")
+            state = self.orchestrator.state()
+            run = state.worker_runs.get(run_id)
+            if run is None or run.agent_id != job.worker.agent_id:
+                raise ValidationError("Wiederaufnahme benötigt den zugehörigen Worker-Run")
+            self._validate_job(job.worker, job.gates, job.isolation, resume_run_id=run_id)
+            agent = state.agents[run.agent_id]
+            task = state.tasks[run.task_id]
+            if (run.state not in {WorkerRunState.RUNNING, WorkerRunState.SUBMITTED,
+                                  WorkerRunState.READY_TO_INTEGRATE}
+                    or run.phase not in {WorkerPhase.COMMIT, WorkerPhase.TEST, WorkerPhase.SUBMIT,
+                                         WorkerPhase.REVIEW, WorkerPhase.SECURITY, WorkerPhase.QA,
+                                         WorkerPhase.COMPLETE}
+                    or not run.implementation_commit):
+                raise TransitionError("Wiederaufnahme benötigt einen gespeicherten Implementierungscommit")
+            if (not run.resume_contract_sha256
+                    or run.resume_contract_sha256 != _resume_contract(state, job)):
+                raise ValidationError("Wiederaufnahmevertrag fehlt oder wurde verändert")
+            if (run.task_id != task.task_id or run.base_commit != task.base_commit
+                    or run.base_commit != agent.base_commit or run.branch != agent.branch
+                    or run.workspace_path != agent.workspace_path or run.isolation != job.isolation
+                    or (run.execution_backend == WorkerExecutionBackend.DOCKER) != (job.isolation is not None)):
+                raise ValidationError("Worker-Journal und aktuelle Zuweisung stimmen nicht überein")
+            workspace = self.workspace_manager.workspace_from_binding(
+                agent_id=run.agent_id, branch=run.branch, workspace_path=run.workspace_path,
+                base_commit=run.base_commit,
+            )
+            self.workspace_manager.assert_head(workspace, run.implementation_commit)
+            self.workspace_manager.assert_clean(workspace)
+            changed = self.workspace_manager.validate_committed_changes(
+                agent, workspace, base_commit=run.base_commit, head_commit=run.implementation_commit,
+            )
+            if not changed or sorted(changed) != sorted(run.changed_files):
+                raise ValidationError("Implementierungscommit und gespeicherte Dateien unterscheiden sich")
+            self._require_saved_commands(run.implementation_executions, job.worker.implementation_commands)
+            if task.state != TaskState.ACTIVE:
+                if (task.implementation_commit != run.implementation_commit
+                        or sorted(task.changed_files) != sorted(run.changed_files)):
+                    raise ValidationError("Task-Einreichung gehört nicht zum gespeicherten Commit")
+                self._require_saved_commands(run.test_executions, job.worker.test_commands)
+                if task.test_executions != run.test_executions:
+                    raise ValidationError("Gespeicherte Testbelege unterscheiden sich")
+            if task.state in {TaskState.QA_PENDING, TaskState.READY_TO_INTEGRATE}:
+                if (task.review_decision != ReviewDecision.APPROVED
+                        or task.reviewer_agent_id != job.gates.reviewer_agent_id):
+                    raise ValidationError("Gespeicherte Reviewfreigabe fehlt")
+                self._require_saved_commands(run.review_executions, job.gates.review_commands)
+            elif task.review_decision != ReviewDecision.PENDING:
+                raise ValidationError("Reviewzustand passt nicht zum Wiederaufnahmepunkt")
+            if task.security_approved is not None:
+                if (not task.requires_security_review or task.security_approved is not True
+                        or task.security_agent_id != job.gates.security_agent_id):
+                    raise ValidationError("Gespeicherte Securityfreigabe ist ungültig")
+                self._require_saved_commands(run.security_executions, job.gates.security_commands)
+            if task.qa_status == QAStatus.PASSED:
+                if task.qa_agent_id != job.gates.qa_agent_id:
+                    raise ValidationError("Gespeicherte QA-Identität unterscheidet sich")
+                self._require_saved_commands(run.qa_executions, job.gates.qa_commands)
+            elif task.qa_status != QAStatus.PENDING:
+                raise ValidationError("Fehlgeschlagene QA kann nicht fortgesetzt werden")
+            if task.state == TaskState.READY_TO_INTEGRATE:
+                if (task.qa_status != QAStatus.PASSED
+                        or (task.requires_security_review and task.security_approved is not True)):
+                    raise ValidationError("Gespeicherte Pflicht-Gates sind unvollständig")
+                if run.state == WorkerRunState.READY_TO_INTEGRATE:
+                    return WorkerPipelineResult(run=run, workspace=workspace)
+            elif run.state == WorkerRunState.READY_TO_INTEGRATE:
+                raise ValidationError("Worker-Run und Task-Freigabe unterscheiden sich")
+            if job.isolation is not None:
+                repository_id = self.container_metadata.get("repository_id")
+                if self.execution_guard is None or not repository_id:
+                    raise ValidationError("Container-Wiederaufnahme benötigt aktive Queue-/Fence-Kontrolle")
+                containers = self._container_executor().list_managed_containers(repository_id=repository_id)
+                if any(item.labels.get("tankai.run_id") == run_id for item in containers):
+                    raise ValidationError("Run besitzt noch Container; zuerst vorhandene Recovery verwenden")
+            try:
+                self._guard("resume_before_checks")
+                if job.isolation is not None:
+                    self._container_executor().ensure_available()
+                self.orchestrator.update_worker_run(
+                    run_id, phase=run.phase,
+                    message="Gespeicherten Commit geprüft; ohne erneute Implementierung fortgesetzt.",
+                    state_value=(WorkerRunState.RUNNING if task.state == TaskState.ACTIVE
+                                 else WorkerRunState.SUBMITTED),
+                )
+                return self._finish_committed_run(run_id, workspace, job)
+            except Exception as exc:
+                if self._guard_allows_persistence():
+                    self._persist_failure(run_id, exc)
+                raise WorkerExecutionError(str(exc), run_id=run_id) from exc
+
+    @staticmethod
+    def _require_saved_commands(executions: list[TestExecution], commands: list[CommandSpec]) -> None:
+        if (not executions or not all(item.passed for item in executions)
+                or not Counter(render_command(command) for command in commands)
+                <= Counter(item.command for item in executions)):
+            raise ValidationError("Gespeicherte Befehlsbelege sind unvollständig oder fehlgeschlagen")
+
+    def _finish_committed_run(
+        self, run_id: str, workspace: Workspace, job: WorkerPipelineJob,
+    ) -> WorkerPipelineResult:
+        state = self.orchestrator.state()
+        run = state.worker_runs[run_id]
+        agent = state.agents[run.agent_id]
+        task = state.tasks[run.task_id]
+        implementation_commit = run.implementation_commit or ""
+        changed_files = run.changed_files
+        if task.state == TaskState.ACTIVE:
             test_executions = self._execute_commands(
                 workspace,
                 job.worker.test_commands,
@@ -218,30 +386,11 @@ class WorkerPipelineRunner:
                 state_value=WorkerRunState.SUBMITTED,
             )
 
-            self._guard("begin_independent_gates")
-            self._run_gates(run_id, workspace, job.gates, job.isolation)
-            self._guard("complete_worker_run")
-            completed = self.orchestrator.complete_worker_run(run_id)
-            return WorkerPipelineResult(run=completed, workspace=workspace)
-        except Exception as exc:
-            guard_active = self._guard_allows_persistence()
-            if guard_active:
-                self._persist_failure(run_id, exc)
-            should_cleanup = guard_active and (
-                (not run_started and not reused_workspace)
-                or (job.worker.cleanup_workspace_on_failure and not reused_workspace)
-            )
-            if should_cleanup:
-                try:
-                    self.workspace_manager.remove_workspace(workspace, delete_branch=True)
-                    current = self.orchestrator.state().agents.get(agent.agent_id)
-                    if current and (current.workspace_path or current.branch):
-                        self.orchestrator.unbind_workspace(agent.agent_id)
-                except Exception:
-                    pass
-            if isinstance(exc, WorkerExecutionError):
-                raise
-            raise WorkerExecutionError(str(exc), run_id=run_id) from exc
+        self._guard("begin_independent_gates")
+        self._run_gates(run_id, workspace, job.gates, job.isolation)
+        self._guard("complete_worker_run")
+        completed = self.orchestrator.complete_worker_run(run_id)
+        return WorkerPipelineResult(run=completed, workspace=workspace)
 
     def _run_gates(
         self,
@@ -256,44 +405,46 @@ class WorkerPipelineRunner:
         task = state.tasks[run.task_id]
         agent = state.agents[run.agent_id]
 
-        self.orchestrator.assign_reviewer(task.task_id, gates.reviewer_agent_id)
-        diff_check = self.workspace_manager.run_command(
-            workspace,
-            ["git", "diff", "--check", f"{run.base_commit}..{run.implementation_commit}"],
-        )
-        diff_check.command = f"git diff --check {run.base_commit}..{run.implementation_commit}"
-        review_executions = [diff_check]
-        if diff_check.passed:
-            review_executions.extend(self._execute_gate_commands(
+        if task.review_decision != ReviewDecision.APPROVED:
+            self.orchestrator.assign_reviewer(task.task_id, gates.reviewer_agent_id)
+            diff_check = self.workspace_manager.run_command(
                 workspace,
-                gates.review_commands,
-                expected_commit=run.implementation_commit or "",
-                agent=agent,
-                isolation=isolation,
-                run_id=run_id,
+                ["git", "diff", "--check", f"{run.base_commit}..{run.implementation_commit}"],
+            )
+            diff_check.command = f"git diff --check {run.base_commit}..{run.implementation_commit}"
+            review_executions = [diff_check]
+            if diff_check.passed:
+                review_executions.extend(self._execute_gate_commands(
+                    workspace,
+                    gates.review_commands,
+                    expected_commit=run.implementation_commit or "",
+                    agent=agent,
+                    isolation=isolation,
+                    run_id=run_id,
+                    phase=WorkerPhase.REVIEW,
+                ))
+            review_passed = all(item.passed for item in review_executions)
+            self.orchestrator.update_worker_run(
+                run_id,
                 phase=WorkerPhase.REVIEW,
-            ))
-        review_passed = all(item.passed for item in review_executions)
-        self.orchestrator.update_worker_run(
-            run_id,
-            phase=WorkerPhase.REVIEW,
-            message=(
-                "Unabhängiges Review bestanden."
-                if review_passed
-                else "Unabhängiges Review fehlgeschlagen."
-            ),
-            review_executions=review_executions,
-        )
-        self.orchestrator.record_review(
-            task.task_id,
-            gates.reviewer_agent_id,
-            approved=review_passed,
-            notes=self._gate_summary("Review", review_executions),
-        )
-        if not review_passed:
-            raise TransitionError("Review-Gate hat die Änderung abgelehnt")
+                message=(
+                    "Unabhängiges Review bestanden."
+                    if review_passed
+                    else "Unabhängiges Review fehlgeschlagen."
+                ),
+                review_executions=review_executions,
+            )
+            self.orchestrator.record_review(
+                task.task_id,
+                gates.reviewer_agent_id,
+                approved=review_passed,
+                notes=self._gate_summary("Review", review_executions),
+            )
+            if not review_passed:
+                raise TransitionError("Review-Gate hat die Änderung abgelehnt")
 
-        if task.requires_security_review:
+        task = self.orchestrator.state().tasks[run.task_id]
+        if task.requires_security_review and task.security_approved is not True:
             if not gates.security_agent_id or not gates.security_commands:
                 raise ValidationError(
                     "Security-pflichtiger Task benötigt Security-Agent und Security-Befehle"
@@ -327,35 +478,39 @@ class WorkerPipelineRunner:
             if not security_passed:
                 raise TransitionError("Security-Gate hat die Änderung abgelehnt")
 
-        self.orchestrator.assign_qa(task.task_id, gates.qa_agent_id)
-        qa_executions = self._execute_gate_commands(
-            workspace,
-            gates.qa_commands,
-            expected_commit=run.implementation_commit or "",
-            agent=agent,
-            isolation=isolation,
-            run_id=run_id,
-            phase=WorkerPhase.QA,
-        )
-        self.orchestrator.update_worker_run(
-            run_id,
-            phase=WorkerPhase.QA,
-            message=f"{len(qa_executions)} unabhängige QA-Prüfung(en) ausgeführt.",
-            qa_executions=qa_executions,
-        )
-        result = self.orchestrator.record_qa(
-            task.task_id,
-            gates.qa_agent_id,
-            executions=qa_executions,
-        )
-        if result.state != TaskState.READY_TO_INTEGRATE:
-            raise TransitionError("QA-Gate hat die Änderung nicht zur Integration freigegeben")
+        task = self.orchestrator.state().tasks[run.task_id]
+        if task.qa_status != QAStatus.PASSED:
+            self.orchestrator.assign_qa(task.task_id, gates.qa_agent_id)
+            qa_executions = self._execute_gate_commands(
+                workspace,
+                gates.qa_commands,
+                expected_commit=run.implementation_commit or "",
+                agent=agent,
+                isolation=isolation,
+                run_id=run_id,
+                phase=WorkerPhase.QA,
+            )
+            self.orchestrator.update_worker_run(
+                run_id,
+                phase=WorkerPhase.QA,
+                message=f"{len(qa_executions)} unabhängige QA-Prüfung(en) ausgeführt.",
+                qa_executions=qa_executions,
+            )
+            result = self.orchestrator.record_qa(
+                task.task_id,
+                gates.qa_agent_id,
+                executions=qa_executions,
+            )
+            if result.state != TaskState.READY_TO_INTEGRATE:
+                raise TransitionError("QA-Gate hat die Änderung nicht zur Integration freigegeben")
 
     def _validate_job(
         self,
         worker: WorkerJob,
         gates: GateJob,
         isolation: WorkerIsolationSpec | None,
+        *,
+        resume_run_id: str | None = None,
     ) -> None:
         if self.require_container_isolation and isolation is None:
             raise ValidationError("Worker-Container-Isolation ist für diesen Runner verpflichtend")
@@ -367,8 +522,14 @@ class WorkerPipelineRunner:
             raise ValidationError(f"Unbekannter Worker-Agent oder Task: {worker.agent_id}") from exc
         if task.assigned_agent_id != agent.agent_id:
             raise ValidationError("Worker-Agent ist dem Task nicht zugewiesen")
-        if agent.status.value != "active" or task.state != TaskState.ACTIVE:
+        valid_states = {TaskState.ACTIVE} if resume_run_id is None else {
+            TaskState.ACTIVE, TaskState.REVIEW_PENDING, TaskState.QA_PENDING, TaskState.READY_TO_INTEGRATE,
+        }
+        valid_statuses = {"active"} if task.state == TaskState.ACTIVE else {"waiting_for_review"}
+        if agent.status.value not in valid_statuses or task.state not in valid_states:
             raise TransitionError("Worker-Agent und Task müssen aktiv sein")
+        if task.worker_run_id != resume_run_id:
+            raise TransitionError("Task besitzt einen anderen Worker-Run; vorhandenen Run fortsetzen")
         reviewer = state.agents.get(gates.reviewer_agent_id)
         qa = state.agents.get(gates.qa_agent_id)
         if reviewer is None or reviewer.role != DevelopmentRole.REVIEWER:

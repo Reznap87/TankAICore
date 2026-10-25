@@ -183,3 +183,59 @@ korrekter Vorschlag erreicht die vorhandenen technischen Gates; ein falsches
 Ergebnis scheitert am Pflicht-Test und erreicht weder Review noch QA. Queue-Tests
 prüfen weiterhin Image-/Isolationsadmission und Idempotenz. Dies ist ein Nachweis
 der Übergabe und Ausführung, kein neuer Qualitäts- oder Live-Provider-Receipt für P2.
+
+### Einen unterbrochenen Worker fortsetzen
+
+Neue Worker-Runs speichern einen SHA-256-Bezug auf den vollständigen Job,
+den Taskvertrag und die beteiligten Agentenverträge im vorhandenen ProjectState.
+Die zusätzliche optionale Run-Angabe benötigt keine zweite Zustandsdatenbank.
+Historische Runs ohne diesen Bezug bleiben lesbar und werden für die neue
+Wiederaufnahme abgewiesen. Ein erneutes `run-pipeline` ersetzt keinen vorhandenen Run.
+
+Für einen vertrauten lokalen Hostauftrag lässt sich ein unterbrochener Lauf ab
+seinem **gespeicherten Implementierungscommit** fortsetzen:
+
+```bash
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  resume-pipeline --repository /srv/tankai/repository \
+  --workspace-root /srv/tankai/worktrees --job prepared-job.json \
+  --run RUN-existing-id
+```
+
+Der ursprüngliche Executor und seine Kindprozesse müssen beendet sein. Die
+Wiederaufnahme verlangt denselben Auftrag, dieselben Tests und Prüfer,
+unveränderte Vorgaben, denselben gespeicherten Worktree und einen sauberen,
+unveränderten Commit. Die Repository-Zugehörigkeit wird geprüft. Ein pro Agent
+gehaltener Betriebssystem-Lock verhindert gleichzeitig laufende lokale Executor;
+der Lock wird beim Prozessende freigegeben. Seine Datei bleibt in den Git-Metadaten.
+
+Implementierungsbefehle werden nicht wiederholt. Vor einer bereits gespeicherten
+Einreichung laufen die lokalen Worker-Tests erneut. Nach der Einreichung werden
+nur die noch offenen technischen Gates ausgeführt; gespeicherte Freigaben
+benötigen passende erfolgreiche Befehlsbelege. Ein bereits fertig geprüfter Run
+wird nach erneuter Vertrags-/Commitprüfung ohne weitere Ausführung oder
+Zustandsänderung zurückgegeben. Run-ID und Implementierungscommit bleiben gleich.
+
+Diese Wiederholung setzt lokale, wiederholbare Prüfbefehle voraus. Sie garantiert
+keine Exactly-once-Wirkung für externe Aktionen in solchen Befehlen. Eine
+Unterbrechung vor dem gespeicherten Commit, ein fehlgeschlagener/blockierter Run,
+abweichender HEAD oder veränderte/unversionierte Dateien führen zum Abbruch.
+Auch Prüf-Caches nach einem harten Absturz können deshalb eine manuelle Sichtung
+erfordern. Der neue Pfad löscht oder verwirft solche Dateien nicht.
+
+Container-Wiederaufnahme über die Python-Schnittstelle verlangt zusätzlich eine
+aktive Ausführungskontrolle für Queue/Fence, die registrierte Repository-ID und
+eine erfolgreiche Inventur ohne verbliebenen Container desselben Runs. Verwaiste
+Container werden über die vorhandene Recovery geprüft. Das lokale CLI besitzt
+diese Queue-Bindung nicht und darf einen unfertigen Container-Run daher nicht
+fortsetzen. Ein fertiges Ergebnis bleibt rein lesend abrufbar. Die ursprüngliche
+Isolation kann nicht auf Hostausführung herabgesetzt werden. Die Queue-Dispatcher
+werden durch diese Ergänzung noch nicht automatisch auf Wiederaufnahme umgestellt.
+
+Die Tests decken mehrere persistierte Übergänge, einen tatsächlichen Prozess-Exit
+mit anschließendem CLI-Neustart, unveränderte Run-Identität, konkurrierende
+Prozesse, Vertrags-/Dateiänderungen und verweigerte Containerumgehungen ab.
+Containerprüfungen dieser neuen Wiederaufnahme verwenden einen Testexecutor;
+ein realer Container-Neustart oder ein öffentlicher Dauerbetrieb ist damit noch
+nicht belegt. Automatische Inferenz und Reparatur nach fehlgeschlagenen Tests
+sind weiterhin eigene Ausbauschritte.

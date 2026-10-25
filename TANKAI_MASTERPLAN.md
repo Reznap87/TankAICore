@@ -1777,9 +1777,17 @@ Dateiausgangshashes gebunden. Geänderte Verträge oder ungesehene bestehende Da
 werden vor dem Jobexport abgewiesen. Ein Modellzugang, automatische Datenübertragung
 und echte Inferenz werden dadurch nicht eingerichtet oder freigegeben.
 
+Neue Worker-Runs können lokal ab ihrem gespeicherten Implementierungscommit
+fortgesetzt werden. Auftrag, Task-/Agentenvertrag, Quellstand, Worktree und
+Prüfbelege werden erneut gebunden; die Implementierung wird nicht wiederholt.
+Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
+abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme
+verlangt die bestehende Queue-/Fence-Kontrolle und eine verwaisungsfreie Inventur;
+automatisches Dispatcher-Recovery und realer Container-Restart sind noch offen.
+
 Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
-Programmieragenten-Adapter, selbstständige Testkorrektur und Wiederaufnahme nach
-Unterbrechung bleiben eigenständige Schritte. Der eingefrorene P2-Korpus und seine
+Programmieragenten-Adapter und selbstständige Testkorrektur bleiben eigenständige
+Schritte. Der eingefrorene P2-Korpus und seine
 historischen Receipts bleiben unverändert; lokale Übergabetests sind kein
 Qualitätsgewinn oder neuer Produktionsnachweis. Die offenen Ausführungs- und
 Budgetarbeiten in den bestehenden Entwurfs-PRs werden nicht parallel ersetzt.

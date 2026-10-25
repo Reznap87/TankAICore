@@ -557,6 +557,7 @@ class WorkerRunRecord(OrchestratorModel):
     workspace_path: str = Field(min_length=1, max_length=4000)
     execution_backend: WorkerExecutionBackend = WorkerExecutionBackend.HOST
     isolation: WorkerIsolationSpec | None = None
+    resume_contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     integration_isolation: WorkerIsolationSpec | None = None
     state: WorkerRunState = WorkerRunState.PENDING
     phase: WorkerPhase = WorkerPhase.PREPARE

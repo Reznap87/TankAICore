@@ -7,6 +7,7 @@ shell and with explicit timeouts.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -65,6 +66,36 @@ class GitWorkspaceManager:
         if not path.is_absolute():
             path = (self.repository / path).resolve()
         return path
+
+    @contextmanager
+    def worker_execution_lock(self, agent_id: str) -> Iterator[None]:
+        """One local executor per agent; the OS releases the lock on process exit.
+
+        Keep the lock file: unlinking it would let another process lock a new
+        inode while the current descriptor still owns the old one.
+        """
+        name = hashlib.sha256(agent_id.encode("utf-8")).hexdigest()
+        descriptor = os.open(self.common_git_dir / f"tankai-worker-{name}.lock",
+                             os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise GitWorkspaceError("Für diesen Agenten läuft bereits ein Worker") from exc
+            try:
+                yield
+            finally:
+                if os.name == "nt":
+                    msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
 
     @contextmanager
     def integration_lock(
@@ -260,6 +291,11 @@ class GitWorkspaceManager:
             raise GitWorkspaceError(f"Journal-Workspace fehlt: {path}")
         if self.workspace_root != path and self.workspace_root not in path.parents:
             raise GitWorkspaceError("Journal-Workspace liegt außerhalb des Workspace-Roots")
+        common = Path(self._git(["rev-parse", "--git-common-dir"], cwd=path).strip())
+        if not common.is_absolute():
+            common = path / common
+        if common.resolve() != self.common_git_dir.resolve():
+            raise GitWorkspaceError("Journal-Workspace gehört zu einem anderen Repository")
         current_branch = self._git(["branch", "--show-current"], cwd=path).strip()
         if current_branch != branch:
             raise GitWorkspaceError(

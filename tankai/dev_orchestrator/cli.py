@@ -139,6 +139,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("TANKAI_REQUIRE_WORKER_ISOLATION", "0") == "1",
     )
 
+    resume = sub.add_parser("resume-pipeline", help="Setzt einen gespeicherten Worker-Commit fort")
+    resume.add_argument("--repository", required=True)
+    resume.add_argument("--workspace-root", required=True)
+    resume.add_argument("--job", required=True)
+    resume.add_argument("--run", required=True, help="Gespeicherte Worker-Run-ID")
+    resume.add_argument("--container-runtime", default=os.environ.get("TANKAI_WORKER_CONTAINER_RUNTIME", "docker"))
+    resume.add_argument("--require-container-isolation", action="store_true",
+                        default=os.environ.get("TANKAI_REQUIRE_WORKER_ISOLATION", "0") == "1")
+
     pool = sub.add_parser(
         "run-pool",
         help="Führt mehrere konfliktfreie Programmier-Agenten parallel aus",
@@ -303,15 +312,17 @@ def main(argv: list[str] | None = None) -> int:
                     base_commit=state.current_commit,
                     acceptance_criteria=["Modul besitzt isolierte Integrationstests"],
                 ))
-        elif args.command == "run-pipeline":
+        elif args.command in {"run-pipeline", "resume-pipeline"}:
             job = _load_pipeline_job(args.job)
             manager = GitWorkspaceManager(args.repository, args.workspace_root)
-            result = WorkerPipelineRunner(
+            runner = WorkerPipelineRunner(
                 orchestrator,
                 manager,
                 container_executor=DockerCommandExecutor(args.container_runtime),
                 require_container_isolation=args.require_container_isolation,
-            ).run(job)
+            )
+            result = (runner.resume(job, run_id=args.run) if args.command == "resume-pipeline"
+                      else runner.run(job))
             print(json.dumps({
                 "run": result.run.model_dump(mode="json"),
                 "workspace": {
