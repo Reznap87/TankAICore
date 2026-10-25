@@ -125,6 +125,9 @@ new-destination recovery primitives; see [BUDGET_SNAPSHOTS.md](BUDGET_SNAPSHOTS.
 They preserve held attempts/active-job stops and include WAL commits. They do not
 perform a live cutover, encrypt/store backups, prove freshness against rollback
 or coordinate workspace/account state.
+The separate optional [encrypted wrapper](ENCRYPTED_BUDGET_BACKUP.md) now protects
+a persisted ledger snapshot with authenticated encryption and read-back validation;
+it does not activate a coordinated runtime recovery or deployment key.
 
 - Make protected dispatch mandatory at authenticated production admission for
   **every actual** path; direct legacy construction is still not a money guard.

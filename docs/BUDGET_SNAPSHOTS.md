@@ -52,8 +52,11 @@ Recovery is not evidence that an earlier upstream model request has stopped.
 
 The returned image is **not encrypted** and contains owner IDs, billing metadata
 and amounts. This step uses only synthetic data in private temporary test paths.
-Real backup storage needs a separately reviewed confidential envelope, access
-controls, retention and an independently stored recovery pin. A checksum computed
+An optional operator wrapper now encrypts and validates the persisted ledger
+backup: [ENCRYPTED_BUDGET_BACKUP.md](ENCRYPTED_BUDGET_BACKUP.md). The raw snapshot
+primitive remains plaintext; coordinated workspace/account recovery is separate.
+Real backup storage still needs protected keys, access controls, retention and
+an independently stored recovery pin. A checksum computed
 from an untrusted image is not authentication or evidence that the image is the
 latest one.
 

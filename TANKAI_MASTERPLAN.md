@@ -49,10 +49,18 @@ isolierte Datei erhält offene Reservierungen, aktive Auftragsplätze, Quoten,
 Preissperren und beobachtete Zeitgrenzen. Bestehende Dateien und SQLite-
 Begleitdateien werden nicht ersetzt. Ein frischer Prozess und die HTTP-
 Besitzerzulassung bleiben bei unklaren restaurierten Aufträgen gesperrt.
-Das ist kein produktiver Gesamtrestore, keine Verschlüsselung und kein Schutz
+Der rohe Snapshot-Baustein allein ist kein produktiver Gesamtrestore, keine Verschlüsselung und kein Schutz
 gegen das absichtliche Zurückspielen alter Abbilder. Koordinierte Arbeitsraum-/
 Kontodaten, externer Aktualitätsnachweis und Host-Abnahme bleiben offen.
 Vertrag: `docs/BUDGET_SNAPSHOTS.md`.
+Ein optionaler Betreiber-Wrapper verschlüsselt jetzt die gespeicherte
+Geldbuch-Sicherung mit AES-256-GCM und prüft die zurückgelesene Datei. Schlüssel,
+Dateipin und vollständige Budgetpolitik müssen unabhängig freigegeben sein;
+Manipulationen oder abweichende Schlüssel/Politik sperren die Wiederherstellung.
+Die Standardanwendung lädt diesen Wrapper nicht. Die Konten-/CSV-Vorarbeit in
+PR #102 bleibt getrennt und unverändert; ein konsistenter gemeinsamer Stand aller
+Konten-/Arbeitsraum-/Quellen-/Budgetdaten ist damit noch nicht nachgewiesen.
+Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
 Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 

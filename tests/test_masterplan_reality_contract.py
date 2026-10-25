@@ -22,6 +22,7 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "Die explizite Chat-/Core-Anbindung" in current
     assert "dieser Freigaben ist implementiert und lokal ohne externe Aufrufe geprüft" in current
     assert "docs/BUDGET_SNAPSHOTS.md" in current
+    assert "docs/ENCRYPTED_BUDGET_BACKUP.md" in current
     assert "cea6f42965bc10f3a39090794c5552ff34161057" in current
     assert "32fc47a9656c3df39f1d3e16e2ec29d45ea4d3d0" in current
     assert "5e51377259ea5e0281607f7f1a7ce6592353543e" in current

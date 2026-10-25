@@ -66,6 +66,10 @@ bestätigte WAL-Daten mit und erhält offene Reservierungen, Sperren und Quoten.
 Wiederhergestellt wird ausschließlich in eine neue isolierte Datei. Dies ist
 keine verschlüsselte Gesamtsicherung, kein Überschreiben eines laufenden
 Geldbuchs und kein Wiederherstellungsnachweis für den Produktionshost.
+Der optionale [verschlüsselte Budget-Wrapper](ENCRYPTED_BUDGET_BACKUP.md) schützt
+nun die gespeicherte Geldbuch-Sicherungsdatei mit AES-256-GCM. Die gemeinsame
+verschlüsselte Sicherung aller Konten-/Arbeitsraum-/Budgetdaten bleibt separat
+offen; getrennt erstellte Sicherungen gelten nicht als konsistenter Gesamtstand.
 
 ## Publikationsnachweis
 

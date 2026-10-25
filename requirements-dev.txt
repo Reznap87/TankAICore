@@ -1,4 +1,5 @@
 -r requirements.txt
+-r requirements-backup.txt
 pytest>=8,<10
 
 # Offline transport-boundary tests; no provider credentials or inference calls.
