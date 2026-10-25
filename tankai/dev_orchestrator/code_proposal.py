@@ -16,7 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .models import (
-    AgentStatus, CommandSpec, GateJob, ProjectState, TaskState,
+    AgentSpec, AgentStatus, CommandSpec, GateJob, ProjectState, TaskSpec, TaskState,
     WorkerIsolationSpec, WorkerJob, WorkerPipelineJob,
 )
 from .orchestrator import path_matches_scope
@@ -174,6 +174,17 @@ def load_proposal_json(path: str | Path, *, limit: int = MAX_PROPOSAL_BYTES) -> 
     return json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
 
 
+def active_code_contract(state: ProjectState, agent_id: str) -> tuple[TaskSpec, AgentSpec]:
+    """Resolve the current assigned contract without creating tasks or agents."""
+    agent = state.agents.get(agent_id)
+    task = state.tasks.get(agent.task_id) if agent else None
+    if agent is None or task is None or task.assigned_agent_id != agent_id:
+        raise ValueError("Proposal needs an assigned task and agent")
+    if agent.status != AgentStatus.ACTIVE or task.state != TaskState.ACTIVE:
+        raise ValueError("Proposal task and agent must be active")
+    return task, agent
+
+
 def prepare_code_proposal(
     proposal: CodeProposal, *, state: ProjectState, agent_id: str,
     checks: ProposalChecks, python_executable: str = "python3",
@@ -185,12 +196,7 @@ def prepare_code_proposal(
         checks = ProposalChecks.model_validate(checks.model_dump(mode="json"))
     except (ValueError, TypeError) as exc:
         raise ValueError("Invalid proposal or check contract") from exc
-    agent = state.agents.get(agent_id)
-    task = state.tasks.get(agent.task_id) if agent else None
-    if agent is None or task is None or task.assigned_agent_id != agent_id:
-        raise ValueError("Proposal needs an assigned task and agent")
-    if agent.status != AgentStatus.ACTIVE or task.state != TaskState.ACTIVE:
-        raise ValueError("Proposal task and agent must be active")
+    task, agent = active_code_contract(state, agent_id)
     if proposal.task_id != task.task_id or not (
         proposal.base_commit == task.base_commit == agent.base_commit
     ):

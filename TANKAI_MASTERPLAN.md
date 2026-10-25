@@ -1770,6 +1770,13 @@ den unveränderten WorkerPipelineJob und weiterhin sämtliche Ausführungs-Gates
 Details und Grenzen stehen in docs/CODE_PROPOSALS.md. Die Vorbereitung selbst
 verändert keinen Projektzustand, startet keine Queue und verwendet keinen Provider.
 
+Die lokale Request-/Response-Vorstufe ergänzt das gespeicherte Ziel und begrenzten,
+explizit freigegebenen Quellkontext aus dem exakten Basis-Commit. Antworten werden
+an Request, aktive Task-/Agentenvorgaben, Operator-Prüfungen und bekannte
+Dateiausgangshashes gebunden. Geänderte Verträge oder ungesehene bestehende Dateien
+werden vor dem Jobexport abgewiesen. Ein Modellzugang, automatische Datenübertragung
+und echte Inferenz werden dadurch nicht eingerichtet oder freigegeben.
+
 Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
 Programmieragenten-Adapter, selbstständige Testkorrektur und Wiederaufnahme nach
 Unterbrechung bleiben eigenständige Schritte. Der eingefrorene P2-Korpus und seine

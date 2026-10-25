@@ -28,7 +28,7 @@ TankAI ist ein ausführbarer Python-Multi-Agenten-Kern mit Planner, Specialists,
 | Capability-/Modulregister | Persistente Capability-Verträge, Modulzuordnung, Abhängigkeiten, Ownership und Abnahmetests in ProjectState Schema 6 |
 | Git-Isolation | Eigene Branches und Worktrees pro Entwicklungsagent |
 | Worker-Runner | Explizite argv-Befehle; optional in gehärteten OCI/Docker-Containern |
-| Agenten-Codevorschläge | Lokale Vorbereitung begrenzter, revisions- und pfadgebundener Dateiänderungen als bestehender Worker-Job; keine automatische Zieltextgenerierung; siehe [Code-Proposals](docs/CODE_PROPOSALS.md) |
+| Agenten-Codevorschläge | Lokale Ziel-/Quellkontext-Aufträge, gebundene Agentenantworten und Übersetzung begrenzter Dateiänderungen in bestehende Worker-Jobs; kein Modellaufruf; siehe [Code-Proposals](docs/CODE_PROPOSALS.md) |
 | Paralleler Worker-Pool | Bis zu zwölf vorab genehmigte, konfliktfreie Programmier-Agenten mit getrennten Worktrees |
 | Persistente Development-Queue | SQLite-Queue mit atomaren Leases, Heartbeats, Retry-Budget und Idempotenz |
 | Externes Lease-Fencing | Separate monotone Fence-Datenbank pro Repository; veraltete Worker verlieren Schreib- und Commit-Freigabe |

@@ -104,6 +104,24 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--output", required=True, help="Neuer Pfad für den vorbereiteten Job")
     prepare.add_argument("--python-executable", default="python3")
 
+    sub.add_parser("code-response-schema", help="Zeigt das Schema gebundener Agentenantworten")
+    request = sub.add_parser("prepare-code-request", help="Bereitet Ziel und festen Codekontext vor")
+    request.add_argument("--agent", required=True)
+    request.add_argument("--repository", required=True)
+    request.add_argument("--context-file", action="append", required=True)
+    request.add_argument("--checks", required=True)
+    request.add_argument("--data-class", choices=("public", "internal"), default="internal")
+    request.add_argument("--output", required=True)
+
+    response = sub.add_parser("prepare-code-response", help="Prüft die Antwort auf einen Codeauftrag")
+    response.add_argument("--agent", required=True)
+    response.add_argument("--repository", required=True)
+    response.add_argument("--request", required=True)
+    response.add_argument("--response", required=True)
+    response.add_argument("--checks", required=True)
+    response.add_argument("--python-executable", default="python3")
+    response.add_argument("--output", required=True)
+
     run = sub.add_parser(
         "run-pipeline",
         help="Führt einen genehmigten Worker-Job in einem isolierten Git-Worktree aus",
@@ -181,12 +199,23 @@ def _load_integration_job(path: str) -> IntegrationJob:
     return IntegrationJob.model_validate(payload)
 
 
+def _write_new_json(path: str, payload: dict) -> None:
+    descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(payload, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "code-proposal-schema":
             from .code_proposal import CodeProposal
             print(json.dumps(CodeProposal.model_json_schema(), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "code-response-schema":
+            from .code_request import CodeResponse
+            print(json.dumps(CodeResponse.model_json_schema(), ensure_ascii=False, indent=2))
             return 0
         if args.command == "init":
             orchestrator = DevelopmentOrchestrator.initialize(
@@ -213,12 +242,38 @@ def main(argv: list[str] | None = None) -> int:
             job = prepare_code_proposal(proposal, state=orchestrator.state(), agent_id=args.agent,
                                         checks=checks, python_executable=args.python_executable)
             # Preserve existing jobs/reviews, including symlink destinations.
-            output_fd = os.open(args.output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            with os.fdopen(output_fd, "w", encoding="utf-8") as stream:
-                stream.write(job.model_dump_json(indent=2))
-                stream.write("\n")
+            _write_new_json(args.output, job.model_dump(mode="json"))
             print(json.dumps({"prepared": True, "submitted": False, "executed": False,
                               "proposal_sha256": proposal.digest(), "files": len(proposal.files),
+                              "output": str(Path(args.output).resolve())}, ensure_ascii=False))
+            return 0
+        elif args.command in {"prepare-code-request", "prepare-code-response"}:
+            from .code_proposal import ProposalChecks, load_proposal_json
+            from .code_request import CodeRequestPackage, CodeResponse, build_code_request, prepare_code_response
+            try:
+                checks = ProposalChecks.model_validate(load_proposal_json(args.checks, limit=262_144))
+                if args.command == "prepare-code-request":
+                    package = build_code_request(
+                        state=orchestrator.state(), agent_id=args.agent, repository=args.repository,
+                        context_paths=args.context_file, checks=checks, data_class=args.data_class,
+                    )
+                    payload = package.model_dump(mode="json")
+                    metadata = {"request_prepared": True, "request_sha256": package.request_sha256,
+                                "context_files": len(package.request.context_files), "model_called": False}
+                else:
+                    package = CodeRequestPackage.model_validate(load_proposal_json(args.request, limit=131_072))
+                    response = CodeResponse.model_validate(load_proposal_json(args.response, limit=16_384))
+                    job = prepare_code_response(
+                        package, response, state=orchestrator.state(), agent_id=args.agent,
+                        repository=args.repository, checks=checks, python_executable=args.python_executable,
+                    )
+                    payload = job.model_dump(mode="json")
+                    metadata = {"prepared": True, "request_sha256": package.request_sha256,
+                                "proposal_sha256": response.proposal.digest(), "model_called": False}
+            except PydanticValidationError as exc:
+                raise ValueError("Codeauftrag oder Agentenantwort verletzt den Vertrag") from exc
+            _write_new_json(args.output, payload)
+            print(json.dumps({**metadata, "submitted": False, "executed": False,
                               "output": str(Path(args.output).resolve())}, ensure_ascii=False))
             return 0
         elif args.command == "begin-cycle":

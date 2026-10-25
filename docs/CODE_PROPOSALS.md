@@ -6,6 +6,12 @@ Sie ruft kein Modell auf, ändert keinen Projektzustand, reiht keinen Auftrag ei
 und startet keine Ausführung. Die automatische Generierung aus freiem Zieltext
 bleibt der nächste separate Adapterbaustein.
 
+Die lokale Request-/Response-Erweiterung bereitet dafür inzwischen einen
+vollständigen Auftrag mit Ziel und ausdrücklich ausgewähltem Quellkontext vor.
+Eine Antwort eines Programmieragenten kann anschließend an diesen Auftrag
+gebunden und in denselben Worker-Job übersetzt werden. Das ist ein lokaler
+Datenaustauschvertrag; er richtet keinen Modellzugang ein und versendet keine Daten.
+
 ## Vertrag
 
 Das Proposal enthält ausschließlich Version, Task-ID, exakten Basis-Commit und
@@ -94,6 +100,65 @@ Die Default-CLI nimmt `python3` im freigegebenen Image an; ein Operator kann den
 tatsächlichen Interpreter über `--python-executable` angeben.
 
 ## Ausführung und Nachweise
+
+### Ziel und Quellkontext für einen Programmieragenten
+
+```bash
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  prepare-code-request --agent EXISTING_CODER_ID --repository /srv/project \
+  --context-file src/helper.py --context-file tests/test_helper.py \
+  --checks checks.json --output code-request.json
+
+python -m tankai.dev_orchestrator.cli code-response-schema
+```
+
+Der Auftrag enthält das gespeicherte Ziel, Abnahmekriterien, Pflicht-Testbefehle,
+Schreibbereiche, Hashbindungen des Task-/Agentenvertrags und des Operator-Prüfvertrags
+sowie den exakten Inhalt der ausgewählten Dateien am Basis-Commit. Es findet weder
+eine Verzeichnissuche noch ein Auslesen uncommitteter oder ungetrackter Dateien statt.
+Lokale Git-Objekte werden ohne Replace-Refs und mit deaktiviertem Lazy-Fetch gelesen.
+Fehlende Objekte verhindern den Export. Quelldateien sind Daten, keine zusätzlichen
+Handlungsfreigaben für den Programmieragenten.
+
+`AgentSpec.read_access` muss den Dateipfad über einen `repository/<glob>`-Eintrag
+freigeben. Der bestehende Standard `repository/**` umfasst Repositorydateien.
+Bekannte Credential- und Laufzeitdateien wie `.env`, private Schlüssel und
+Datenbanken werden zusätzlich ausgeschlossen. Das ist kein vollständiger
+Inhaltsscanner. Pro Datei gelten 8 KiB, insgesamt 32 KiB Quellkontext und höchstens
+acht Dateien; der gesamte Request ist auf 64 KiB begrenzt. Symlinks werden am
+Git-Modus erkannt, unabhängig davon, wie das Host-Dateisystem sie auscheckt.
+
+Die Datenklasse ist standardmäßig `internal`. `--data-class public` ist nur eine
+Operator-Klassifikation; sie erteilt keine externe Übertragungsfreigabe und ersetzt
+keinen Source-Grant oder Kostenvertrag. Das vollständige Request-JSON enthält
+Quelltext und benötigt denselben Schutz wie diese Quelldateien.
+
+Die Antwort ist ein einzelnes JSON-Objekt nach `CodeResponse`, mit Version 1,
+unverändertem `request_sha256` und einem `proposal` nach dem obigen Vertrag.
+Markdown- oder Shell-Anweisungen werden nicht ausgeführt. Die Referenz ist ein
+Integritätsbezug, keine Signatur oder neue Autorisierung.
+
+```bash
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  prepare-code-response --agent EXISTING_CODER_ID --repository /srv/project \
+  --request code-request.json --response code-response.json \
+  --checks checks.json --output prepared-job.json
+```
+
+Vor dem Jobexport werden der aktuelle aktive Task-/Agentenvertrag und die
+Operator-Prüfungen mit dem gespeicherten Request verglichen. Die Quelldateien werden
+erneut aus dem gebundenen Git-Stand gelesen. Ein anderer Request, geänderte Vorgaben,
+manipulierter Kontext oder falsche Ausgangshashes verhindern die Vorbereitung.
+Bestehende Dateien dürfen nur ersetzt werden, wenn ihr vollständiger Inhalt im
+Request enthalten war; neue Dateien bleiben an die bisherigen Schreibbereiche gebunden.
+
+Die Ausführung verlangt weiterhin exakte Ausgangsbytes. Ein Checkout mit
+Zeilenumbruchkonvertierung, Smudge-Filter oder anderer Inhaltsumwandlung kann von
+den Git-Blobs abweichen; dann blockiert die bestehende Hashprüfung. Der
+Request-/Response-Pfad normalisiert diese Abweichung nicht stillschweigend.
+Der Ausführungsarbeitsbereich muss die gebundenen Quellbytes bereitstellen.
+
+### Empfänger und Worker
 
 Die erzeugte Implementierungsanweisung ist ein fester Python-Stdlib-Empfänger.
 Das Proposal wird als gebundener Dateninhalt in der vorhandenen Befehlsumgebung
