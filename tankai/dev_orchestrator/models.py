@@ -559,6 +559,7 @@ class CodeRepairReservation(OrchestratorModel):
     proposal_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     job_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    queue_job_id: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 class WorkerRunRecord(OrchestratorModel):

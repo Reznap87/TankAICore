@@ -116,6 +116,9 @@ class WorkerPipelineRunner:
         agent = state.agents[job.worker.agent_id]
         task = state.tasks[agent.task_id]
         pending = task.pending_code_repair
+        if pending and pending.queue_job_id and (
+                self.execution_guard is None or self.container_metadata.get("job_id") != pending.queue_job_id):
+            raise ValidationError("Korrekturfreigabe gehört zu einem anderen Queue-Job")
         if pending and (pending.job_sha256 != pipeline_digest(job)
                         or pending.contract_sha256 != _resume_contract(state, job)
                         or state.current_commit != task.base_commit
@@ -317,6 +320,10 @@ class WorkerPipelineRunner:
                     return WorkerPipelineResult(run=run, workspace=workspace)
             elif run.state == WorkerRunState.READY_TO_INTEGRATE:
                 raise ValidationError("Worker-Run und Task-Freigabe unterscheiden sich")
+            if run.code_repair and run.code_repair.queue_job_id and (
+                    self.execution_guard is None
+                    or self.container_metadata.get("job_id") != run.code_repair.queue_job_id):
+                raise ValidationError("Wiederaufnahme gehört zu einem anderen Queue-Job")
             if job.isolation is not None:
                 repository_id = self.container_metadata.get("repository_id")
                 if self.execution_guard is None or not repository_id:

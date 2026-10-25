@@ -308,9 +308,73 @@ automatische Erstattung oder unbegrenzte Wiederholung. Die vollständige kumulat
 Dateiliste des neuen Commits bleibt für Tests, Review und Wiederaufnahme gespeichert.
 
 Die neue Aktivierung ist ein lokaler Operatorpfad für vertraute Hostaufträge.
-Containeraufträge können als Korrektur vorbereitet werden, ihre Aktivierung wird
-hier jedoch bis zur Integration mit der vorhandenen Queue-/Fence-Steuerung
-abgewiesen. Die Isolation wird nicht herabgesetzt. Queue-Admission und bestehende
+Containeraufträge können als Korrektur vorbereitet werden; das lokale
+`authorize-code-repair` weist sie weiterhin ab. Die Aktivierung erfolgt über den
+unten beschriebenen Queue-Worker. Die Isolation wird nicht herabgesetzt. Queue-Admission und bestehende
 Gateway-v1-Formate bleiben unverändert. Es gibt weiterhin keinen automatischen
 Modellaufruf, keine Datenübertragung und keinen eigenständig antwortenden
 Reparaturagenten. Korrekturantworten liefert ein ausdrücklich beteiligter Agent.
+
+### Containerkorrektur über die bestehende Queue
+
+Ein Workspace-Owner oder -Admin kann denselben Korrekturauftrag mit dem bestehenden
+Queue-CLI einreihen. Repository-, Worktree- und State-Pfade stammen aus der zuvor
+registrierten Repository-Bindung, nicht aus der Agentenantwort:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue.db --auth-db /srv/tankai/auth.db \
+  --repository-base /srv/tankai/repositories \
+  --workspace-base /srv/tankai/worktrees --state-base /srv/tankai/states \
+  enqueue-code-repair --actor-email owner@example.com \
+  --workspace-id WORKSPACE-ID --repository-id REPOSITORY-ID \
+  --previous-job failed-job.json --request repair-request.json \
+  --response repair-response.json --python-executable python3
+```
+
+Die normale Admission prüft freigegebenes Image, Container-Isolation, RAM, CPU,
+PIDs, Laufzeit, Queue-Kapazität und Nutzerrate. Auch Metadaten des früheren Jobs
+dürfen keine Inline-Credential-Umgebungsvariablen enthalten. Ein neuer, intern
+versionierter Queue-Umschlag speichert Auftrag, Antwort, bisherigen Job und den
+daraus abgeleiteten Worker-Job im vorhandenen `payload_json`. Die Prüfsumme bindet
+den gesamten Umschlag. Normale Queue-Jobs und ihre bisherigen Prüfsummen behalten
+ihr Format; es gibt keine zusätzliche Zustandsdatenbank oder SQL-Schemamigration.
+Gateway v1 erhält dadurch keinen neuen Web-Endpunkt.
+
+Der Idempotenzschlüssel wird aus Repository, Eltern-Run und Korrekturversuch
+abgeleitet. Derselbe Inhalt liefert auch bei einem anderen berechtigten Admin
+denselben Queue-Job. Eine andere Antwort für denselben Versuch wird abgewiesen.
+Einreichen allein verändert weder Taskstatus noch Korrekturzähler. Der CLI-Beleg
+enthält Kennungen und Status; er gibt keinen vollständigen Quellkontext aus.
+
+Der Worker benötigt für Korrekturen ebenfalls `--auth-db`. Nach aktueller Lease,
+externem Fence und Heartbeat prüft er die Berechtigung des Einreichers und die
+Admission erneut. Die rootless Container-Runtime und eine Inventur ohne verbliebene
+verwaltete Repository-Container sind Pflicht. Vorhandene Container werden nicht
+automatisch entfernt. Erst dann reserviert der Worker unter dem bestehenden
+Agentenlock den Korrekturversuch atomar; der Fence wird innerhalb dieser
+Zustandstransaktion noch einmal geprüft.
+
+Die Reservierung enthält die Queue-Job-ID. Andere Queue-Jobs oder das lokale
+Pipeline-CLI können sie nicht übernehmen. Der Dispatcher verwendet ausschließlich
+den kontrollierten, containerpflichtigen Worker-Runner. Ein alternativer
+Ausführungs-Callback darf diesen Pfad nicht ersetzen. Alle Ausführungsphasen
+bleiben an den aktuellen Fence und die vorhandene Abbruchkontrolle gebunden.
+
+Nach einer Unterbrechung verwendet eine neue Lease desselben Jobs die bestehende
+Reservierung erneut. Ein bereits gestarteter Run wird ab seinem gespeicherten
+Commit fortgesetzt. Ein fertig geprüfter Run kann das noch offene Queue-Ergebnis
+liefern, ohne seine Implementierung erneut auszuführen. Neue Lease-Versuche und
+Codekorrekturversuche bleiben getrennte Zähler mit ihren jeweiligen Limits.
+Ein Abbruch vor einem sicher gespeicherten Implementierungscommit wird weiterhin
+abgewiesen; lokale Änderungen bleiben erhalten. Fehlgeschlagene Vorbedingungen
+werden als Queue-Fehler gespeichert und benötigen die entsprechende vorhandene
+Operator-Recovery, statt eine neue Antwort oder Freigabe zu erfinden.
+
+Die Regressionen führen reale Git-, State-, Auth-, Queue- und Fence-Abläufe mit
+einem aufzeichnenden Container-Testexecutor aus. Sie decken Wiederöffnung der
+Datenbanken, Unterbrechungen nach Reservierung/Commit und vor Queue-Abschluss,
+Rollenentzug, Payload-Manipulation, verwaiste Container und verlorene Fences ab.
+Diese Prüfungen sind kein Nachweis echter rootless Container-Korrektur oder eines
+öffentlichen Dauerbetriebs. Modellzugang und automatische Korrekturantworten
+bleiben eigenständige Integrationsschritte.

@@ -1792,11 +1792,22 @@ unverändert. Export und Aktivierung sind getrennt. Die Aktivierung reserviert
 atomar höchstens zwei Versuche im vorhandenen ProjectState, erhält alte
 Fehlerbelege und bindet den nächsten Run an Job, Vertrag und Startcommit.
 Rohe Testausgaben werden nicht in den Auftrag übernommen. Die neue lokale
-Aktivierung weist Containeraufträge bis zur Queue-/Fence-Anbindung ab.
+Aktivierung weist Containeraufträge ab; dafür ist der kontrollierte Queue-Pfad vorgesehen.
+
+Containerkorrekturen können über die bestehende Queue von Workspace-Owner/Admin
+eingereiht werden. Die Einreichung reserviert noch keinen Korrekturversuch.
+Der Worker prüft Admission, aktuelle Berechtigung, rootless Runtime, Inventur,
+Lease und externen Fence vor der atomaren Reservierung erneut. Diese ist an die
+Queue-Job-ID gebunden. Doppelte Einreichungen und Wiederaufnahme desselben Jobs
+verbrauchen keinen weiteren Korrekturversuch. Ein gespeicherter Commit kann unter
+neuer Lease fortgesetzt und ein fertiger Run ohne erneute Implementierung als
+Queue-Ergebnis übernommen werden. Frühe unklare Unterbrechungen bleiben gesperrt.
+Regressionen verwenden echte Queue-/Fence-/Git-Persistenz mit Testexecutor;
+ein echter rootless Container-Korrekturdurchlauf ist noch nicht belegt.
 
 Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
-Programmieragenten-Adapter, automatische Korrekturantworten und deren kontrollierte
-Queue-/Containerausführung bleiben eigenständige Schritte. Der eingefrorene P2-Korpus und seine
+Programmieragenten-Adapter, automatische Korrekturantworten und die Live-Abnahme
+der Queue-/Containerausführung bleiben eigenständige Schritte. Der eingefrorene P2-Korpus und seine
 historischen Receipts bleiben unverändert; lokale Übergabetests sind kein
 Qualitätsgewinn oder neuer Produktionsnachweis. Die offenen Ausführungs- und
 Budgetarbeiten in den bestehenden Entwurfs-PRs werden nicht parallel ersetzt.

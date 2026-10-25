@@ -6,7 +6,7 @@ import fnmatch
 import re
 from collections import defaultdict, deque
 from pathlib import PurePosixPath
-from typing import Iterable
+from typing import Callable, Iterable
 
 from .models import (
     AgentGovernancePolicy,
@@ -1146,6 +1146,7 @@ class DevelopmentOrchestrator:
 
     def reserve_code_repair(
         self, reservation: CodeRepairReservation, *, expected_revision: int,
+        execution_guard: Callable[[str], None] | None = None,
     ) -> TaskSpec:
         """Consume a bounded repair attempt and reopen its task in one transaction."""
         reservation = CodeRepairReservation.model_validate(reservation.model_dump(mode="json"))
@@ -1162,6 +1163,8 @@ class DevelopmentOrchestrator:
                     or parent.base_commit != state.current_commit or task.pending_code_repair
                     or reservation.attempt != task.code_repair_attempts + 1):
                 raise ValidationError("Korrekturfreigabe passt nicht zum aktuellen Fehlerzustand")
+            if execution_guard is not None:
+                execution_guard("reserve_code_repair")
             self._reopen_task(state, task.task_id, reason=f"Codekorrektur {reservation.attempt} für {parent.run_id}")
             task.code_repair_attempts = reservation.attempt
             task.pending_code_repair = reservation.model_copy(deep=True)

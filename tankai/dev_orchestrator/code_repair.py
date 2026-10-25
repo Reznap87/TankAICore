@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Callable, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -13,6 +13,7 @@ from .code_request import (
     CodeRequest, CodeResponse, _GitSnapshot, _Versioned, _request_for_contract,
 )
 from .git_workspace import GitWorkspaceManager
+from .container_runtime import DockerCommandExecutor
 from .models import (
     AgentSpec, AgentStatus, CodeRepairReservation, MAX_CODE_REPAIR_ATTEMPTS,
     ProjectState, TaskSpec, TaskState, WorkerPipelineJob, WorkerRunRecord, WorkerRunState,
@@ -63,6 +64,25 @@ class CodeRepairAuthorization(_Versioned):
     reservation: CodeRepairReservation
     replay: bool = False
     started_run_id: str | None = None
+
+
+class CodeRepairSubmission(_Versioned):
+    package: CodeRepairRequestPackage
+    response: CodeResponse
+    previous_job: WorkerPipelineJob
+    python_executable: str = Field(default="python3", min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def bound_response(self) -> "CodeRepairSubmission":
+        if self.response.request_sha256 != self.package.request_sha256:
+            raise ValueError("Queued correction belongs to another request")
+        return self
+
+
+class QueuedCodeRepairPayload(_Versioned):
+    kind: Literal["code_repair"] = "code_repair"
+    pipeline: WorkerPipelineJob
+    code_repair: CodeRepairSubmission
 
 
 def _failed_contract(
@@ -173,6 +193,9 @@ def authorize_code_repair(
     package: CodeRepairRequestPackage, response: CodeResponse, *,
     orchestrator: DevelopmentOrchestrator, previous_job: WorkerPipelineJob,
     workspace_manager: GitWorkspaceManager, python_executable: str = "python3",
+    execution_guard: Callable[[str], None] | None = None,
+    container_executor: DockerCommandExecutor | None = None,
+    container_metadata: Mapping[str, str] | None = None,
 ) -> CodeRepairAuthorization:
     """Reserve local state only; queue submission/execution remain separate actions."""
     package = CodeRepairRequestPackage.model_validate(package.model_dump(mode="json"))
@@ -180,11 +203,25 @@ def authorize_code_repair(
     if response.request_sha256 != package.request_sha256:
         raise ValueError("Repair response belongs to another request")
     request = package.request
+    metadata = dict(container_metadata or {})
     with workspace_manager.worker_execution_lock(request.agent_id):
+        if previous_job.isolation is not None:
+            required = ("job_id", "repository_id", "workspace_id", "tenant_id", "fence_epoch")
+            if execution_guard is None or container_executor is None or not all(metadata.get(key) for key in required):
+                raise ValueError("Container repair activation needs current queue/fence control")
+            execution_guard("repair_container_inventory_before")
+            container_executor.ensure_available()
+            if container_executor.list_managed_containers(repository_id=metadata["repository_id"]):
+                raise ValueError("Repository besitzt noch verwaltete Container; vorhandene Recovery verwenden")
+            execution_guard("repair_container_inventory_after")
+        elif metadata:
+            raise ValueError("Queued corrections require container isolation")
         state = orchestrator.state()
         for record in state.worker_runs.values():
             repair = record.code_repair
             if repair and repair.request_sha256 == package.request_sha256 and repair.proposal_sha256 == response.proposal.digest():
+                if repair.queue_job_id != metadata.get("job_id"):
+                    raise ValueError("Correction belongs to another queue job")
                 return CodeRepairAuthorization(reservation=repair, replay=True, started_run_id=record.run_id)
         task = state.tasks.get(request.task_id)
         if task is None:
@@ -206,8 +243,6 @@ def authorize_code_repair(
             package, response, state=view, previous_job=previous_job,
             repository=workspace_manager.repository, python_executable=python_executable,
         )
-        if job.isolation is not None:
-            raise ValueError("Container repair activation needs queue/fence integration; local activation is unavailable")
         parent = state.worker_runs[request.parent_run_id]
         workspace = workspace_manager.workspace_from_binding(
             agent_id=parent.agent_id, branch=parent.branch, workspace_path=parent.workspace_path,
@@ -227,10 +262,16 @@ def authorize_code_repair(
             parent_run_id=parent.run_id, attempt=request.attempt, context_commit=request.context_commit,
             request_sha256=package.request_sha256, proposal_sha256=response.proposal.digest(),
             job_sha256=pipeline_digest(job), contract_sha256=_resume_contract(state, job),
+            queue_job_id=metadata.get("job_id"),
         )
         if pending:
             if pending != reservation:
                 raise ValueError("Reserved repair contract changed")
             return CodeRepairAuthorization(reservation=pending, replay=True)
-        orchestrator.reserve_code_repair(reservation, expected_revision=state.revision)
+        if execution_guard is not None:
+            execution_guard("repair_authorization_before_reservation")
+        arguments = {"expected_revision": state.revision}
+        if execution_guard is not None:
+            arguments["execution_guard"] = execution_guard
+        orchestrator.reserve_code_repair(reservation, **arguments)
         return CodeRepairAuthorization(reservation=reservation)
