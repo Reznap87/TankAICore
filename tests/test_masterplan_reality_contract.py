@@ -15,7 +15,8 @@ def test_current_reality_contract_tracks_repository_state_without_reopening_comp
     assert "0. Verifizierter Projektstand und Ausführungsvertrag am 24. Oktober 2026" in current
     assert "b9eb349363889efe90e84460258ee19f0892b003" in current
     assert "docs/MONETARY_RESERVATIONS.md" in current
-    assert "Fundament ohne Anbindung an den realen Provider-Versand" in current
+    assert "Opt-in-Anbindung an den" in current
+    assert "Web-Zulassung aktiviert diesen Pfad noch nicht" in current
     assert "cea6f42965bc10f3a39090794c5552ff34161057" in current
     assert "32fc47a9656c3df39f1d3e16e2ec29d45ea4d3d0" in current
     assert "5e51377259ea5e0281607f7f1a7ce6592353543e" in current

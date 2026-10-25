@@ -1,2 +1,6 @@
 -r requirements.txt
 pytest>=8,<10
+
+# Offline transport-boundary tests; no provider credentials or inference calls.
+openai==3.37.0
+anthropic==2.3.0

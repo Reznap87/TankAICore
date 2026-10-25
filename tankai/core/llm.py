@@ -8,8 +8,12 @@ In einer echten Deployment würde man hier Provider-Adapter
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import inspect
 import threading
+import uuid
 from typing import Any, Callable
+
+from .request_dispatch import BoundDispatch, DispatchDenied, MonetaryDispatch
 
 
 class BaseLLM(ABC):
@@ -18,6 +22,7 @@ class BaseLLM(ABC):
     provider_name = "unknown"
     model_name = "unknown"
     is_simulation = False
+    requires_request_admission = False
 
     @abstractmethod
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
@@ -49,7 +54,10 @@ class LLMRateLimitExceeded(RuntimeError):
 class LLMCallBudget:
     """Thread-sicheres, zwischen Hauptmodell und Critic geteiltes Run-Budget."""
 
-    def __init__(self, max_calls: int) -> None:
+    def __init__(self, max_calls: int, *, monetary_dispatch: MonetaryDispatch | None = None) -> None:
+        if monetary_dispatch is not None and type(monetary_dispatch) is not MonetaryDispatch:
+            raise ValueError("initialized MonetaryDispatch required")
+        self.monetary_dispatch = monetary_dispatch
         if isinstance(max_calls, bool):
             raise ValueError("max_calls muss eine ganze Zahl sein")
         try:
@@ -98,11 +106,22 @@ class BudgetedLLM(BaseLLM):
         self.provider_name = str(getattr(delegate, "provider_name", type(delegate).__name__))
         self.model_name = str(getattr(delegate, "model_name", getattr(delegate, "model", "unknown")))
         self.is_simulation = bool(getattr(delegate, "is_simulation", False))
+        if budget.monetary_dispatch is not None and type(delegate) in (OpenAILLM, AnthropicLLM):
+            # Once protected, a shared adapter cannot be called through a raw
+            # reference or an unrelated wrapper without monetary admission.
+            delegate.requires_request_admission = True
         client = getattr(delegate, "client", None)
         if client is not None:
             self.client = client
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
+        if "_budget_dispatch" in kwargs:
+            raise DispatchDenied("caller cannot replace internal dispatch context")
+        if self.budget.monetary_dispatch is not None:
+            if type(self.delegate) not in (OpenAILLM, AnthropicLLM):
+                raise DispatchDenied("unreviewed delegate cannot use monetary admission")
+            kwargs["_budget_dispatch"] = BoundDispatch(
+                self.budget.monetary_dispatch, uuid.uuid4().hex)
         identity = f"{self.provider_name}:{self.model_name}".lower()
         self.budget.consume(identity)
         return self.delegate.complete(prompt, system=system, **kwargs)
@@ -471,6 +490,64 @@ def live_smoke_max_tokens() -> int:
     )
 
 
+def _request_with_admission(adapter: BaseLLM, parameters: dict, admission: BoundDispatch,
+                            parse: Callable[[Any], str], *, anthropic: bool = False) -> str:
+    if type(admission) is not BoundDispatch:
+        raise DispatchDenied("invalid internal dispatch context")
+    timeout = min(adapter.timeout_seconds, 30.0)
+    # A dedicated default transport excludes caller-supplied transport retries,
+    # hooks and redirects. SDK retries are disabled separately per invocation.
+    if anthropic:
+        from anthropic import DefaultHttpxClient
+    else:
+        from openai import DefaultHttpxClient
+    import httpx2
+    # Supply the transport explicitly: some SDK wrappers build proxy mounts
+    # from environment variables even when their outer client disables trust_env.
+    wire = httpx2.HTTPTransport(retries=0, trust_env=False)
+    with DefaultHttpxClient(transport=wire, follow_redirects=False, trust_env=False) as transport:
+        if transport.follow_redirects is not False:
+            raise DispatchDenied("transport redirects must be disabled")
+        client = adapter.client.with_options(
+            max_retries=0, timeout=timeout, http_client=transport)
+        if getattr(client, "_client", None) is not transport:
+            raise DispatchDenied("SDK did not accept the bounded transport")
+        send = client.messages.create if anthropic else client.chat.completions.create
+        return admission.execute(
+            provider=adapter.provider_name, model=adapter.model,
+            endpoint=str(client.base_url), parameters=parameters,
+            sdk_max_retries=client.max_retries, timeout_seconds=timeout,
+            send_once=lambda frozen: parse(send(**frozen)),
+        )
+
+
+def _openai_text(response: Any) -> str:
+    choices = getattr(response, "choices", None)
+    if not isinstance(choices, (list, tuple)) or not choices:
+        raise RuntimeError("OpenAI response has no valid choices")
+    message = getattr(choices[0], "message", None)
+    if message is None:
+        raise RuntimeError("OpenAI response has no message")
+    content = getattr(message, "content", None)
+    if content is not None and not isinstance(content, str):
+        raise RuntimeError("OpenAI response has invalid text")
+    return (content or "").strip()
+
+
+def _anthropic_text(response: Any) -> str:
+    blocks = getattr(response, "content", None)
+    if not isinstance(blocks, (list, tuple)):
+        raise RuntimeError("Anthropic response has no valid content blocks")
+    parts = []
+    for block in blocks:
+        text = getattr(block, "text", None)
+        if text is not None and not isinstance(text, str):
+            raise RuntimeError("Anthropic response has invalid text")
+        if text:
+            parts.append(text)
+    return "\n".join(parts).strip()
+
+
 class OpenAILLM(BaseLLM):
     """
     OpenAI Chat Completions Adapter.
@@ -535,13 +612,14 @@ class OpenAILLM(BaseLLM):
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=kwargs.get("temperature", self.temperature),
-            max_tokens=kwargs.get("max_tokens", self.max_tokens),
-        )
-        return (resp.choices[0].message.content or "").strip()
+        parameters = {"model": self.model, "messages": messages,
+                      "temperature": kwargs.get("temperature", self.temperature),
+                      "max_tokens": kwargs.get("max_tokens", self.max_tokens)}
+        if "_budget_dispatch" in kwargs:
+            return _request_with_admission(self, parameters, kwargs["_budget_dispatch"], _openai_text)
+        if self.requires_request_admission:
+            raise DispatchDenied("protected adapter requires request admission")
+        return _openai_text(self.client.chat.completions.create(**parameters))
 
 
 class AnthropicLLM(BaseLLM):
@@ -597,20 +675,25 @@ class AnthropicLLM(BaseLLM):
         )
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
-        resp = self.client.messages.create(
-            model=self.model,
-            max_tokens=kwargs.get("max_tokens", self.max_tokens),
-            temperature=kwargs.get("temperature", self.temperature),
-            system=system or "Du bist ein präziser, hilfreicher Assistent.",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        # content ist eine Liste von Blocks
-        parts = []
-        for block in resp.content:
-            text = getattr(block, "text", None)
-            if text:
-                parts.append(text)
-        return "\n".join(parts).strip()
+        # New SDKs removed sampling controls. Count/price the parameters that
+        # will actually be sent, and never silently discard an explicit override.
+        fields = inspect.signature(self.client.messages.create).parameters
+        supports_temperature = "temperature" in fields or any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in fields.values())
+        parameters = {"model": self.model,
+                      "max_tokens": kwargs.get("max_tokens", self.max_tokens),
+                      "system": system or "Du bist ein präziser, hilfreicher Assistent.",
+                      "messages": [{"role": "user", "content": prompt}]}
+        if supports_temperature:
+            parameters["temperature"] = kwargs.get("temperature", self.temperature)
+        elif "temperature" in kwargs or self.temperature != 0.2:
+            raise ValueError("installed Anthropic SDK does not support temperature")
+        if "_budget_dispatch" in kwargs:
+            return _request_with_admission(self, parameters, kwargs["_budget_dispatch"],
+                                           _anthropic_text, anthropic=True)
+        if self.requires_request_admission:
+            raise DispatchDenied("protected adapter requires request admission")
+        return _anthropic_text(self.client.messages.create(**parameters))
 
 
 

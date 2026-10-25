@@ -15,8 +15,15 @@ Reservierungen bleiben nach Neustart erhalten. Wiederholte Versuch-IDs erlauben
 keinen zweiten Versand. Ein Schemafilter-Fehler aus der privaten Vorarbeit wurde
 mit fünf zunächst fehlschlagenden Manipulationstests reproduziert und korrigiert.
 Vertrag, Prüfablauf und Grenzen: `docs/MONETARY_RESERVATIONS.md`.
-Dies ist ein isoliertes Fundament ohne Anbindung an den realen Provider-Versand,
-ohne Cloudflare-übergreifende Speicherkoordination und ohne Pilotfreigabe.
+Erweiterung vom 25. Oktober 2026: Eine programmatische Opt-in-Anbindung an den
+Provider-Versand schützt die bestehenden OpenAI-/Anthropic-Textadapter. Der
+vollständige Request wird vor dem SDK-Versuch eingefroren und konservativ
+bepreist; erst die dauerhaft bestätigte Reservierung erlaubt den Versand.
+SDK-/Transport-Retries, Redirects und Umgebungsproxies sind im geschützten Pfad
+deaktiviert. Echte SDKs werden mit lokal abgefangenem HTTP geprüft. Die
+Web-Zulassung aktiviert diesen Pfad noch nicht; belegte reale Tarife/Tokenzähler,
+dauerhafte Wiederaufnahmeentscheidungen, Cloudflare-übergreifende
+Speicherkoordination und die konkrete Pilotfreigabe bleiben offene Gates.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
 Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 

@@ -24,6 +24,7 @@ from .memory import Memory
 from .long_term_memory import LongTermMemory
 from .tools import ToolRegistry
 from .run_store import RunStore
+from .request_dispatch import MonetaryDispatch
 from .models import (
     Critique,
     Goal,
@@ -66,13 +67,14 @@ class TankAI:
         strict_web_research: bool = False,
         run_store_path: str | None = "tankai_runs.jsonl",
         verified_single_step: bool = False,
+        monetary_dispatch: MonetaryDispatch | None = None,
     ) -> None:
         main_llm = llm if llm is not None else get_llm()
         raw_critic_llm = critic_llm if critic_llm is not None else main_llm
         self.main_llm_identity = llm_identity(main_llm)
         self.critic_llm_identity = llm_identity(raw_critic_llm)
         self.critic_independent = self.main_llm_identity != self.critic_llm_identity
-        self.llm_call_budget = LLMCallBudget(max_llm_calls_per_run)
+        self.llm_call_budget = LLMCallBudget(max_llm_calls_per_run, monetary_dispatch=monetary_dispatch)
         self.llm = BudgetedLLM(main_llm, self.llm_call_budget)
         self.critic_llm = (
             self.llm
