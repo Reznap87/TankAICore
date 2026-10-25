@@ -110,6 +110,44 @@ class CodeResponse(_Versioned):
     proposal: CodeProposal
 
 
+class CodeResponseSubmission(_Versioned):
+    """Owner/admin handoff; checks are operator input, never agent response fields."""
+
+    package: CodeRequestPackage
+    response: CodeResponse
+    checks: ProposalChecks
+    python_executable: str = Field(default="python3", min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def bound_response(self) -> "CodeResponseSubmission":
+        if self.response.request_sha256 != self.package.request_sha256:
+            raise ValueError("Queued code response belongs to another request")
+        return self
+
+
+class QueuedCodeResponsePayload(_Versioned):
+    kind: Literal["code_response"] = "code_response"
+    pipeline: WorkerPipelineJob
+    code_response: CodeResponseSubmission
+
+
+def prepare_initial_code_submission(
+    submission: CodeResponseSubmission, *, state: ProjectState, repository: str | Path,
+) -> WorkerPipelineJob:
+    """Validate the original handoff; an already started run needs explicit recovery."""
+    submission = CodeResponseSubmission.model_validate(submission.model_dump(mode="json"))
+    request = submission.package.request
+    if state.current_commit != request.base_commit:
+        raise ValueError("Code response source is no longer the confirmed project commit")
+    task, _ = active_code_contract(state, request.agent_id)
+    if task.worker_run_id is not None:
+        raise ValueError("Initial code response already has a worker run; use its recovery or repair path")
+    return prepare_code_response(
+        submission.package, submission.response, state=state, agent_id=request.agent_id,
+        repository=repository, checks=submission.checks, python_executable=submission.python_executable,
+    )
+
+
 class _GitSnapshot:
     def __init__(self, repository: str | Path, revision: str):
         self.repository = Path(repository).resolve()

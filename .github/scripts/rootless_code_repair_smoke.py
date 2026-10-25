@@ -22,7 +22,7 @@ from tankai.dev_orchestrator import (
     GitWorkspaceManager, TaskSpec, WorkerIsolationSpec, WorkerPipelineRunner, render_command,
 )
 from tankai.dev_orchestrator.code_proposal import CodeProposal, ProposedFile, ProposalChecks
-from tankai.dev_orchestrator.code_request import CodeResponse, build_code_request, prepare_code_response
+from tankai.dev_orchestrator.code_request import CodeResponse, CodeResponseSubmission, build_code_request, prepare_code_response
 from tankai.dev_orchestrator.code_repair import CodeRepairSubmission, build_code_repair_request
 from tankai.dev_orchestrator.job_queue import DevelopmentJobQueue, JobState, QueuedWorkerDispatcher, WorkspaceQueuePolicy
 from tankai.web.auth import AuthStore
@@ -193,12 +193,18 @@ def smoke(root: Path, runtime: str, image_file: Path, output: Path, base_file: P
     binding = queue.register_repository(actor_user_id=owner, workspace_id=workspace_id, name="Smoke",
         repository_path=repository, workspace_root=root / "worktrees/project", state_path=root / "states/project.json")
     write_new(root / "smoke-scope.json", {"version": 1, "repository_id": binding.repository_id})
-    queue.enqueue(actor_user_id=owner, workspace_id=workspace_id, repository_id=binding.repository_id,
-        pipeline=previous, idempotency_key="initial-code")
+    initial_submission = CodeResponseSubmission(package=package, response=response(package, WRONG),
+        checks=checks, python_executable="python")
+    initial_enqueued = queue.enqueue_code_response_with_outcome(actor_user_id=owner, workspace_id=workspace_id,
+        repository_id=binding.repository_id, submission=initial_submission)
+    assert initial_enqueued.job.pipeline == previous
     os.environ["TANKAI_SMOKE_HOST_ONLY"] = "host-only-synthetic-sentinel"
     initial = QueuedWorkerDispatcher(queue, worker_id="initial-rootless-smoke", container_runtime=runtime).run_once()
     if initial is None or initial.state != JobState.FAILED:
         raise RuntimeError("Incorrect initial code did not fail")
+    replay_initial = queue.enqueue_code_response_with_outcome(actor_user_id=owner, workspace_id=workspace_id,
+        repository_id=binding.repository_id, submission=initial_submission)
+    assert replay_initial.idempotent_replay and replay_initial.job.job_id == initial_enqueued.job.job_id
     parent = orchestrator.state().worker_runs[orchestrator.state().tasks["ORDER-1"].worker_run_id]
     if not parent.implementation_commit or not parent.test_executions:
         details = parent.implementation_executions[-1].summary if parent.implementation_executions else parent.error
@@ -259,6 +265,7 @@ def smoke(root: Path, runtime: str, image_file: Path, output: Path, base_file: P
         "source_commit": git(SOURCE_ROOT, "rev-parse", "HEAD"), "pr_head": os.environ.get("TANKAI_SOURCE_HEAD"),
         "queue_job_id": finished.job_id, "run_id": run.run_id, "implementation_commit": run.implementation_commit,
         "initial_test_failed": True, "unchanged_unit_tests": 4, "tests_passed": True,
+        "initial_code_response_queued": True, "initial_duplicate_same_job": True,
         "review_passed": True, "qa_passed": True, "isolation_controls": controls,
         "actual_worker_exit": crashed.returncode, "same_run_and_commit_after_restart": True,
         "lease_recovery": "test-only expiry after observed worker exit and empty container inventory",

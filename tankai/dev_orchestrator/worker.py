@@ -96,6 +96,7 @@ class WorkerPipelineRunner:
         require_container_isolation: bool = False,
         execution_guard: Callable[[str], None] | None = None,
         container_metadata: dict[str, str] | None = None,
+        start_validator: Callable[[ProjectState], None] | None = None,
     ) -> None:
         self.orchestrator = orchestrator
         self.workspace_manager = workspace_manager
@@ -103,6 +104,7 @@ class WorkerPipelineRunner:
         self.require_container_isolation = require_container_isolation
         self.execution_guard = execution_guard
         self.container_metadata = dict(container_metadata or {})
+        self.start_validator = start_validator
 
     def run(self, job: WorkerPipelineJob) -> WorkerPipelineResult:
         job = WorkerPipelineJob.model_validate(job.model_dump(mode="json"))
@@ -154,7 +156,10 @@ class WorkerPipelineRunner:
                 branch=workspace.branch,
                 workspace_path=str(workspace.path),
             )
-            self.orchestrator.begin_worker_run(record)
+            if self.start_validator is None:
+                self.orchestrator.begin_worker_run(record)
+            else:
+                self.orchestrator.begin_worker_run(record, state_validator=self.start_validator)
             run_started = True
             if job.isolation is not None:
                 runtime_version = self._container_executor().ensure_available()

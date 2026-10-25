@@ -502,8 +502,12 @@ class DevelopmentOrchestrator:
 
         self.store.transaction(mutate)
 
-    def begin_worker_run(self, record: WorkerRunRecord) -> WorkerRunRecord:
+    def begin_worker_run(
+        self, record: WorkerRunRecord, *, state_validator: Callable[[ProjectState], None] | None = None,
+    ) -> WorkerRunRecord:
         def mutate(state: ProjectState) -> WorkerRunRecord:
+            if state_validator is not None:
+                state_validator(state)
             if record.run_id in state.worker_runs:
                 raise ConflictError(f"Worker-Run existiert bereits: {record.run_id}")
             agent = self._agent(state, record.agent_id)

@@ -1809,9 +1809,20 @@ und prüft Codekorrektur, Prozessneustart und tatsächliche Container-Schutzwert
 Nur ein erfolgreicher Lauf mit tankai-rootless-worker-receipt gilt als Beleg.
 Er ersetzt keinen Produktionsdeploy oder Dauerbetriebs-Pilot.
 
+Gebundene Erstantworten können Owner/Admin mit enqueue-code-response direkt
+in die bestehende Queue einreichen. Request, Antwort und Operator-Prüfvertrag
+bleiben im bestehenden Payload gespeichert und hashgebunden. Eine feste
+Repository-/Task-/Agent-/Basiscommit-Identität verhindert doppelte Jobs auch
+bei gleichzeitigen Admin-Einreichungen. Der Worker prüft Quelle und Vertrag
+unter Lease/Fence vor seinem ersten Run erneut; geänderte Vorgaben sperren die
+Ausführung. Ein vorhandener Run wird nicht durch eine neue Implementierung ersetzt.
+Der rootless-CI-Test prüft auch diesen Erstantwort-Pfad. Datenbankstruktur und
+externe Gateway-v1-Verträge bleiben unverändert; neue HTTP-/Tokenrechte entstehen nicht.
+
 Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
-Programmieragenten-Adapter, automatische Korrekturantworten und die Live-Abnahme
-der Queue-/Containerausführung bleiben eigenständige Schritte. Der eingefrorene P2-Korpus und seine
+Programmieragenten-Adapter und automatische Korrekturantworten bleiben eigenständige
+Schritte. Die reale Queue-/Containerausführung ist durch den erfolgreichen
+rootless-CI-Receipt für dessen konkreten Stand belegt. Der eingefrorene P2-Korpus und seine
 historischen Receipts bleiben unverändert; lokale Übergabetests sind kein
 Qualitätsgewinn oder neuer Produktionsnachweis. Die offenen Ausführungs- und
 Budgetarbeiten in den bestehenden Entwurfs-PRs werden nicht parallel ersetzt.

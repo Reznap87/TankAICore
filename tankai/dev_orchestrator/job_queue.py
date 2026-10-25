@@ -30,12 +30,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from tankai.web.auth import AuthStore, WorkspaceAccess
 
 from .container_runtime import ContainerRuntimeError, DockerCommandExecutor
+from .code_request import CodeResponseSubmission, QueuedCodeResponsePayload, prepare_initial_code_submission
 from .code_repair import (
     CodeRepairSubmission, QueuedCodeRepairPayload, authorize_code_repair, prepare_code_repair_response,
 )
 from .fencing import FenceBusy, FenceError, FenceLost, LeaseFenceStore
 from .git_workspace import GitWorkspaceManager
-from .models import TaskState, WorkerIsolationSpec, WorkerPipelineJob, WorkerRunState
+from .models import ProjectState, TaskState, WorkerIsolationSpec, WorkerPipelineJob, WorkerRunState
 from .orchestrator import DevelopmentOrchestrator
 from .state_store import ProjectStateStore
 from .worker import WorkerPipelineRunner, pipeline_digest
@@ -72,6 +73,7 @@ def _payload_hash(
     repository_id: str,
     pipeline: WorkerPipelineJob,
     code_repair: CodeRepairSubmission | None = None,
+    code_response: CodeResponseSubmission | None = None,
 ) -> str:
     payload = {
         "user_id": user_id,
@@ -82,6 +84,8 @@ def _payload_hash(
     }
     if code_repair is not None:
         payload["code_repair"] = code_repair.model_dump(mode="json")
+    if code_response is not None:
+        payload["code_response"] = code_response.model_dump(mode="json")
     encoded = _canonical_json(payload).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -206,6 +210,7 @@ class QueuedDevelopmentJob(QueueModel):
     payload_sha256: str
     pipeline: WorkerPipelineJob
     code_repair: CodeRepairSubmission | None = None
+    code_response: CodeResponseSubmission | None = None
     image: str
     memory_mb: int
     cpus: float
@@ -1262,6 +1267,54 @@ class DevelopmentJobQueue:
             priority=priority, plan=plan,
         )
 
+    def enqueue_code_response_with_outcome(
+        self, *, actor_user_id: str, workspace_id: str, repository_id: str,
+        submission: CodeResponseSubmission, priority: int = 0,
+    ) -> JobEnqueueOutcome:
+        """Keep source and trusted checks attached until the controlled worker starts."""
+        access = self._access(actor_user_id, workspace_id)
+        self._require_admin(access)
+        repository = self.repository(repository_id)
+        if (not repository.enabled or repository.workspace_id != workspace_id
+                or repository.tenant_id != access.tenant_id):
+            raise PermissionError("Repository gehört nicht zum authentifizierten Workspace")
+        self._validate_repository_binding(repository, check_git=True)
+        submission = CodeResponseSubmission.model_validate(submission.model_dump(mode="json"))
+        request = submission.package.request
+        identity = _canonical_json([repository_id, request.task_id, request.agent_id, request.base_commit])
+        key = "code-response/" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT * FROM development_jobs WHERE repository_id=? AND idempotency_key=? LIMIT 1",
+                (repository_id, key),
+            ).fetchone()
+        if existing is not None:
+            stored = self._job_from_row(existing)
+            if stored.code_response != submission:
+                raise AdmissionDenied("Für diesen Codeauftrag wurde bereits eine andere Antwort eingereiht")
+            pipeline = stored.pipeline
+        else:
+            pipeline = prepare_initial_code_submission(
+                submission, state=ProjectStateStore(repository.state_path).load(),
+                repository=repository.repository_path,
+            )
+        plan = self._prepare_admission(
+            actor_user_id=actor_user_id, workspace_id=workspace_id, repository_id=repository_id,
+            pipeline=pipeline, idempotency_key=key, priority=priority,
+        )
+        raw = _canonical_json(QueuedCodeResponsePayload(
+            pipeline=pipeline, code_response=submission).model_dump(mode="json"))
+        if len(raw.encode("utf-8")) > 1_000_000:
+            raise AdmissionDenied("Codeantwort-Payload überschreitet 1 MB")
+        plan = replace(plan, payload_json=raw, payload_bytes=len(raw.encode("utf-8")),
+                       payload_sha256=_payload_hash(
+                           user_id=actor_user_id, tenant_id=access.tenant_id, workspace_id=workspace_id,
+                           repository_id=repository_id, pipeline=pipeline, code_response=submission))
+        return self._enqueue_admitted(
+            actor_user_id=actor_user_id, workspace_id=workspace_id, repository_id=repository_id,
+            priority=priority, plan=plan, repository_key=True,
+        )
+
     def enqueue_code_repair_with_outcome(
         self, *, actor_user_id: str, workspace_id: str, repository_id: str,
         submission: CodeRepairSubmission, priority: int = 0,
@@ -2086,7 +2139,11 @@ class DevelopmentJobQueue:
     def _job_from_row(row: sqlite3.Row) -> QueuedDevelopmentJob:
         payload = json.loads(row["payload_json"])
         code_repair = None
-        if "kind" in payload:
+        code_response = None
+        if payload.get("kind") == "code_response":
+            envelope = QueuedCodeResponsePayload.model_validate(payload)
+            pipeline, code_response = envelope.pipeline, envelope.code_response
+        elif "kind" in payload:
             envelope = QueuedCodeRepairPayload.model_validate(payload)
             pipeline, code_repair = envelope.pipeline, envelope.code_repair
         else:
@@ -2098,6 +2155,7 @@ class DevelopmentJobQueue:
             repository_id=row["repository_id"],
             pipeline=pipeline,
             code_repair=code_repair,
+            code_response=code_response,
         )
         if not hmac.compare_digest(expected, row["payload_sha256"]):
             raise QueueError("Persistierter Queue-Payload hat eine ungültige Prüfsumme")
@@ -2113,6 +2171,7 @@ class DevelopmentJobQueue:
             payload_sha256=row["payload_sha256"],
             pipeline=pipeline,
             code_repair=code_repair,
+            code_response=code_response,
             image=row["image"],
             memory_mb=row["memory_mb"],
             cpus=row["cpus"],
@@ -2217,7 +2276,11 @@ class QueuedWorkerDispatcher:
                 "workspace_id": lease.job.workspace_id, "tenant_id": lease.job.tenant_id,
                 "fence_epoch": str(lease.fence_epoch), "worker_id": self.worker_id,
             }
-            if lease.job.code_repair is not None:
+            if lease.job.code_response is not None:
+                if self.execute_pipeline is not None:
+                    raise QueueError("Codeantworten benötigen den kontrollierten Container-Runner")
+                result = self._execute_code_response(lease, execution_guard=execution_guard, container_metadata=metadata)
+            elif lease.job.code_repair is not None:
                 if self.execute_pipeline is not None:
                     raise QueueError("Korrekturjobs benötigen den kontrollierten Container-Runner")
                 result = self._execute_code_repair(lease, execution_guard=execution_guard, container_metadata=metadata)
@@ -2254,6 +2317,47 @@ class QueuedWorkerDispatcher:
             stop.set()
             if heartbeat_thread is not None:
                 heartbeat_thread.join(timeout=max(1.0, interval * 2))
+
+    def _execute_code_response(
+        self, lease: JobLease, *, execution_guard: Callable[[str], None],
+        container_metadata: dict[str, str],
+    ) -> dict[str, Any]:
+        submission = lease.job.code_response
+        if submission is None:
+            raise QueueError("Codeantwort-Kontext fehlt")
+        access = self.queue._access(lease.job.user_id, lease.job.workspace_id)
+        self.queue._require_admin(access)
+        self.queue.preflight_submission(
+            actor_user_id=lease.job.user_id, workspace_id=lease.job.workspace_id,
+            repository_id=lease.job.repository_id, pipeline=lease.job.pipeline,
+            idempotency_key=lease.job.idempotency_key, priority=lease.job.priority,
+        )
+
+        def validate_start(state: ProjectState) -> None:
+            execution_guard("code_response_before_validation")
+            self.queue._require_admin(self.queue._access(lease.job.user_id, lease.job.workspace_id))
+            self.queue.preflight_submission(
+                actor_user_id=lease.job.user_id, workspace_id=lease.job.workspace_id,
+                repository_id=lease.job.repository_id, pipeline=lease.job.pipeline,
+                idempotency_key=lease.job.idempotency_key, priority=lease.job.priority,
+            )
+            current = prepare_initial_code_submission(
+                submission, state=state, repository=lease.repository.repository_path,
+            )
+            if pipeline_digest(current) != pipeline_digest(lease.job.pipeline):
+                raise QueueError("Codeantwort und gespeicherter Worker-Job unterscheiden sich")
+            execution_guard("code_response_after_validation")
+
+        def guard(stage: str) -> None:
+            execution_guard(stage)
+            if stage in {"code_response_before_pipeline", "prepare_workspace"}:
+                validate_start(ProjectStateStore(lease.repository.state_path).load())
+
+        guard("code_response_before_pipeline")
+        return self._execute_default(
+            lease.repository, lease.job.pipeline, execution_guard=guard, container_metadata=container_metadata,
+            start_validator=validate_start,
+        )
 
     def _execute_code_repair(
         self, lease: JobLease, *, execution_guard: Callable[[str], None],
@@ -2302,6 +2406,7 @@ class QueuedWorkerDispatcher:
         *,
         execution_guard: Callable[[str], None],
         container_metadata: dict[str, str],
+        start_validator: Callable[[ProjectState], None] | None = None,
     ) -> dict[str, Any]:
         orchestrator = DevelopmentOrchestrator(ProjectStateStore(repository.state_path))
         manager = GitWorkspaceManager(repository.repository_path, repository.workspace_root)
@@ -2315,6 +2420,7 @@ class QueuedWorkerDispatcher:
             require_container_isolation=True,
             execution_guard=execution_guard,
             container_metadata=container_metadata,
+            start_validator=start_validator,
         ).run(pipeline)
         return {
             "run": result.run.model_dump(mode="json"),

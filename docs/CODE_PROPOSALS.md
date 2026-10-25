@@ -158,6 +158,68 @@ den Git-Blobs abweichen; dann blockiert die bestehende Hashprüfung. Der
 Request-/Response-Pfad normalisiert diese Abweichung nicht stillschweigend.
 Der Ausführungsarbeitsbereich muss die gebundenen Quellbytes bereitstellen.
 
+### Gebundene Erstantwort direkt in die Queue einreichen
+
+Owner und Admin können den ursprünglichen Codeauftrag, die Agentenantwort und
+den unveränderten Operator-Prüfvertrag gemeinsam einreichen. Der lokale
+Zwischenexport eines allgemeinen Worker-Jobs entfällt für diesen Pfad:
+
+```bash
+python -m tankai.dev_orchestrator.queue_cli \
+  --queue-db /srv/tankai/queue.db --auth-db /srv/tankai/auth.db \
+  --repository-base /srv/repositories --workspace-base /srv/worktrees \
+  --state-base /srv/states enqueue-code-response \
+  --actor-email owner@example.invalid --workspace-id EXISTING_WORKSPACE \
+  --repository-id EXISTING_REPOSITORY --request code-request.json \
+  --response code-response.json --checks checks.json
+```
+
+`checks.json` ist derselbe vertrauenswürdige Prüfvertrag wie beim Requestexport.
+Die Antwort bleibt das begrenzte `CodeResponse`-Objekt und kann keine eigenen
+Prüfungen oder Ausführungsbefehle hinzufügen. Nur Owner/Admin dürfen diese
+lokale Operator-Schnittstelle verwenden, auch wenn die allgemeine Queue-Policy
+Mitglieder für andere Jobs zulässt. Die Ausgabe nennt Job-ID, Requesthash und
+Replaystatus; Quelltext und vollständiger Payload werden nicht ausgegeben.
+
+Die Queue speichert einen versionierten internen `code_response`-Umschlag in
+ihrem bestehenden `payload_json`. Der vorhandene Payloadhash bindet auch den
+Request, die Antwort und die Operator-Prüfungen. Die SQL-Struktur und die
+externen Gateway-v1-Formate bleiben unverändert; es entsteht kein zusätzlicher
+HTTP-Endpunkt und keine neue Tokenberechtigung.
+
+Die Identität aus Repository, Task, Agent und Basiscommit wird serverseitig
+gebildet. Identische gleichzeitige Einreichungen durch verschiedene Admins
+ergeben denselben Job. Andere Antworten oder Prüfverträge für dieselbe Identität
+werden als Konflikt abgewiesen. Ein Replay kann den vorhandenen fertigen oder
+fehlgeschlagenen Job zurückgeben; es startet keine neue Implementierung.
+Aktuelle Zugriffsrechte und die Queue-Policy gelten auch für den Replayzugriff.
+
+Beim Einreihen entstehen keine Worktrees oder Worker-Runs und der ProjectState
+wird nicht verändert. Unter der Worker-Lease werden Berechtigung und Admission
+erneut geprüft. Vor dem Pipeline-Start, der Workspace-Vorbereitung und dem
+Anlegen des Runs wird die Antwort aus dem aktuellen Task-/Agentenvertrag,
+bestätigten Projektcommit, Git-Kontext und Prüfvertrag erneut kompiliert. Ihr
+Pipelinehash muss dem gespeicherten Job entsprechen. Eigene Dispatcher-Callbacks
+dürfen diesen Pfad nicht ausführen; er nutzt den bestehenden Runner mit
+verpflichtender Containerisolation und dessen Lease-/Fence-Kontrollen.
+Die letzte Startprüfung läuft innerhalb derselben ProjectState-Transaktion,
+die den Run speichert. Auch Änderungen während der Workspace-Bindung werden
+dadurch vor dem Start eines Befehls abgewiesen.
+
+Eine Erstantwort benötigt einen Task ohne bereits begonnenen Worker-Run.
+Nach einer Unterbrechung mit gespeichertem Run wird sie nicht blind neu
+implementiert. Dafür gelten die vorhandenen expliziten Wiederaufnahme- oder
+Korrekturpfade; ein automatisches Recovery für diesen Erstantwort-Umschlag ist
+noch nicht implementiert. Die neue Übergabe führt keine Inferenz aus und
+übermittelt keine Daten an einen Modellprovider. Automatische Antworterzeugung,
+Source-Grants und monetäre Admission bleiben eigenständige Voraussetzungen.
+
+Der reale rootless-CI-Test reicht auch die absichtlich fehlerhafte Erstantwort
+über diesen Umschlag ein, beobachtet ihren Worker-Testfehler und prüft das
+idempotente Replay. Der anschließende Korrektur-/Neustarttest bleibt erhalten.
+Der Receipt kennzeichnet diese zusätzlichen Prüfungen ausdrücklich mit
+`initial_code_response_queued` und `initial_duplicate_same_job`.
+
 ### Empfänger und Worker
 
 Die erzeugte Implementierungsanweisung ist ein fester Python-Stdlib-Empfänger.

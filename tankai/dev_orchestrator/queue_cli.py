@@ -91,6 +91,16 @@ def build_parser() -> argparse.ArgumentParser:
     repair.add_argument("--python-executable", default="python3")
     repair.add_argument("--priority", type=int, default=0)
 
+    response = sub.add_parser("enqueue-code-response", help="Reiht eine quellengebundene Agentenantwort ein")
+    response.add_argument("--actor-email", required=True)
+    response.add_argument("--workspace-id", required=True)
+    response.add_argument("--repository-id", required=True)
+    response.add_argument("--request", required=True)
+    response.add_argument("--response", required=True)
+    response.add_argument("--checks", required=True, help="Unveränderte operatorseitige Prüfungen")
+    response.add_argument("--python-executable", default="python3")
+    response.add_argument("--priority", type=int, default=0)
+
     jobs = sub.add_parser("list-jobs")
     jobs.add_argument("--actor-email", required=True)
     jobs.add_argument("--workspace-id", required=True)
@@ -360,6 +370,27 @@ def main(argv: list[str] | None = None) -> int:
                 priority=args.priority,
             )
             _dump(result)
+        elif args.command == "enqueue-code-response":
+            from .code_proposal import ProposalChecks, load_proposal_json
+            from .code_request import CodeRequestPackage, CodeResponse, CodeResponseSubmission
+            try:
+                submission = CodeResponseSubmission(
+                    package=CodeRequestPackage.model_validate(load_proposal_json(args.request, limit=131_072)),
+                    response=CodeResponse.model_validate(load_proposal_json(args.response, limit=16_384)),
+                    checks=ProposalChecks.model_validate(load_proposal_json(args.checks, limit=262_144)),
+                    python_executable=args.python_executable,
+                )
+            except (ValueError, OSError) as exc:
+                raise ValueError("Codeauftrag, Agentenantwort oder Prüfvertrag ist nicht gültig lesbar") from exc
+            result = queue.enqueue_code_response_with_outcome(
+                actor_user_id=_actor(queue, args.actor_email), workspace_id=args.workspace_id,
+                repository_id=args.repository_id, submission=submission, priority=args.priority,
+            )
+            _dump({"job": {"job_id": result.job.job_id, "repository_id": result.job.repository_id,
+                           "state": result.job.state.value, "image": result.job.image},
+                   "request_sha256": submission.package.request_sha256,
+                   "submitted": True, "executed": False, "model_called": False,
+                   "idempotent_replay": result.idempotent_replay})
         elif args.command == "enqueue-code-repair":
             from .code_proposal import load_proposal_json
             from .code_request import CodeResponse
