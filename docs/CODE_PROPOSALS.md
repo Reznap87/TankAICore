@@ -239,3 +239,78 @@ Containerprüfungen dieser neuen Wiederaufnahme verwenden einen Testexecutor;
 ein realer Container-Neustart oder ein öffentlicher Dauerbetrieb ist damit noch
 nicht belegt. Automatische Inferenz und Reparatur nach fehlgeschlagenen Tests
 sind weiterhin eigene Ausbauschritte.
+
+### Begrenzte Korrektur nach einem fehlgeschlagenen Worker-Test
+
+`prepare-code-repair-request` erstellt einen eigenen gebundenen Korrekturauftrag
+aus einem aktuellen blockierten Run. Voraussetzung sind ein gespeicherter
+Implementierungscommit, vollständig bestandene Implementierungsbefehle und ein
+konkret fehlgeschlagener Worker-Test. Runtime-/Integritätsfehler, offene oder
+fehlgeschlagene spätere Gates und alte Runs ohne Vertragsfingerprint sind kein
+Korrektureinstieg. Der bestätigte Task-Basisstand muss weiterhin aktuell sein.
+
+```bash
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  prepare-code-repair-request --repository /srv/tankai/repository \
+  --previous-job failed-job.json --run RUN-failed-id \
+  --edit-file src/service.py --context-file src/service.py \
+  --context-file tests/test_service.py --output repair-request.json
+```
+
+Die editierbaren Dateien werden ausdrücklich ausgewählt und müssen bereits im
+fehlgeschlagenen Commit geändert worden sein. Sie müssen vollständig im begrenzten
+Quellkontext stehen. Zusätzliche Test-/Kontextdateien bleiben unveränderbar.
+Read-Access, geschützte Dateipfade und Größenlimits folgen dem normalen Request.
+Der Quellkontext stammt aus `context_commit`, dem fehlgeschlagenen Commit.
+`base_commit` bleibt die ursprüngliche bestätigte Task-Basis. Die Agentenantwort
+verwendet diese Task-Basis und die Ausgangshashes des fehlgeschlagenen Codes.
+
+Das Feedback nennt Testbefehl, Index und Exitcode sowie Hash/Bytezahl der
+gespeicherten Ausgabe. Rohe Testausgaben werden nicht in den Korrekturauftrag
+kopiert. Benötigte Testquellen müssen ausdrücklich als lesbarer Kontext
+freigegeben werden. Die ursprünglichen Prüfbelege bleiben im ProjectState.
+
+Eine Agentenantwort verwendet weiterhin das bestehende `CodeResponse`-Format.
+Sie bindet sich an den Hash des Korrekturauftrags. Die drei nächsten Schritte
+bleiben bewusst getrennt:
+
+```bash
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  prepare-code-repair-response --repository /srv/tankai/repository \
+  --previous-job failed-job.json --request repair-request.json \
+  --response repair-response.json --output repair-job.json
+
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  authorize-code-repair --repository /srv/tankai/repository \
+  --workspace-root /srv/tankai/worktrees --previous-job failed-job.json \
+  --request repair-request.json --response repair-response.json
+
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  run-pipeline --repository /srv/tankai/repository \
+  --workspace-root /srv/tankai/worktrees --job repair-job.json
+```
+
+Bei einem abweichenden Python-Interpreter denselben `--python-executable`-Wert
+für Vorbereitung und Reservierung verwenden. Exportieren allein verändert
+keinen Zustand. `authorize-code-repair` reserviert nach erneuter Prüfung des
+sauberen Worktrees atomar einen von **höchstens zwei** Korrekturversuchen pro
+Task und öffnet den bestehenden Task über dessen bisherigen Rework-Vertrag.
+Eine zwischenzeitliche Zustandsänderung verhindert eine Teilreservierung.
+Ein bereits reservierter identischer Auftrag verbraucht keinen weiteren Versuch;
+nach dem Start liefert sein erneuter Aufruf nur den gespeicherten Run-Bezug zurück.
+
+Tests, Gates und Isolation stammen unverändert aus dem früheren Job. Der neue
+Worker prüft den reservierten Job- und Vertragsfingerprint sowie den exakten
+Startcommit vor der Ausführung. Er übernimmt die Reservierung in seinen eigenen
+Run und bewahrt den vorherigen blockierten Run. Auch ein nach der Reservierung
+fehlgeschlagener Start verbraucht den reservierten Versuch; es gibt keine
+automatische Erstattung oder unbegrenzte Wiederholung. Die vollständige kumulative
+Dateiliste des neuen Commits bleibt für Tests, Review und Wiederaufnahme gespeichert.
+
+Die neue Aktivierung ist ein lokaler Operatorpfad für vertraute Hostaufträge.
+Containeraufträge können als Korrektur vorbereitet werden, ihre Aktivierung wird
+hier jedoch bis zur Integration mit der vorhandenen Queue-/Fence-Steuerung
+abgewiesen. Die Isolation wird nicht herabgesetzt. Queue-Admission und bestehende
+Gateway-v1-Formate bleiben unverändert. Es gibt weiterhin keinen automatischen
+Modellaufruf, keine Datenübertragung und keinen eigenständig antwortenden
+Reparaturagenten. Korrekturantworten liefert ein ausdrücklich beteiligter Agent.

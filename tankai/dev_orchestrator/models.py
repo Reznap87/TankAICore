@@ -14,6 +14,9 @@ class OrchestratorModel(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
 
+MAX_CODE_REPAIR_ATTEMPTS = 2
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -548,6 +551,16 @@ class WorkerStatusMessage(OrchestratorModel):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class CodeRepairReservation(OrchestratorModel):
+    parent_run_id: str = Field(min_length=1, max_length=160)
+    attempt: int = Field(ge=1, le=MAX_CODE_REPAIR_ATTEMPTS, strict=True)
+    context_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    request_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    proposal_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    job_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class WorkerRunRecord(OrchestratorModel):
     run_id: str = Field(min_length=1, max_length=160)
     agent_id: str = Field(min_length=1, max_length=120)
@@ -558,6 +571,7 @@ class WorkerRunRecord(OrchestratorModel):
     execution_backend: WorkerExecutionBackend = WorkerExecutionBackend.HOST
     isolation: WorkerIsolationSpec | None = None
     resume_contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    code_repair: CodeRepairReservation | None = None
     integration_isolation: WorkerIsolationSpec | None = None
     state: WorkerRunState = WorkerRunState.PENDING
     phase: WorkerPhase = WorkerPhase.PREPARE
@@ -597,6 +611,8 @@ class TaskSpec(OrchestratorModel):
     qa_agent_id: str | None = None
     security_agent_id: str | None = None
     worker_run_id: str | None = None
+    code_repair_attempts: int = Field(default=0, ge=0, le=MAX_CODE_REPAIR_ATTEMPTS, strict=True)
+    pending_code_repair: CodeRepairReservation | None = None
     requires_security_review: bool = False
     security_approved: bool | None = None
     state: TaskState = TaskState.PENDING

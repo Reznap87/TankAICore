@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .code_proposal import (
     CodeProposal, ProposedFile, ProposalChecks, active_code_contract, prepare_code_proposal,
 )
-from .models import ProjectState, WorkerPipelineJob
+from .models import AgentSpec, ProjectState, TaskSpec, WorkerPipelineJob
 from .orchestrator import path_matches_scope
 from .worker import render_command
 
@@ -183,6 +183,16 @@ def build_code_request(
     data_class: Literal["public", "internal"] = "internal",
 ) -> CodeRequestPackage:
     task, agent = active_code_contract(state, agent_id)
+    return _request_for_contract(task=task, agent=agent, repository=repository,
+                                 context_paths=context_paths, checks=checks, data_class=data_class)
+
+
+def _request_for_contract(
+    *, task: TaskSpec, agent: AgentSpec, repository: str | Path,
+    context_paths: Sequence[str], checks: ProposalChecks,
+    data_class: Literal["public", "internal"], context_commit: str | None = None,
+) -> CodeRequestPackage:
+    """Share the same context bounds; repair callers must validate their journal first."""
     checks = ProposalChecks.model_validate(checks.model_dump(mode="json"))
     if task.base_commit != agent.base_commit:
         raise ValueError("Task and agent source revisions differ")
@@ -194,7 +204,7 @@ def build_code_request(
     paths = [_readable_context_path(path, agent.read_access) for path in context_paths]
     if len({path.casefold() for path in paths}) != len(paths):
         raise ValueError("Duplicate context paths")
-    snapshot = _GitSnapshot(repository, task.base_commit)
+    snapshot = _GitSnapshot(repository, context_commit or task.base_commit)
     fields = ("task_id", "goal", "base_commit", "assigned_agent_id", "allowed_paths",
               "denied_paths", "required_tests", "acceptance_criteria", "requires_security_review",
               "dependencies", "capability_id", "capability_action", "affected_components")
@@ -203,7 +213,7 @@ def build_code_request(
     contract = {"task": task.model_dump(mode="json", include=set(fields)),
                 "agent": agent.model_dump(mode="json", include=set(agent_fields))}
     request = CodeRequest(
-        task_id=task.task_id, agent_id=agent_id, base_commit=task.base_commit, goal=task.goal,
+        task_id=task.task_id, agent_id=agent.agent_id, base_commit=task.base_commit, goal=task.goal,
         acceptance_criteria=tuple(dict.fromkeys([*task.acceptance_criteria, *agent.acceptance_criteria])),
         required_tests=required, task_write_scopes=tuple(task.allowed_paths),
         agent_write_scopes=tuple(agent.allowed_paths),

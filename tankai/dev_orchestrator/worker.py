@@ -75,6 +75,11 @@ def _resume_contract(state: ProjectState, job: WorkerPipelineJob) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def pipeline_digest(job: WorkerPipelineJob) -> str:
+    raw = json.dumps(job.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class WorkerPipelineResult:
     run: WorkerRunRecord
@@ -110,10 +115,18 @@ class WorkerPipelineRunner:
         state = self.orchestrator.state()
         agent = state.agents[job.worker.agent_id]
         task = state.tasks[agent.task_id]
+        pending = task.pending_code_repair
+        if pending and (pending.job_sha256 != pipeline_digest(job)
+                        or pending.contract_sha256 != _resume_contract(state, job)
+                        or state.current_commit != task.base_commit
+                        or task.code_repair_attempts != pending.attempt):
+            raise ValidationError("Korrekturfreigabe passt nicht zum aktuellen Job oder Vertrag")
         reused_workspace = bool(agent.workspace_path or agent.branch)
         workspace = self.workspace_manager.get_or_create_workspace(agent)
         run_id = f"RUN-{task.task_id}-{uuid.uuid4().hex[:12]}"
         starting_head = self.workspace_manager.head_commit(workspace)
+        if pending and starting_head != pending.context_commit:
+            raise ValidationError("Korrektur-Workspace steht nicht auf dem freigegebenen Commit")
         run_started = False
         record = WorkerRunRecord(
             run_id=run_id,
@@ -204,6 +217,7 @@ class WorkerPipelineRunner:
                 phase=WorkerPhase.COMMIT,
                 message=f"Implementierung als Commit {implementation_commit} gespeichert.",
                 implementation_commit=implementation_commit,
+                changed_files=changed_files,
             )
 
             return self._finish_committed_run(run_id, workspace, job)

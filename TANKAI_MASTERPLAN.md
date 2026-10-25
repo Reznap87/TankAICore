@@ -1785,9 +1785,18 @@ abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufna
 verlangt die bestehende Queue-/Fence-Kontrolle und eine verwaisungsfreie Inventur;
 automatisches Dispatcher-Recovery und realer Container-Restart sind noch offen.
 
+Ein begrenzter lokaler Korrekturauftrag kann nach konkret fehlgeschlagenen
+Worker-Tests aus dem gespeicherten Fehlercommit vorbereitet werden. Nur explizit
+ausgewählte zuvor geänderte Dateien sind editierbar; Tests und Gates bleiben
+unverändert. Export und Aktivierung sind getrennt. Die Aktivierung reserviert
+atomar höchstens zwei Versuche im vorhandenen ProjectState, erhält alte
+Fehlerbelege und bindet den nächsten Run an Job, Vertrag und Startcommit.
+Rohe Testausgaben werden nicht in den Auftrag übernommen. Die neue lokale
+Aktivierung weist Containeraufträge bis zur Queue-/Fence-Anbindung ab.
+
 Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
-Programmieragenten-Adapter und selbstständige Testkorrektur bleiben eigenständige
-Schritte. Der eingefrorene P2-Korpus und seine
+Programmieragenten-Adapter, automatische Korrekturantworten und deren kontrollierte
+Queue-/Containerausführung bleiben eigenständige Schritte. Der eingefrorene P2-Korpus und seine
 historischen Receipts bleiben unverändert; lokale Übergabetests sind kein
 Qualitätsgewinn oder neuer Produktionsnachweis. Die offenen Ausführungs- und
 Budgetarbeiten in den bestehenden Entwurfs-PRs werden nicht parallel ersetzt.

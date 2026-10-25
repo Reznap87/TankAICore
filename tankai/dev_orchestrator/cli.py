@@ -122,6 +122,27 @@ def build_parser() -> argparse.ArgumentParser:
     response.add_argument("--python-executable", default="python3")
     response.add_argument("--output", required=True)
 
+    sub.add_parser("code-repair-request-schema", help="Zeigt das Schema begrenzter Korrekturaufträge")
+    repair = sub.add_parser("prepare-code-repair-request", help="Bereitet einen Auftrag nach fehlgeschlagenem Test vor")
+    repair.add_argument("--repository", required=True)
+    repair.add_argument("--previous-job", required=True)
+    repair.add_argument("--run", required=True)
+    repair.add_argument("--edit-file", action="append", required=True)
+    repair.add_argument("--context-file", action="append", required=True)
+    repair.add_argument("--data-class", choices=("public", "internal"), default="internal")
+    repair.add_argument("--output", required=True)
+    for name in ("prepare-code-repair-response", "authorize-code-repair"):
+        command = sub.add_parser(name, help="Prüft oder reserviert eine gebundene Codekorrektur")
+        command.add_argument("--repository", required=True)
+        command.add_argument("--previous-job", required=True)
+        command.add_argument("--request", required=True)
+        command.add_argument("--response", required=True)
+        command.add_argument("--python-executable", default="python3")
+        if name == "prepare-code-repair-response":
+            command.add_argument("--output", required=True)
+        else:
+            command.add_argument("--workspace-root", required=True)
+
     run = sub.add_parser(
         "run-pipeline",
         help="Führt einen genehmigten Worker-Job in einem isolierten Git-Worktree aus",
@@ -226,6 +247,10 @@ def main(argv: list[str] | None = None) -> int:
             from .code_request import CodeResponse
             print(json.dumps(CodeResponse.model_json_schema(), ensure_ascii=False, indent=2))
             return 0
+        if args.command == "code-repair-request-schema":
+            from .code_repair import CodeRepairRequestPackage
+            print(json.dumps(CodeRepairRequestPackage.model_json_schema(), ensure_ascii=False, indent=2))
+            return 0
         if args.command == "init":
             orchestrator = DevelopmentOrchestrator.initialize(
                 args.state,
@@ -284,6 +309,46 @@ def main(argv: list[str] | None = None) -> int:
             _write_new_json(args.output, payload)
             print(json.dumps({**metadata, "submitted": False, "executed": False,
                               "output": str(Path(args.output).resolve())}, ensure_ascii=False))
+            return 0
+        elif args.command in {"prepare-code-repair-request", "prepare-code-repair-response", "authorize-code-repair"}:
+            from .code_proposal import load_proposal_json
+            from .code_request import CodeResponse
+            from .code_repair import (
+                CodeRepairRequestPackage, authorize_code_repair, build_code_repair_request,
+                prepare_code_repair_response,
+            )
+            try:
+                previous = WorkerPipelineJob.model_validate(load_proposal_json(args.previous_job, limit=524_288))
+                if args.command == "prepare-code-repair-request":
+                    package = build_code_repair_request(
+                        state=orchestrator.state(), previous_job=previous, run_id=args.run,
+                        repository=args.repository, editable_paths=args.edit_file,
+                        context_paths=args.context_file, data_class=args.data_class,
+                    )
+                    _write_new_json(args.output, package.model_dump(mode="json"))
+                    result = {"request_prepared": True, "request_sha256": package.request_sha256,
+                              "attempt": package.request.attempt, "output": str(Path(args.output).resolve())}
+                else:
+                    package = CodeRepairRequestPackage.model_validate(load_proposal_json(args.request, limit=131_072))
+                    response = CodeResponse.model_validate(load_proposal_json(args.response, limit=16_384))
+                    if args.command == "prepare-code-repair-response":
+                        job = prepare_code_repair_response(
+                            package, response, state=orchestrator.state(), previous_job=previous,
+                            repository=args.repository, python_executable=args.python_executable,
+                        )
+                        _write_new_json(args.output, job.model_dump(mode="json"))
+                        result = {"prepared": True, "output": str(Path(args.output).resolve()),
+                                  "request_sha256": package.request_sha256, "attempt": package.request.attempt}
+                    else:
+                        authorization = authorize_code_repair(
+                            package, response, orchestrator=orchestrator, previous_job=previous,
+                            workspace_manager=GitWorkspaceManager(args.repository, args.workspace_root),
+                            python_executable=args.python_executable,
+                        )
+                        result = {"authorized": True, **authorization.model_dump(mode="json")}
+            except PydanticValidationError as exc:
+                raise ValueError("Korrekturauftrag oder Antwort verletzt den begrenzten Vertrag") from exc
+            print(json.dumps({**result, "submitted": False, "executed": False, "model_called": False}, ensure_ascii=False))
             return 0
         elif args.command == "begin-cycle":
             orchestrator.begin_cycle(reason=args.reason)

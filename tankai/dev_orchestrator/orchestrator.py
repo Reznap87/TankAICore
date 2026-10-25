@@ -16,6 +16,7 @@ from .models import (
     CapabilityAction,
     CapabilitySpec,
     CapabilityStatus,
+    CodeRepairReservation,
     DevelopmentRole,
     FileLock,
     ProjectState,
@@ -515,7 +516,13 @@ class DevelopmentOrchestrator:
                 raise ConflictError("Task besitzt bereits einen Worker-Run; vorhandenen Run fortsetzen")
             if record.base_commit != agent.base_commit or record.base_commit != task.base_commit:
                 raise ValidationError("Worker-Run verwendet nicht die bestätigte Agent-/Task-Basis")
+            pending = task.pending_code_repair
+            if pending and (record.resume_contract_sha256 != pending.contract_sha256
+                            or task.code_repair_attempts != pending.attempt):
+                raise ValidationError("Worker-Run passt nicht zur reservierten Korrektur")
             stored = record.model_copy(deep=True)
+            stored.code_repair = pending.model_copy(deep=True) if pending else None
+            task.pending_code_repair = None
             stored.state = WorkerRunState.RUNNING
             stored.phase = WorkerPhase.PREPARE
             stored.status_messages = [
@@ -1137,69 +1144,98 @@ class DevelopmentOrchestrator:
         _, task = self.store.transaction(mutate)
         return task
 
-    def reopen_task(self, task_id: str, *, reason: str) -> TaskSpec:
-        reason = reason.strip()
-        if not reason:
-            raise ValidationError("Grund für die Wiedereröffnung fehlt")
+    def reserve_code_repair(
+        self, reservation: CodeRepairReservation, *, expected_revision: int,
+    ) -> TaskSpec:
+        """Consume a bounded repair attempt and reopen its task in one transaction."""
+        reservation = CodeRepairReservation.model_validate(reservation.model_dump(mode="json"))
 
         def mutate(state: ProjectState) -> TaskSpec:
-            task = self._task(state, task_id)
-            if task.state != TaskState.BLOCKED:
-                raise TransitionError(f"Nur blockierte Tasks können wiedereröffnet werden: {task.state.value}")
-            if not task.assigned_agent_id:
-                raise TransitionError("Task besitzt keinen implementierenden Agenten")
-            agent = self._agent(state, task.assigned_agent_id)
-            if agent.status not in {
-                AgentStatus.COMPLETED,
-                AgentStatus.BLOCKED,
-                AgentStatus.REJECTED,
-                AgentStatus.WAITING_FOR_REVIEW,
-            }:
-                raise TransitionError(f"Agent kann nicht reaktiviert werden: {agent.status.value}")
-            if task.base_commit != state.current_commit:
-                if task.implementation_commit:
-                    raise TransitionError(
-                        "Worker-Task benötigt vor der Nacharbeit ein reales Git-Rebase; "
-                        "reine Zustandsänderung ist gesperrt"
-                    )
-                previous_base = task.base_commit
-                task.base_commit = state.current_commit
-                agent.base_commit = state.current_commit
-                self._event(state, "task_rebased_for_rework", "TECH_AI_ORCHESTRATOR", {
-                    "task_id": task_id,
-                    "previous_base_commit": previous_base,
-                    "new_base_commit": state.current_commit,
-                })
-            task.state = TaskState.ACTIVE
-            task.implementation_summary = ""
-            task.changed_files = []
-            task.implementation_commit = None
-            task.test_executions = []
-            task.worker_run_id = None
-            task.review_decision = ReviewDecision.PENDING
-            task.review_notes = ""
-            task.qa_status = QAStatus.PENDING
-            task.qa_executions = []
-            task.security_approved = None
-            task.security_notes = ""
-            task.reviewer_agent_id = None
-            task.qa_agent_id = None
-            task.security_agent_id = None
-            task.updated_at = utcnow()
-            agent.status = AgentStatus.ACTIVE
-            agent.worklog.append(f"Rework eröffnet: {reason}")
-            agent.updated_at = utcnow()
-            state.blocked_tasks = [item for item in state.blocked_tasks if item != task_id]
-            state.pending_reviews = [item for item in state.pending_reviews if item != task_id]
-            self._event(state, "task_reopened", "TECH_AI_ORCHESTRATOR", {
-                "task_id": task_id,
-                "agent_id": agent.agent_id,
-                "reason": reason,
+            if state.revision != expected_revision:
+                raise ConflictError("Projektzustand während der Korrekturprüfung verändert")
+            parent = state.worker_runs.get(reservation.parent_run_id)
+            if parent is None:
+                raise ValidationError("Korrektur benötigt den vorherigen Worker-Run")
+            task = self._task(state, parent.task_id)
+            if (parent.state != WorkerRunState.BLOCKED or task.worker_run_id != parent.run_id
+                    or parent.implementation_commit != reservation.context_commit
+                    or parent.base_commit != state.current_commit or task.pending_code_repair
+                    or reservation.attempt != task.code_repair_attempts + 1):
+                raise ValidationError("Korrekturfreigabe passt nicht zum aktuellen Fehlerzustand")
+            self._reopen_task(state, task.task_id, reason=f"Codekorrektur {reservation.attempt} für {parent.run_id}")
+            task.code_repair_attempts = reservation.attempt
+            task.pending_code_repair = reservation.model_copy(deep=True)
+            self._event(state, "code_repair_reserved", parent.agent_id, {
+                "parent_run_id": parent.run_id, "attempt": reservation.attempt,
+                "request_sha256": reservation.request_sha256, "proposal_sha256": reservation.proposal_sha256,
             })
             return task.model_copy(deep=True)
 
         _, task = self.store.transaction(mutate)
         return task
+
+    def reopen_task(self, task_id: str, *, reason: str) -> TaskSpec:
+        reason = reason.strip()
+        if not reason:
+            raise ValidationError("Grund für die Wiedereröffnung fehlt")
+        _, task = self.store.transaction(lambda state: self._reopen_task(state, task_id, reason=reason))
+        return task
+
+    def _reopen_task(self, state: ProjectState, task_id: str, *, reason: str) -> TaskSpec:
+        task = self._task(state, task_id)
+        if task.state != TaskState.BLOCKED:
+            raise TransitionError(f"Nur blockierte Tasks können wiedereröffnet werden: {task.state.value}")
+        if not task.assigned_agent_id:
+            raise TransitionError("Task besitzt keinen implementierenden Agenten")
+        agent = self._agent(state, task.assigned_agent_id)
+        if agent.status not in {
+            AgentStatus.COMPLETED,
+            AgentStatus.BLOCKED,
+            AgentStatus.REJECTED,
+            AgentStatus.WAITING_FOR_REVIEW,
+        }:
+            raise TransitionError(f"Agent kann nicht reaktiviert werden: {agent.status.value}")
+        if task.base_commit != state.current_commit:
+            if task.implementation_commit:
+                raise TransitionError(
+                    "Worker-Task benötigt vor der Nacharbeit ein reales Git-Rebase; "
+                    "reine Zustandsänderung ist gesperrt"
+                )
+            previous_base = task.base_commit
+            task.base_commit = state.current_commit
+            agent.base_commit = state.current_commit
+            self._event(state, "task_rebased_for_rework", "TECH_AI_ORCHESTRATOR", {
+                "task_id": task_id,
+                "previous_base_commit": previous_base,
+                "new_base_commit": state.current_commit,
+            })
+        task.state = TaskState.ACTIVE
+        task.implementation_summary = ""
+        task.changed_files = []
+        task.implementation_commit = None
+        task.test_executions = []
+        task.worker_run_id = None
+        task.review_decision = ReviewDecision.PENDING
+        task.review_notes = ""
+        task.qa_status = QAStatus.PENDING
+        task.qa_executions = []
+        task.security_approved = None
+        task.security_notes = ""
+        task.reviewer_agent_id = None
+        task.qa_agent_id = None
+        task.security_agent_id = None
+        task.updated_at = utcnow()
+        agent.status = AgentStatus.ACTIVE
+        agent.worklog.append(f"Rework eröffnet: {reason}")
+        agent.updated_at = utcnow()
+        state.blocked_tasks = [item for item in state.blocked_tasks if item != task_id]
+        state.pending_reviews = [item for item in state.pending_reviews if item != task_id]
+        self._event(state, "task_reopened", "TECH_AI_ORCHESTRATOR", {
+            "task_id": task_id,
+            "agent_id": agent.agent_id,
+            "reason": reason,
+        })
+        return task.model_copy(deep=True)
 
     def cancel_task(self, task_id: str, *, reason: str) -> TaskSpec:
         reason = reason.strip()
