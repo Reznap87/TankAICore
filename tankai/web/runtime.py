@@ -263,7 +263,8 @@ class WorkspaceRuntimeManager:
                 critic_llm=critic_llm,
                 require_independent_critic=(self.require_request_admission
                                           or _env_bool("TANKAI_REQUIRE_INDEPENDENT_CRITIC", False)),
-                require_research_evidence=_env_bool("TANKAI_REQUIRE_RESEARCH_EVIDENCE", True),
+                require_research_evidence=(self.require_request_admission
+                                          or _env_bool("TANKAI_REQUIRE_RESEARCH_EVIDENCE", True)),
                 max_llm_calls_per_run=5 if self.require_request_admission else _env_int(
                     "TANKAI_LLM_MAX_CALLS_PER_RUN", 40, minimum=7, maximum=40
                 ),

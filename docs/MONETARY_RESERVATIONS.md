@@ -126,6 +126,9 @@ current provider prices, model quality or deployed runtime behavior.
   conversion and every other billable item included). Unknown costs block sends.
 - Approve the actual owner/tenant/workspace identities at rollout; the explicit
   owner web path now enforces fresh session/membership checks on each attempt.
+- Review and pin real workspace source grants before the pilot. The explicit
+  owner path now rejects missing/expired grants and sends approved text through
+  the same request and money guard; see [source grants](SOURCE_GRANTS.md).
 - Review upstream completion/cancellation before any recovery/unlock. The web
   pilot blocks unknown active work durably; it has no automatic resume or reset.
 - Configure trusted storage and prove restart and application restore in the

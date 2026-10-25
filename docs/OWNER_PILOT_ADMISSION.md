@@ -34,9 +34,14 @@ hashing embeddings, one verified plan step, no execution retries and five model
 attempts. Provider adapters require monetary admission even when referenced
 outside the scope. Raw references and an in-memory call-counter reset cannot
 authorize a send. Runtime-cache eviction/recreation does not replace the ledger.
-External research is disabled; the configured evidence requirement is preserved,
-not silently relaxed. Approved source content is a separate unfinished gate;
-this increment does not provide a live evidence mode.
+External research is disabled. The pilot forces evidence checks on even if the
+ordinary flag disables them.
+`source_manifests` contains one immutable current workspace grant per configured
+source scope. Missing/expired grants block before job creation, and validity is
+rechecked at every send boundary alongside fresh session/membership checks.
+Every plan role consumes only those approved texts; tools and old source memory
+cannot supply an alternate evidence path. Both independent critic result checks
+receive the actual source texts. See [the source contract](SOURCE_GRANTS.md).
 
 ## Persistent uncertainty
 
@@ -77,6 +82,9 @@ stale/expired/revoked sessions, revocation during counting and after commit,
 global active-job limits, unknown prices, fresh application/ledger instances,
 preserved memory/results and abrupt subprocess exit inside an admitted attempt.
 No real credentials, provider inference or external search is required.
+`tests/test_owner_source_evidence.py` also checks the pinned-file-to-HTTP/Core
+path, source expiry at send boundaries, cross-workspace source isolation and
+failed citation gates even with a permissive critic and analysis-role plan.
 
 Default/public startup remains unchanged. Before any real pilot, verify current
 all-in tariffs and complete-request token ceilings, approved owner/workspace and

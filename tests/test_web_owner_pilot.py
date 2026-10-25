@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import threading
 import subprocess
 import sys
+import hashlib
+import re
 from datetime import timedelta
 from uuid import UUID
 
@@ -17,6 +19,8 @@ from tankai.core.monetary_budget import MonetaryBudget, PilotPolicy
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.web import runtime as runtime_module, server as web_server
 from tankai.web.owner_pilot import OwnerPilot, OwnerPilotForbidden
+from tankai.core.supplied_sources import ApprovedSourceBundle, SuppliedSource
+from tankai.web.source_manifest import WorkspaceSourceManifest
 from test_request_dispatch import ENDPOINTS, NOW, sdks, tariff
 from test_web_server import Client, _configure
 
@@ -48,17 +52,40 @@ def ledger(accounts, tmp_path):
         yield result
 
 
+def source_grant(accounts, workspace=None, *, text="Reviewed pilot fixture: value 42.", **changes):
+    workspace = workspace or accounts.workspace
+    source = SuppliedSource("Reviewed pilot fixture", f"https://example.org/{workspace}", text,
+                            hashlib.sha256(text.encode("utf-8")).hexdigest())
+    values = dict(owner_id=accounts.owner, tenant_id=accounts.tenant, workspace_id=workspace,
+                  valid_from=NOW, valid_until=NOW+86_400,
+                  bundle=ApprovedSourceBundle("pilot-review-001", (source,)))
+    values.update(changes)
+    return WorkspaceSourceManifest(**values)
+
+
 def pilot(accounts, ledger, **changes):
     options = dict(tenant_id=accounts.tenant,
                    workspace_ids=frozenset([accounts.workspace, accounts.second]),
                    tariffs={key: tariff(*key) for key in ENDPOINTS}, endpoints=ENDPOINTS,
                    input_token_bound=lambda request: 1000, clock=lambda: NOW)
     options.update(changes)
+    options.setdefault("source_manifests", tuple(source_grant(accounts, workspace)
+                                               for workspace in options["workspace_ids"]))
     return OwnerPilot(ledger, **options)
 
 
 @pytest.fixture
 def provider_factory(monkeypatch, sdks):
+    import test_request_dispatch as fixture_module
+    original = fixture_module.answer
+    def answer_with_citations(parameters):
+        result = original(parameters)
+        if result == "step result":
+            marker = re.search(r"\[(SRC-[A-F0-9]{8})\]", parameters["messages"][-1]["content"])
+            if marker:
+                return result + " [" + marker.group(1) + "]"
+        return result
+    monkeypatch.setattr(fixture_module, "answer", answer_with_citations)
     monkeypatch.setattr(runtime_module, "get_llm", lambda: OpenAILLM(
         model="main-v1", api_key="synthetic-offline-key", max_tokens=1000))
     monkeypatch.setattr(runtime_module, "get_critic_llm", lambda default: AnthropicLLM(
@@ -381,6 +408,9 @@ from tankai.core.monetary_budget import MonetaryBudget
 from tankai.core.request_pricing import TextTariff
 from tankai.web.auth import AuthStore
 from tankai.web.owner_pilot import OwnerPilot
+from tankai.core.supplied_sources import SuppliedSource, ApprovedSourceBundle
+from tankai.web.source_manifest import WorkspaceSourceManifest
+import hashlib
 now=1790000000
 path, auth_path, session_id, owner, tenant, workspace=sys.argv[1:]
 ledger=MonetaryBudget(path, clock=lambda: now)
@@ -391,8 +421,12 @@ endpoints={("openai","main-v1"):"https://openai.example.test/v1",
 tariffs={key:TextTariff("offline-tariff-v1",*key,now,now+86400,
     "https://example.test/pricing","EUR","1","1","0","1","0","0","0",None,True)
     for key in endpoints}
+source=SuppliedSource("Offline fixture","https://example.org/fixture","offline",
+    hashlib.sha256(b"offline").hexdigest())
+grant=WorkspaceSourceManifest(owner,tenant,workspace,now,now+86400,ApprovedSourceBundle("review",(source,)))
 pilot=OwnerPilot(ledger,tenant_id=tenant,workspace_ids=frozenset([workspace]),
-    tariffs=tariffs,endpoints=endpoints,input_token_bound=lambda request:1000,clock=lambda:now)
+    tariffs=tariffs,endpoints=endpoints,input_token_bound=lambda request:1000,clock=lambda:now,
+    source_manifests=(grant,))
 adapters=[]
 for cls, key in ((OpenAILLM,("openai","main-v1")),(AnthropicLLM,("anthropic","critic-v1"))):
     adapter=object.__new__(cls)

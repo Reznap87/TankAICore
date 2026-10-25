@@ -2017,6 +2017,9 @@ class Handler(BaseHTTPRequestHandler):
                                     success=False, details='{"reason":"owner_pilot_forbidden"}')
                 self._json({"error": "Besitzerpilot ist für diesen Zugang nicht freigegeben"}, 403)
                 return
+            except DispatchDenied:
+                self._json({"error": "Sichere Quellenfreigabe ist derzeit nicht möglich"}, 503)
+                return
             except Exception:
                 self._internal_error("owner_pilot_admission")
                 return
@@ -2057,7 +2060,12 @@ class Handler(BaseHTTPRequestHandler):
                 tank.llm_call_budget.set_call_guard(admit_provider_call)
                 try:
                     with (pilot.scope(context, self.app.auth, tank) if pilot else nullcontext(None)) as pilot_job_id:
-                        result = tank.run(goal_description=goal, definition_of_done=dod)
+                        if pilot is not None:
+                            sources = pilot.sources_for(context, self.app.auth)
+                            result = tank.run(goal_description=goal, definition_of_done=dod,
+                                              supplied_sources=sources)
+                        else:
+                            result = tank.run(goal_description=goal, definition_of_done=dod)
                 finally:
                     tank.llm_call_budget.set_call_guard(None)
                 plan_data = None
@@ -2103,6 +2111,8 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 if pilot is not None:
                     payload["monetary_admission"] = pilot.status(pilot_job_id)
+                    payload["evidence_mode"] = "supplied"
+                    payload["source_approval_id"] = sources.approval_id
                 runtime.history.append(payload)
             self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=True, details=json.dumps({"goal_id": result.goal_id, "status": payload["status"]}))
             self._json(payload)

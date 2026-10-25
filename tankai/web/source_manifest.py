@@ -2,7 +2,8 @@
 
 Loading and selection are offline and do not call AuthStore, providers, search
 or the Core. The caller must separately authenticate current owner membership.
-No HTTP input is a trusted approval; live consumption remains a separate gate.
+OwnerPilot performs that check before consuming a grant. No HTTP input is a
+trusted approval, and default/public startup does not activate this source mode.
 """
 from __future__ import annotations
 

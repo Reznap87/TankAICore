@@ -7,6 +7,8 @@ No automatic recovery closes an active job or assumes upstream cancellation.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import time
+from types import MappingProxyType
 from typing import Callable, Iterator, Mapping
 from uuid import UUID, uuid4
 
@@ -14,7 +16,9 @@ from tankai.core.llm import AnthropicLLM, OpenAILLM
 from tankai.core.monetary_budget import MonetaryBudget
 from tankai.core.request_dispatch import DispatchDenied, FrozenTextRequest, MonetaryDispatch
 from tankai.core.request_pricing import TextTariff
+from tankai.core.supplied_sources import ApprovedSourceBundle
 from tankai.web.auth import AuthContext, AuthStore
+from tankai.web.source_manifest import SourceManifestDenied, WorkspaceSourceManifest
 
 
 class OwnerPilotForbidden(PermissionError):
@@ -27,7 +31,8 @@ class OwnerPilot:
                  tariffs: Mapping[tuple[str, str], TextTariff],
                  endpoints: Mapping[tuple[str, str], str],
                  input_token_bound: Callable[[FrozenTextRequest], int],
-                 clock: Callable[[], int] | None = None) -> None:
+                 clock: Callable[[], int] | None = None,
+                 source_manifests: tuple[WorkspaceSourceManifest, ...] = ()) -> None:
         if (type(ledger) is not MonetaryBudget or type(workspace_ids) is not frozenset
                 or not 1 <= len(workspace_ids) <= 32):
             raise DispatchDenied("explicit shared ledger and approved workspaces required")
@@ -41,6 +46,18 @@ class OwnerPilot:
         self.tenant_id, self.workspace_ids = tenant_id, workspace_ids
         self._tariffs, self._endpoints = dict(tariffs), dict(endpoints)
         self._counter, self._clock = input_token_bound, clock
+        if type(source_manifests) is not tuple or len(source_manifests) > 32:
+            raise DispatchDenied("invalid source manifest collection")
+        approved = {}
+        for manifest in source_manifests:
+            if (type(manifest) is not WorkspaceSourceManifest
+                    or manifest.owner_id != ledger.policy.owner_id or manifest.tenant_id != tenant_id
+                    or manifest.workspace_id not in workspace_ids or manifest.workspace_id in approved
+                    or manifest.valid_from < ledger.policy.starts_at
+                    or manifest.valid_until > ledger.policy.expires_at):
+                raise DispatchDenied("source manifest does not match pilot scope")
+            approved[manifest.workspace_id] = manifest
+        self._sources = MappingProxyType(approved)
         # Validate configuration without creating an active job or permission.
         self._guard("configuration-check")
 
@@ -61,6 +78,27 @@ class OwnerPilot:
         access = auth.workspace_access(context.user_id, context.workspace_id)
         if access is None or access.tenant_id != self.tenant_id or access.role != "owner":
             raise OwnerPilotForbidden("Besitzerberechtigung ist nicht mehr gültig")
+        self._current_sources(context)
+
+    def _current_sources(self, context: AuthContext) -> ApprovedSourceBundle:
+        manifest = self._sources.get(context.workspace_id)
+        if manifest is None:
+            raise OwnerPilotForbidden("Für diesen Arbeitsraum fehlen freigegebene Quellen")
+        try:
+            now = self._clock() if self._clock is not None else int(time.time())
+        except Exception:
+            raise DispatchDenied("source approval clock unavailable") from None
+        if type(now) is not int or now < 0:
+            raise DispatchDenied("source approval clock unavailable")
+        try:
+            return manifest.select(owner_id=context.user_id, tenant_id=context.tenant_id,
+                                   workspace_id=context.workspace_id, now=now)
+        except SourceManifestDenied:
+            raise OwnerPilotForbidden("Quellenfreigabe ist derzeit nicht gültig") from None
+
+    def sources_for(self, context: AuthContext, auth: AuthStore) -> ApprovedSourceBundle:
+        self.authorize(context, auth)
+        return self._current_sources(context)
 
     @contextmanager
     def scope(self, context: AuthContext, auth: AuthStore, tank) -> Iterator[str]:

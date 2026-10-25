@@ -1,8 +1,9 @@
 """Bounded immutable text snapshots selected by trusted operator configuration.
 
 No URL is resolved or fetched. Digests pin text identity, not truth, freshness or
-an authenticated publisher. These values do not authorize browser uploads, model
-calls or research. Core/owner-pilot consumption is a separate integration gate.
+an authenticated publisher. Core consumes explicit bundles as untrusted data;
+owner-pilot admission separately checks current session, workspace and lifetime.
+These values alone do not authorize browser uploads, model calls or research.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import json
 import re
 from urllib.parse import urlsplit
 
-from .web_research import WebResearchError, _normalize_public_url
+from .web_research import ResearchEvidence, SourceRecord, WebResearchError, _normalize_public_url
 
 
 MAX_SOURCES = 5
@@ -86,3 +87,11 @@ class ApprovedSourceBundle:
             raise SuppliedSourceError("duplicate or colliding source identifiers")
         if len({source.url for source in self.sources}) != len(self.sources):
             raise SuppliedSourceError("ambiguous duplicate source URL")
+
+    def evidence(self, query: str) -> ResearchEvidence:
+        # Fresh mutable records cannot modify the immutable approved snapshot.
+        return ResearchEvidence(query=query[:800], provider="approved-supplied",
+            evidence_mode="supplied", approval_id=self.approval_id,
+            sources=[SourceRecord(source_id=source.source_id, title=source.title,
+                url=source.url, excerpt=source.text, fetched=False,
+                content_sha256=source.sha256) for source in self.sources])
