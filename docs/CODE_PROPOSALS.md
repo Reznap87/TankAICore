@@ -1,0 +1,120 @@
+# Begrenzte Codevorschläge von Programmieragenten
+
+Ein Programmieragent kann konkrete UTF-8-Dateiänderungen als `CodeProposal` liefern.
+Die neue lokale Vorbereitung übersetzt sie in den bestehenden `WorkerPipelineJob`.
+Sie ruft kein Modell auf, ändert keinen Projektzustand, reiht keinen Auftrag ein
+und startet keine Ausführung. Die automatische Generierung aus freiem Zieltext
+bleibt der nächste separate Adapterbaustein.
+
+## Vertrag
+
+Das Proposal enthält ausschließlich Version, Task-ID, exakten Basis-Commit und
+Dateiänderungen. Berechtigungen, Testbefehle, Gates, Images und Ressourcen stammen
+aus dem gespeicherten Auftrag beziehungsweise einem getrennten Operatorvertrag.
+Der Vorschlag kann diese Angaben nicht selbst festlegen.
+
+```json
+{
+  "schema_version": 1,
+  "task_id": "CODE-1",
+  "base_commit": "REPLACE_WITH_EXACT_40_CHARACTER_COMMIT",
+  "files": [
+    {
+      "path": "src/helper.py",
+      "expected_sha256": null,
+      "content": "def double(value: int) -> int:\n    return value * 2\n"
+    }
+  ]
+}
+```
+
+`null` bedeutet: Diese Datei muss neu sein. Beim Ersetzen ist der SHA-256 der
+aktuellen exakten Dateibytes im Worker-Arbeitsbereich erforderlich. Der Empfänger
+prüft alle Ausgangsdateien vor dem ersten Schreibvorgang und prüft jede Datei beim
+Schreiben erneut. Vorhandene Dateien werden ohne passenden Hash nicht ersetzt.
+Einrückung, Unicode und abschließende Zeilenumbrüche bleiben unverändert.
+
+Der erste Vertrag ist bewusst klein: höchstens acht Dateien und insgesamt
+8192 Bytes kanonisches Proposal-JSON. Bestehende Dateien sind auf 1 MiB begrenzt.
+Löschen, Binärdateien, Symlinks, Junctions, Hardlinks, Git-Metadaten und nicht
+portable Pfade gehören nicht zu diesem Vertrag. Dateipfad-Aliase und doppelte
+JSON-Schlüssel werden zurückgewiesen.
+
+## Vorbereitung per CLI
+
+Das maschinenlesbare Proposal-Schema ist auch ohne vorhandenen Zustand lesbar:
+
+```bash
+python -m tankai.dev_orchestrator.cli code-proposal-schema
+```
+
+Ein Owner/Operator stellt `checks.json` im bestehenden Format bereit:
+
+```json
+{
+  "test_commands": [{"argv": ["python3", "-m", "pytest", "-q"], "timeout_seconds": 30}],
+  "gates": {
+    "reviewer_agent_id": "EXISTING_REVIEWER_ID",
+    "review_commands": [{"argv": ["python3", "-m", "pytest", "-q"], "timeout_seconds": 30}],
+    "qa_agent_id": "EXISTING_QA_ID",
+    "qa_commands": [{"argv": ["python3", "-m", "pytest", "-q"], "timeout_seconds": 30}]
+  },
+  "isolation": {
+    "image": "tankai-worker@sha256:REPLACE_WITH_APPROVED_DIGEST",
+    "memory_mb": 512,
+    "cpus": 1,
+    "pids_limit": 128,
+    "user": "1000:1000"
+  }
+}
+```
+
+Beispielkennungen und Image-Digest durch den tatsächlichen freigegebenen Vertrag
+ersetzen. Alle Pflicht-Testbefehle des Tasks und Agenten müssen enthalten sein.
+Ein identischer Testlauf unter mehreren Rollen ist kein Nachweis unabhängiger
+fachlicher Modellbewertung.
+
+```bash
+python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
+  prepare-code-proposal --agent EXISTING_CODER_ID \
+  --proposal proposal.json --checks checks.json --output prepared-job.json
+```
+
+Task und zugewiesener Agent müssen aktiv sein und dieselbe Revision wie der
+Vorschlag verwenden. Alle Dateien müssen sowohl im Task- als auch im
+Agentenschreibbereich liegen. Ausschlüsse haben Vorrang.
+Die Ausgabedatei wird exklusiv mit eingeschränktem Dateimodus neu angelegt;
+bestehende Dateien und Symlink-Ziele werden nicht überschrieben.
+
+Die Antwort unterscheidet `prepared=true`, `submitted=false` und `executed=false`.
+Der exportierte Job ist unverändert mit dem bisherigen `run-pipeline` und der
+normalen Queue-Admission verwendbar. Deren Host-/Runtime-, Mandanten-, Image-,
+Ressourcen-, Lease-, Review-, QA- und gegebenenfalls Security-Gates bleiben Pflicht.
+Die Default-CLI nimmt `python3` im freigegebenen Image an; ein Operator kann den
+tatsächlichen Interpreter über `--python-executable` angeben.
+
+## Ausführung und Nachweise
+
+Die erzeugte Implementierungsanweisung ist ein fester Python-Stdlib-Empfänger.
+Das Proposal wird als gebundener Dateninhalt in der vorhandenen Befehlsumgebung
+übergeben. Es erzeugt keine modellbestimmten Shell-Kommandos und benötigt keinen
+Git-Zugriff im Container. Das bestehende Maskieren der Git-Metadaten bleibt erhalten.
+Die Grenze von 8 KiB hält auch diesen Transport für kleine Aufträge begrenzt.
+
+Der Empfänger meldet nur Proposal-Hash und Anzahl geschriebener Dateien. Der
+exportierte Job enthält trotzdem den gesamten Quelltext als Base64-Daten und muss
+entsprechend seiner Datenklasse geschützt werden; Base64 ist keine Verschlüsselung.
+Ein Hash ist ein Integritätsbezug und keine zusätzliche Berechtigung oder Signatur.
+
+Mehrere Dateischreibvorgänge sind keine atomare Gesamttransaktion. Ein I/O-Fehler
+oder eine Unterbrechung kann einen teilweise bearbeiteten Worktree hinterlassen.
+Dann greifen der Fehlerzustand und die vorhandene Recovery; das Proposal nicht
+blind erneut anwenden oder den Arbeitsstand löschen. Der Empfänger ersetzt keine
+Sandbox und keinen Schutz gegen fremde gleichzeitig schreibende Hostprozesse.
+Untrusted Ausführung bleibt an die bestehende isolierte Runtime gebunden.
+
+Die Regressionen prüfen reale Dateiänderungen und echte Git-Worktrees: Ein
+korrekter Vorschlag erreicht die vorhandenen technischen Gates; ein falsches
+Ergebnis scheitert am Pflicht-Test und erreicht weder Review noch QA. Queue-Tests
+prüfen weiterhin Image-/Isolationsadmission und Idempotenz. Dies ist ein Nachweis
+der Übergabe und Ausführung, kein neuer Qualitäts- oder Live-Provider-Receipt für P2.

@@ -1761,6 +1761,22 @@ Keine aktuelle Bestätigung des Runtime-SHA oder der dortigen Secretkonfiguratio
 Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und offene Abnahme.
 Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
 
+0.11.9 Vorstufe für kontrollierte Agenten-Codebeiträge
+
+Die lokale Vorbereitung `prepare-code-proposal` bindet begrenzte Dateiänderungen
+eines Programmieragenten an einen aktiven bestehenden Task, dessen Agenten,
+Basis-Commit, Schreibbereiche und Pflicht-Testbefehle. Der erzeugte Auftrag nutzt
+den unveränderten WorkerPipelineJob und weiterhin sämtliche Ausführungs-Gates.
+Details und Grenzen stehen in docs/CODE_PROPOSALS.md. Die Vorbereitung selbst
+verändert keinen Projektzustand, startet keine Queue und verwendet keinen Provider.
+
+Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
+Programmieragenten-Adapter, selbstständige Testkorrektur und Wiederaufnahme nach
+Unterbrechung bleiben eigenständige Schritte. Der eingefrorene P2-Korpus und seine
+historischen Receipts bleiben unverändert; lokale Übergabetests sind kein
+Qualitätsgewinn oder neuer Produktionsnachweis. Die offenen Ausführungs- und
+Budgetarbeiten in den bestehenden Entwurfs-PRs werden nicht parallel ersetzt.
+
 0.12 Reality-Contract-Versionshistorie
 
 5.7.45, 15. Oktober 2026:

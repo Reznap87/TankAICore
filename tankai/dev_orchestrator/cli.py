@@ -96,6 +96,14 @@ def build_parser() -> argparse.ArgumentParser:
     cycle.add_argument("--reason", required=True)
     sub.add_parser("demo", help="Erzeugt einen kontrollierten Spawn mit getrennten Pfaden")
 
+    sub.add_parser("code-proposal-schema", help="Zeigt das Schema für Agenten-Dateivorschläge")
+    prepare = sub.add_parser("prepare-code-proposal", help="Bereitet einen Datei-Vorschlag als Worker-Job vor")
+    prepare.add_argument("--agent", required=True)
+    prepare.add_argument("--proposal", required=True)
+    prepare.add_argument("--checks", required=True, help="Operatorseitige Tests, Gates und Isolation")
+    prepare.add_argument("--output", required=True, help="Neuer Pfad für den vorbereiteten Job")
+    prepare.add_argument("--python-executable", default="python3")
+
     run = sub.add_parser(
         "run-pipeline",
         help="Führt einen genehmigten Worker-Job in einem isolierten Git-Worktree aus",
@@ -176,6 +184,10 @@ def _load_integration_job(path: str) -> IntegrationJob:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "code-proposal-schema":
+            from .code_proposal import CodeProposal
+            print(json.dumps(CodeProposal.model_json_schema(), ensure_ascii=False, indent=2))
+            return 0
         if args.command == "init":
             orchestrator = DevelopmentOrchestrator.initialize(
                 args.state,
@@ -191,7 +203,25 @@ def main(argv: list[str] | None = None) -> int:
         else:
             orchestrator = DevelopmentOrchestrator(ProjectStateStore(args.state))
 
-        if args.command == "begin-cycle":
+        if args.command == "prepare-code-proposal":
+            from .code_proposal import CodeProposal, ProposalChecks, load_proposal_json, prepare_code_proposal
+            try:
+                proposal = CodeProposal.model_validate(load_proposal_json(args.proposal))
+                checks = ProposalChecks.model_validate(load_proposal_json(args.checks, limit=262_144))
+            except (ValueError, OSError) as exc:
+                raise ValueError("Codevorschlag oder Prüfvertrag ist nicht gültig lesbar") from exc
+            job = prepare_code_proposal(proposal, state=orchestrator.state(), agent_id=args.agent,
+                                        checks=checks, python_executable=args.python_executable)
+            # Preserve existing jobs/reviews, including symlink destinations.
+            output_fd = os.open(args.output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(output_fd, "w", encoding="utf-8") as stream:
+                stream.write(job.model_dump_json(indent=2))
+                stream.write("\n")
+            print(json.dumps({"prepared": True, "submitted": False, "executed": False,
+                              "proposal_sha256": proposal.digest(), "files": len(proposal.files),
+                              "output": str(Path(args.output).resolve())}, ensure_ascii=False))
+            return 0
+        elif args.command == "begin-cycle":
             orchestrator.begin_cycle(reason=args.reason)
         elif args.command == "demo":
             state = orchestrator.state()
@@ -285,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
         WorkerPoolError,
         IntegrationExecutionError,
         PydanticValidationError,
+        OSError,
         RuntimeError,
         ValueError,
     ) as exc:

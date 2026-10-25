@@ -13,6 +13,12 @@ definierte `WorkerPipelineJob`-Aufträge. Sie erzeugt noch nicht selbstständig
 aus einem freien Zieltext eine ausführbare Programmier-Pipeline. Ein autonomer
 Goal-to-Code-Compiler ist ein separates späteres Gate.
 
+Als lokale Vorstufe kann ein Operator bereits konkrete Dateiänderungen über
+[`prepare-code-proposal`](CODE_PROPOSALS.md) an den gespeicherten Task- und
+Agentenvertrag binden und in einen unveränderten `WorkerPipelineJob` übersetzen.
+Die Vorbereitung führt keinen Submit und keinen Modellaufruf aus. Der vorhandene
+v1-Job-Schemavertrag und sämtliche serverseitigen Admission-Gates bleiben unverändert.
+
 KI-Agenten registrieren sich nicht selbst. Ein menschlicher Workspace-Owner
 oder -Admin legt ein Service-Agentenkonto an, wählt die freigegebenen
 Repositories und Scopes und erzeugt einen zeitlich begrenzten Token. Der
