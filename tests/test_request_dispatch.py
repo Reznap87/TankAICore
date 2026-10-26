@@ -302,6 +302,108 @@ def test_closed_job_prevents_another_send(ledger, sdks):
     assert not sdks[0].calls
 
 
+@pytest.mark.parametrize("provider_index", [0, 1])
+@pytest.mark.parametrize("reason,elapsed", [
+    ("job_deadline", 120), ("pilot_expired", 86_400), ("tariff_not_current", 60),
+])
+def test_time_limits_are_rechecked_after_committed_reservation(
+    ledger, sdks, monkeypatch, provider_index, reason, elapsed,
+):
+    now = [NOW]
+    monkeypatch.setattr(ledger, "_clock", lambda: now[0])
+    checks = []
+
+    def authorize():
+        checks.append(True)
+        if len(checks) == 2:
+            # The final authorization can take time after the hold is durable.
+            with MonetaryBudget(ledger.path, clock=lambda: NOW) as independent:
+                assert independent.snapshot()["held_micro_eur"] == 2000
+            now[0] += elapsed
+
+    tariffs = {key: tariff(*key, valid_until=NOW + 60) for key in ENDPOINTS}
+    dispatcher = guard(ledger, tariffs=tariffs, authorize=authorize)
+    wrappers = wrapped(ledger, sdks, dispatcher=dispatcher)
+    with pytest.raises(BudgetDenied, match=reason):
+        wrappers[provider_index].complete("must expire before sending")
+    assert len(checks) == 2
+    assert not any(sdk.calls for sdk in sdks)
+    assert dispatcher.uncertain_upstream
+    state = ledger.snapshot()
+    assert state["attempts"] == state["unresolved_attempts"] == 1
+    assert state["held_micro_eur"] == 2000
+    # Late rejection must not authorize replay, refund the hold or free the job.
+    with MonetaryBudget(ledger.path, clock=lambda: now[0]) as reopened:
+        assert reopened.snapshot() == state
+        assert reopened.snapshot()["active_jobs"] == 1
+    with MonetaryBudget(ledger.path, clock=lambda: NOW) as earlier:
+        with pytest.raises(BudgetDenied, match="clock_regression"):
+            earlier.begin_job("clock-rollback", owner_id=OWNER)
+
+
+def test_final_dispatch_recheck_still_allows_send_before_deadline(ledger, sdks, monkeypatch):
+    now = [NOW]
+    monkeypatch.setattr(ledger, "_clock", lambda: now[0])
+    checks = []
+
+    def authorize():
+        checks.append(True)
+        if len(checks) == 2:
+            now[0] = NOW + 119
+
+    main, _, _ = wrapped(ledger, sdks, dispatcher=guard(ledger, authorize=authorize))
+    assert main.complete("still admitted") == "step result"
+    assert len(sdks[0].calls) == 1
+    assert ledger.snapshot()["attempts"] == 1
+
+
+@pytest.mark.parametrize("stop", ["closed_job", "pricing_halt"])
+def test_stop_committed_by_another_connection_after_reserve_prevents_send(
+    ledger, sdks, monkeypatch, stop,
+):
+    reserve = ledger.reserve
+
+    def reserve_then_stop(*args, **kwargs):
+        reservation = reserve(*args, **kwargs)
+        with MonetaryBudget(ledger.path, clock=lambda: NOW) as other:
+            if stop == "closed_job":
+                other.close_job("job", owner_id=OWNER)
+            else:
+                with pytest.raises(BudgetDenied, match="actual_exceeds_reservation"):
+                    other.settle(reservation.attempt_id, owner_id=OWNER,
+                                 actual_micro_eur=reservation.reserved_micro_eur + 1)
+        return reservation
+
+    monkeypatch.setattr(ledger, "reserve", reserve_then_stop)
+    dispatcher = guard(ledger)
+    main, _, _ = wrapped(ledger, sdks, dispatcher=dispatcher)
+    reason = "active_job_required" if stop == "closed_job" else "pilot_halted"
+    with pytest.raises(BudgetDenied, match=reason):
+        main.complete("stopped after commit")
+    assert not any(sdk.calls for sdk in sdks)
+    assert dispatcher.uncertain_upstream
+    state = ledger.snapshot()
+    assert state["held_micro_eur"] == 2000
+    assert state["attempts"] == state["unresolved_attempts"] == 1
+
+
+def test_dispatcher_clock_tariff_expiry_after_authorization_prevents_send(ledger, sdks):
+    dispatcher = guard(ledger)
+    checks = []
+
+    def authorize():
+        checks.append(True)
+        if len(checks) == 2:
+            dispatcher._clock = lambda: NOW + 86_400
+
+    dispatcher._authorize = authorize
+    main, _, _ = wrapped(ledger, sdks, dispatcher=dispatcher)
+    with pytest.raises(DispatchDenied, match="tariff is not current"):
+        main.complete("expired target")
+    assert not any(sdk.calls for sdk in sdks)
+    assert ledger.snapshot()["held_micro_eur"] == 2000
+
+
 def test_unsupported_delegate_cannot_silently_ignore_admission(ledger):
     class Unreviewed(BaseLLM):
         calls = 0

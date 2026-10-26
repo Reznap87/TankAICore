@@ -201,6 +201,8 @@ class MonetaryDispatch:
             # Denial here keeps the hold and blocks this uncertain job context.
             if self._authorize is not None:
                 self._authorize()
+            self.check_target(provider=provider, model=model, endpoint=endpoint)
+            self.ledger.check_dispatch(self.job_id, attempt_id, owner_id=self.owner_id)
             return send_once(request.parameters())
         except BaseException:
             self._uncertain_upstream.set()

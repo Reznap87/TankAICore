@@ -66,6 +66,19 @@ no default tokenizer or guessed character-to-token ratio. Input ceilings above
 12,000 tokens, output ceilings above 2,048 tokens, non-text messages, additional
 request fields, and serialized requests above 128,000 UTF-8 bytes are blocked.
 
+After the final session/source authorization, the dispatcher rechecks its target
+tariff and calls `MonetaryBudget.check_dispatch()` before invoking the SDK. The
+ledger revalidates the durable hold, owner/job binding, active job, pilot halt,
+monotonic observed time, pilot expiry, job admission deadline and stored quote
+validity. Time spent committing the reservation or authorizing the caller cannot
+silently retain the earlier approval. A job closure or pricing halt committed by
+another connection before this recheck also blocks the send. A late rejection
+keeps the full hold and stops the dispatcher; it grants no retry or refund.
+`check_dispatch()` creates no attempt and grants no replay permission: only the
+caller of a fresh `reserve()` with `dispatch_allowed=True` may send once. This
+is an admission check before SDK invocation, not a guarantee of completion or
+upstream cancellation at the deadline.
+
 `request_pricing.py` requires explicit reviewed EUR/USD tariff components,
 validity, sources, any FX ceiling, taxes, request fees and payment surcharges.
 It computes the all-in ceiling with exact rational arithmetic and rounds upward
@@ -111,7 +124,8 @@ python -m pip install -r requirements-dev.txt
 python -m pytest tests/test_monetary_budget.py tests/test_request_pricing.py tests/test_request_dispatch.py tests/test_request_dispatch_sdks.py -q
 ```
 
-The suite covers independently visible commits, shared main/critic/fallback
+The suite covers independently visible commits, final-authorization time expiry
+for both adapters, stops committed after reservation, shared main/critic/fallback
 balances, concurrent connections and independent Python processes, abrupt
 process exit, reopen/replay, job/day/total limits, unknown outcomes, settlement
 overruns, expiry/clock rollback, invalid input and manipulated SQLite schemas.

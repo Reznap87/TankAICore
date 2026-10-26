@@ -458,6 +458,17 @@ class MonetaryBudget:
         return Reservation(row["attempt_id"], row["job_id"], row["reserved_micro_eur"],
                            row["charged_micro_eur"], row["state"], dispatch_allowed)
 
+    def _dispatch_window(self, conn: sqlite3.Connection, now: int,
+                         job_id: str, quote: PriceQuote) -> None:
+        self._window(now)
+        job = conn.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+        if job is None or job["status"] != "active":
+            raise BudgetDenied("active_job_required")
+        if now >= job["started_at"] + self.policy.job_deadline_seconds:
+            raise BudgetDenied("job_deadline")
+        if not quote.valid_from <= now < quote.valid_until:
+            raise BudgetDenied("tariff_not_current")
+
     def begin_job(self, job_id: str, *, owner_id: str) -> Job:
         _identifier(job_id, "job_id")
         self._owner(owner_id)
@@ -493,14 +504,7 @@ class MonetaryBudget:
                 if existing["job_id"] != job_id or existing["quote_json"] != quote_json:
                     raise IdempotencyConflict("attempt_id already belongs to a different request")
                 return self._reservation(existing)
-            self._window(now)
-            job = conn.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
-            if job is None or job["status"] != "active":
-                raise BudgetDenied("active_job_required")
-            if now >= job["started_at"] + self.policy.job_deadline_seconds:
-                raise BudgetDenied("job_deadline")
-            if not quote.valid_from <= now < quote.valid_until:
-                raise BudgetDenied("tariff_not_current")
+            self._dispatch_window(conn, now, job_id, quote)
             day = (now - self.policy.starts_at) // DAY_SECONDS
             attempts = conn.execute("SELECT COUNT(*) FROM attempts WHERE job_id=?", (job_id,)).fetchone()[0]
             if attempts >= self.policy.max_attempts_per_job:
@@ -518,6 +522,27 @@ class MonetaryBudget:
                          (attempt_id, job_id, day, quote_json, quote.maximum_micro_eur, now))
             row = conn.execute("SELECT * FROM attempts WHERE attempt_id=?", (attempt_id,)).fetchone()
             return self._reservation(row, dispatch_allowed=True)
+
+    def check_dispatch(self, job_id: str, attempt_id: str, *, owner_id: str) -> None:
+        """Revalidate a fresh hold after admission callbacks, before its one send.
+
+        This creates no reservation, grants no replay permission and releases no
+        money. Only the caller receiving dispatch_allowed=True from reserve may
+        send once. Durable time observations and stops are checked again because
+        the original commit or a subsequent authorization can have taken time.
+        """
+        _identifier(job_id, "job_id")
+        _identifier(attempt_id, "attempt_id")
+        self._owner(owner_id)
+        with self._transaction() as conn:
+            now = self._observe(conn)
+            row = conn.execute("SELECT * FROM attempts WHERE attempt_id=?", (attempt_id,)).fetchone()
+            if row is None or row["job_id"] != job_id:
+                raise BudgetDenied("held_attempt_required")
+            quote = PriceQuote(**json.loads(row["quote_json"]))
+            self._dispatch_window(conn, now, job_id, quote)
+            if row["state"] != "held":
+                raise BudgetDenied("held_attempt_required")
 
     def settle(self, attempt_id: str, *, owner_id: str,
                actual_micro_eur: int | None) -> Reservation:

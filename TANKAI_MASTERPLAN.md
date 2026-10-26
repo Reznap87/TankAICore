@@ -21,7 +21,13 @@ vollständige Request wird vor dem SDK-Versuch eingefroren und konservativ
 bepreist; erst die dauerhaft bestätigte Reservierung erlaubt den Versand.
 SDK-/Transport-Retries, Redirects und Umgebungsproxies sind im geschützten Pfad
 deaktiviert. Echte SDKs werden mit lokal abgefangenem HTTP geprüft. Die
-explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,
+Nachprüfung vom 26. Oktober 2026 sperrt außerdem einen Versand, wenn während der
+letzten Berechtigungsprüfung nach dem Reservierungs-Commit Auftrag, Pilot oder
+Tarif ablaufen. Unmittelbar vor dem SDK-Aufruf werden Tarif und dauerhafter
+Reservierungs-/Auftragszustand erneut geprüft; auch inzwischen bestätigte
+Auftragsabschlüsse oder Preissperren stoppen den Versand. Eine späte Ablehnung
+erhält die volle Geldreservierung und erlaubt keinen automatischen Neuversuch.
+Die explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,
 Besitzerrolle, Mandant und freigegebene Arbeitsräume. Nach unsicheren Ausgängen
 oder Prozessabbruch bleibt der dauerhafte Auftragsplatz belegt; neue HTTP-Jobs
 umgehen ihn auch nach Neustart nicht. Zusätzliche Memory-Modellaufbereitung
