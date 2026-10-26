@@ -244,6 +244,11 @@ class MonetaryBudget:
             if self.path.is_symlink() or not self.path.is_file():
                 raise BudgetStateError("existing regular budget database required")
             stat = self.path.stat()
+            # SQLite journal/WAL names are path-derived. A hard-linked alias
+            # could address this inode with different sidecars and bypass the
+            # path-bound writer coordination and replacement checks.
+            if stat.st_nlink != 1:
+                raise BudgetStateError("exclusively named budget database required")
             if stat.st_size > MAX_LEDGER_BYTES:
                 raise BudgetStateError("budget database exceeds bounded pilot size")
             self._file_identity = (stat.st_dev, stat.st_ino)
@@ -372,6 +377,8 @@ class MonetaryBudget:
                 if self.path.is_symlink() or not self.path.is_file():
                     raise BudgetStateError("budget database is missing or replaced")
                 stat = self.path.stat()
+                if stat.st_nlink != 1:
+                    raise BudgetStateError("budget database has an unsafe file alias")
                 if stat.st_size > MAX_LEDGER_BYTES:
                     raise BudgetStateError("budget database exceeds bounded pilot size")
                 if (stat.st_dev, stat.st_ino) != self._file_identity:
@@ -585,7 +592,8 @@ class MonetaryBudget:
                 if len(data) > MAX_LEDGER_BYTES:
                     raise BudgetStateError("budget snapshot exceeds capacity")
                 stat = self.path.stat()
-                if self.path.is_symlink() or (stat.st_dev, stat.st_ino) != self._file_identity:
+                if (self.path.is_symlink() or stat.st_nlink != 1
+                        or (stat.st_dev, stat.st_ino) != self._file_identity):
                     raise BudgetStateError("budget database changed during snapshot")
                 self._check_snapshot(data, self.policy)
                 return data
@@ -642,7 +650,7 @@ class MonetaryBudget:
                 os.fsync(output.fileno())
                 identity = os.fstat(output.fileno())
             current = destination.stat()
-            if (destination.is_symlink() or has_sidecars()
+            if (destination.is_symlink() or current.st_nlink != 1 or has_sidecars()
                     or (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino)):
                 raise BudgetStateError("budget destination changed during restore")
             restored = cls(destination, clock=clock)

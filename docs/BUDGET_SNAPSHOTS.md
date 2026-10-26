@@ -38,7 +38,9 @@ The destination must be new, with an existing trusted parent directory and no
 preexisting `-wal`, `-shm` or `-journal` companion. Existing files, symlinks,
 directories and sidecars are never deleted or replaced. Exclusive creation
 also rejects a concurrently created destination. The new image is flushed and
-synced before it is opened and revalidated as a ledger. A failed write can leave
+synced before it is opened and revalidated as a ledger. It must still have
+exactly one filesystem link; a concurrently created hard-link alias aborts the
+restore before the ledger is returned. A failed write can leave
 a diagnostic file; a retry must fail rather than replace it. This is not a
 filesystem/power-loss durability proof for the deployment host.
 

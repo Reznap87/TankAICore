@@ -49,6 +49,9 @@ isolierte Datei erhält offene Reservierungen, aktive Auftragsplätze, Quoten,
 Preissperren und beobachtete Zeitgrenzen. Bestehende Dateien und SQLite-
 Begleitdateien werden nicht ersetzt. Ein frischer Prozess und die HTTP-
 Besitzerzulassung bleiben bei unklaren restaurierten Aufträgen gesperrt.
+Das Geldbuch akzeptiert außerdem keine Hardlink-Aliase: Vor dem Öffnen, vor jeder
+Transaktion und beim Restore muss die SQLite-Datei genau einen Dateinamen besitzen,
+damit abweichende WAL-/Journal-Pfade die gemeinsame Schreibsperre nicht umgehen.
 Der rohe Snapshot-Baustein allein ist kein produktiver Gesamtrestore, keine Verschlüsselung und kein Schutz
 gegen das absichtliche Zurückspielen alter Abbilder. Koordinierte Arbeitsraum-/
 Kontodaten, externer Aktualitätsnachweis und Host-Abnahme bleiben offen.

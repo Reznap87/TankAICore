@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -401,6 +402,33 @@ def test_missing_empty_corrupt_or_existing_database_is_never_initialized_silentl
         with pytest.raises(FileExistsError):
             MonetaryBudget.create(path, policy(), clock=Clock())
         assert path.read_bytes() == content
+
+
+def test_hardlinked_ledger_is_rejected_before_open(tmp_path):
+    path = tmp_path / "budget.sqlite"
+    alias = tmp_path / "budget-alias.sqlite"
+    with MonetaryBudget.create(path, policy(), clock=Clock()) as ledger:
+        assert ledger.snapshot()["jobs"] == 0
+    try:
+        os.link(path, alias)
+    except (OSError, NotImplementedError):
+        pytest.skip("hard links are unavailable")
+    with pytest.raises(BudgetStateError):
+        MonetaryBudget(path, clock=Clock())
+    with pytest.raises(BudgetStateError):
+        MonetaryBudget(alias, clock=Clock())
+
+
+def test_new_hardlink_fails_closed_on_open_connection(tmp_path):
+    path = tmp_path / "budget.sqlite"
+    alias = tmp_path / "budget-alias.sqlite"
+    with MonetaryBudget.create(path, policy(), clock=Clock()) as ledger:
+        try:
+            os.link(path, alias)
+        except (OSError, NotImplementedError):
+            pytest.skip("hard links are unavailable")
+        with pytest.raises(BudgetStateError):
+            ledger.begin_job("blocked", owner_id=OWNER)
 
 
 def test_oversized_state_is_rejected_before_loading_or_integrity_work(tmp_path):

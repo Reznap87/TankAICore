@@ -227,6 +227,24 @@ def test_symlink_destination_never_overwrites_its_target(tmp_path, budget):
     assert target.read_bytes() == b"untouched"
 
 
+def test_hardlink_created_during_restore_prevents_ledger_return(tmp_path, budget, monkeypatch):
+    destination = tmp_path / "recovered.sqlite"
+    alias = tmp_path / "recovered-alias.sqlite"
+    original_fsync = os.fsync
+
+    def link_after_sync(fd):
+        original_fsync(fd)
+        try:
+            os.link(destination, alias)
+        except (OSError, NotImplementedError):
+            pytest.skip("hard links are unavailable")
+
+    monkeypatch.setattr(os, "fsync", link_after_sync)
+    with pytest.raises(BudgetStateError):
+        restore(tmp_path, budget.export_snapshot(), budget.policy)
+    assert destination.exists() and alias.exists()
+
+
 def test_closed_export_is_rejected(tmp_path, budget):
     budget.close()
     with pytest.raises(BudgetStateError): budget.export_snapshot()

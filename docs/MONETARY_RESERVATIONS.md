@@ -33,6 +33,10 @@ schema, immutable policy and bounded state. Unapproved tables, views and
 triggers are rejected, including ordinary `sqliteX...` names that a SQL `LIKE`
 underscore wildcard would incorrectly hide. The private prototype's wildcard
 check is corrected in this change; that separate branch is not overwritten.
+The database must also have exactly one filesystem link before opening and
+before every transaction. A hard-linked alias could otherwise address the same
+SQLite inode through different WAL/journal sidecar names and evade path-bound
+writer coordination; creating such an alias on an open ledger fails closed.
 
 An explicit, currently valid `PriceQuote` must describe the conservative all-in
 ceiling of one bounded request. Missing/expired/future quotes and zero-price
