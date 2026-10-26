@@ -315,6 +315,8 @@ class WorkerPipelineRunner:
                         *(render_command(command) for command in job.gates.review_commands),
                     ],
                 )
+                if task.review_executions != run.review_executions:
+                    raise ValidationError("Gespeicherte Review-Belege unterscheiden sich")
             elif task.review_decision != ReviewDecision.PENDING:
                 raise ValidationError("Reviewzustand passt nicht zum Wiederaufnahmepunkt")
             if task.security_approved is not None:
@@ -325,6 +327,8 @@ class WorkerPipelineRunner:
                     run.security_executions,
                     [render_command(command) for command in job.gates.security_commands],
                 )
+                if task.security_executions != run.security_executions:
+                    raise ValidationError("Gespeicherte Security-Belege unterscheiden sich")
             if task.qa_status == QAStatus.PASSED:
                 if task.qa_agent_id != job.gates.qa_agent_id:
                     raise ValidationError("Gespeicherte QA-Identität unterscheidet sich")
@@ -483,6 +487,7 @@ class WorkerPipelineRunner:
                 gates.reviewer_agent_id,
                 approved=review_passed,
                 notes=self._gate_summary("Review", review_executions),
+                executions=review_executions,
             )
             if not review_passed:
                 raise TransitionError("Review-Gate hat die Änderung abgelehnt")
@@ -518,6 +523,7 @@ class WorkerPipelineRunner:
                 gates.security_agent_id,
                 approved=security_passed,
                 notes=self._gate_summary("Security", security_executions),
+                executions=security_executions,
             )
             if not security_passed:
                 raise TransitionError("Security-Gate hat die Änderung abgelehnt")

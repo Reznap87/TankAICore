@@ -623,9 +623,11 @@ class TaskSpec(OrchestratorModel):
     test_executions: list[TestExecution] = Field(default_factory=list)
     review_decision: ReviewDecision = ReviewDecision.PENDING
     review_notes: str = ""
+    review_executions: list[TestExecution] = Field(default_factory=list)
     qa_status: QAStatus = QAStatus.PENDING
     qa_executions: list[TestExecution] = Field(default_factory=list)
     security_notes: str = ""
+    security_executions: list[TestExecution] = Field(default_factory=list)
     integration_commit: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

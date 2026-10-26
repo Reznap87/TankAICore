@@ -272,7 +272,11 @@ Security- und QA-Belege müssen vollständig erfolgreich sein und exakt in der
 ursprünglichen Befehlsreihenfolge vorliegen; zusätzliche oder umsortierte Belege
 werden abgewiesen. Bei bestandener QA müssen außerdem die im Task und Worker-Run
 getrennt gespeicherten vollständigen QA-Belege identisch sein; abweichende
-Zusammenfassungen oder Zeitstempel sperren die Wiederaufnahme. Die
+Zusammenfassungen oder Zeitstempel sperren die Wiederaufnahme. Dasselbe gilt für
+bereits freigegebene Review- und Security-Belege: neue Worker-Runs speichern diese
+vollständig in Task und Worker-Run und verlangen bei der Wiederaufnahme exakte
+Übereinstimmung. Ältere Freigaben ohne diesen zweiten Belegsatz können nicht als
+wiederaufnehmbar behandelt werden. Die
 Repository-Zugehörigkeit wird geprüft. Ein pro Agent
 gehaltener Betriebssystem-Lock verhindert gleichzeitig laufende lokale Executor;
 der Lock wird beim Prozessende freigegeben. Seine Datei bleibt in den Git-Metadaten.
@@ -302,7 +306,8 @@ werden durch diese Ergänzung noch nicht automatisch auf Wiederaufnahme umgestel
 
 Die Tests decken mehrere persistierte Übergänge, einen tatsächlichen Prozess-Exit
 mit anschließendem CLI-Neustart, unveränderte Run-Identität, konkurrierende
-Prozesse, Vertrags-/Dateiänderungen, fehlende Implementierungsbelege und
+Prozesse, Vertrags-/Dateiänderungen, fehlende Implementierungsbelege, gespaltene
+Review-/Security-/QA-Journale und
 verweigerte Containerumgehungen ab.
 Containerprüfungen dieser neuen Wiederaufnahme verwenden einen Testexecutor;
 ein realer Container-Neustart oder ein öffentlicher Dauerbetrieb ist damit noch

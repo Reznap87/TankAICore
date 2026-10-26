@@ -1027,6 +1027,7 @@ class DevelopmentOrchestrator:
         *,
         approved: bool,
         notes: str,
+        executions: list[TestExecution] | None = None,
     ) -> TaskSpec:
         def mutate(state: ProjectState) -> TaskSpec:
             task = self._task(state, task_id)
@@ -1038,6 +1039,7 @@ class DevelopmentOrchestrator:
                 ReviewDecision.APPROVED if approved else ReviewDecision.REJECTED
             )
             task.review_notes = notes.strip()
+            task.review_executions = list(executions or [])
             task.updated_at = utcnow()
             if approved:
                 task.state = TaskState.QA_PENDING
@@ -1117,6 +1119,7 @@ class DevelopmentOrchestrator:
         *,
         approved: bool,
         notes: str,
+        executions: list[TestExecution] | None = None,
     ) -> TaskSpec:
         def mutate(state: ProjectState) -> TaskSpec:
             task = self._task(state, task_id)
@@ -1132,6 +1135,7 @@ class DevelopmentOrchestrator:
             task.security_agent_id = security_agent_id
             task.security_approved = approved
             task.security_notes = notes.strip()
+            task.security_executions = list(executions or [])
             task.updated_at = utcnow()
             if not approved:
                 task.state = TaskState.BLOCKED
@@ -1224,10 +1228,12 @@ class DevelopmentOrchestrator:
         task.worker_run_id = None
         task.review_decision = ReviewDecision.PENDING
         task.review_notes = ""
+        task.review_executions = []
         task.qa_status = QAStatus.PENDING
         task.qa_executions = []
         task.security_approved = None
         task.security_notes = ""
+        task.security_executions = []
         task.reviewer_agent_id = None
         task.qa_agent_id = None
         task.security_agent_id = None

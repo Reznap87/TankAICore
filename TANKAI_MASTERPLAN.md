@@ -1783,7 +1783,10 @@ Prüfbelege werden erneut gebunden; gespeicherte Befehlsbelege müssen dabei exa
 vollständig und in ihrer ursprünglichen Reihenfolge vorliegen. Zusätzliche oder
 umsortierte Belege werden abgewiesen. Bestandene QA muss im Task und Worker-Run
 denselben vollständigen Belegsatz besitzen; ein gespaltenes Journal wird vor jeder
-Fortsetzung abgewiesen. Die Implementierung wird nicht wiederholt.
+Fortsetzung abgewiesen. Neue Review- und Security-Freigaben speichern ihre
+vollständigen Belege ebenfalls im Task und Worker-Run; Wiederaufnahme verlangt
+auch dort exakte Übereinstimmung und weist ältere Freigaben ohne Task-Belege ab.
+Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
 abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme
 verlangt die bestehende Queue-/Fence-Kontrolle und eine verwaisungsfreie Inventur;
