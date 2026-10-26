@@ -52,13 +52,15 @@ def _read_regular(path: Path) -> bytes:
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= MAX_ENCRYPTED_BYTES:
         raise BudgetBackupError("bounded regular encrypted backup required")
+    if os.name != "nt" and before.st_nlink != 1:
+        raise BudgetBackupError("exclusively named encrypted backup required")
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     descriptor = os.open(path, flags)
     def identity(info):
         # Windows lstat and descriptor stat can expose different legacy ctime
         # meanings (creation vs change time). File ID/size/mtime remain checked;
         # POSIX additionally compares ctime. The pinned hash and GCM tag cover bytes.
-        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+        return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
                 info.st_ctime_ns if os.name != "nt" else 0)
     with os.fdopen(descriptor, "rb") as handle:
         opened = os.fstat(handle.fileno())

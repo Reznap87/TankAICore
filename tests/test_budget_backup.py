@@ -217,7 +217,7 @@ def test_metadata_change_during_read_is_rejected(budget, saved, monkeypatch):
         calls.append(fd)
         if len(calls) == 2:
             attrs = {name:getattr(info,name) for name in
-                     ("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns")}
+                     ("st_dev","st_ino","st_mode","st_nlink","st_size","st_mtime_ns","st_ctime_ns")}
             return SimpleNamespace(**{**attrs,"st_mtime_ns":info.st_mtime_ns+1})
         return info
     monkeypatch.setattr(os,"fstat",changed)
@@ -231,6 +231,18 @@ def test_linked_ciphertext_is_rejected(budget, saved, tmp_path):
     try: link.symlink_to(path)
     except (OSError,NotImplementedError): pytest.skip("symlink privilege unavailable")
     with pytest.raises(backup.BudgetBackupError): backup.verify_backup(link,key,**options(budget,receipt))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link contract")
+def test_hardlinked_ciphertext_is_rejected(budget, saved, tmp_path):
+    path,key,receipt,_ = saved
+    alias = tmp_path/"alias.enc"
+    try:
+        os.link(path, alias)
+    except OSError:
+        pytest.skip("hard links are unavailable")
+    with pytest.raises(backup.BudgetBackupError, match="exclusively named"):
+        backup.verify_backup(path,key,**options(budget,receipt))
 
 
 def test_fifo_is_rejected_without_opening(budget, tmp_path, monkeypatch):

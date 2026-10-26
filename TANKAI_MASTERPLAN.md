@@ -69,6 +69,10 @@ Verzeichniseinträge; ein bloßes Datei-`fsync` reicht für das Erfolgs-Receipt 
 Auch die erstmalige Anlage des aktiven Geldbuchs bestätigt Erfolg erst nach
 Synchronisation seines Verzeichniseintrags; damit kann ein bestätigter
 Schutzspeicher nicht allein wegen noch flüchtiger Verzeichnismetadaten fehlen.
+Verschlüsselte Geldbuch-Sicherungen müssen unter POSIX außerdem genau einen
+Dateinamen besitzen. Hardlink-Aliase und Änderungen der Linkanzahl während des
+Lesens werden abgewiesen, damit der unabhängig gepinnte Betreiberpfad eindeutig
+an das geprüfte Artefakt gebunden bleibt.
 Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche

@@ -59,10 +59,13 @@ be reused with a key. See the [library's authenticated-encryption contract](http
 
 Only regular bounded files are read, using no-follow/nonblocking flags where
 available, with file identity/size/mtime checks before and after reading.
-POSIX additionally checks ctime. Windows descriptor/path ctime can have different
-legacy meanings, so it is not used there; file ID, size, mtime, trusted digest
-and authentication tag still apply. Missing, linked, nonregular, changed,
-oversized, truncated, appended or foreign-format inputs fail closed.
+POSIX additionally requires exactly one directory link and checks ctime; a
+hard-linked alias is rejected and link-count changes remain part of the stable
+read identity. Windows descriptor/path ctime can have different legacy meanings,
+so it is not used there; file ID, link count, size, mtime, trusted digest and
+authentication tag still apply, while hard-link/ACL policy remains an operator
+filesystem responsibility. Missing, linked, nonregular, changed, oversized,
+truncated, appended or foreign-format inputs fail closed.
 
 Output creation is exclusive. Existing backups, restored databases and SQLite
 sidecars are never replaced. A write/sync/verification failure may leave a new
