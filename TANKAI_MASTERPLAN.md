@@ -27,6 +27,13 @@ Tarif ablaufen. Unmittelbar vor dem SDK-Aufruf werden Tarif und dauerhafter
 Reservierungs-/Auftragszustand erneut geprüft; auch inzwischen bestätigte
 Auftragsabschlüsse oder Preissperren stoppen den Versand. Eine späte Ablehnung
 erhält die volle Geldreservierung und erlaubt keinen automatischen Neuversuch.
+Der geschützte Antwortpfad begrenzt außerdem den HTTP-Body vor dem SDK-JSON-Parser
+auf 256.000 Bytes und den zurückgegebenen Text auf 128.000 UTF-8-Bytes. Gezählt
+wird der gelesene Stream unabhängig von einer fehlenden oder falschen Längenangabe;
+überzählige Daten und komprimierte Antworten werden vor der Weiterverarbeitung
+abgewiesen und der Stream geschlossen. Geldreservierung und Auftragsstopp bleiben
+auch nach einem Antwortlimit-Fehler über Anwendungsneustarts erhalten. Diese
+Byte-Grenzen ersetzen keinen Nachweis tatsächlich berechneter Anbietertokens.
 Die explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,
 Besitzerrolle, Mandant und freigegebene Arbeitsräume. Nach unsicheren Ausgängen
 oder Prozessabbruch bleibt der dauerhafte Auftragsplatz belegt; neue HTTP-Jobs

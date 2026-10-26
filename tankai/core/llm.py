@@ -14,6 +14,7 @@ import uuid
 from typing import Any, Callable
 
 from .request_dispatch import BoundDispatch, DispatchDenied, MonetaryDispatch
+from .response_limits import bounded_text, bounded_transport
 
 
 class BaseLLM(ABC):
@@ -504,7 +505,7 @@ def _request_with_admission(adapter: BaseLLM, parameters: dict, admission: Bound
     import httpx2
     # Supply the transport explicitly: some SDK wrappers build proxy mounts
     # from environment variables even when their outer client disables trust_env.
-    wire = httpx2.HTTPTransport(retries=0, trust_env=False)
+    wire = bounded_transport(httpx2.HTTPTransport(retries=0, trust_env=False))
     with DefaultHttpxClient(transport=wire, follow_redirects=False, trust_env=False) as transport:
         if transport.follow_redirects is not False:
             raise DispatchDenied("transport redirects must be disabled")
@@ -517,7 +518,7 @@ def _request_with_admission(adapter: BaseLLM, parameters: dict, admission: Bound
             provider=adapter.provider_name, model=adapter.model,
             endpoint=str(client.base_url), parameters=parameters,
             sdk_max_retries=client.max_retries, timeout_seconds=timeout,
-            send_once=lambda frozen: parse(send(**frozen)),
+            send_once=lambda frozen: bounded_text(parse(send(**frozen))),
         )
 
 

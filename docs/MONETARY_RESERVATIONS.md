@@ -103,6 +103,20 @@ is attempted. SDK imports, the transport implementation, trusted application
 code, model token accounting, endpoint infrastructure and upstream billing
 remain trust boundaries.
 
+The protected transport caps each HTTP response body at **256,000 bytes** before
+SDK JSON parsing, including error bodies and metadata. It counts streamed chunks
+even without `Content-Length` or with a false small length. An oversized chunk
+is rejected before entering the SDK's body buffer; the remaining stream is
+closed. Invalid or oversized declared lengths are rejected without reading the
+body. The transport requests `Accept-Encoding: identity` and rejects other
+response encodings before reading, preventing decompression after the byte cap.
+Returned text has a separate **128,000 UTF-8 byte** ceiling; invalid Unicode and
+oversized text fail before entering the Core. The requested 2,048-token ceiling
+still applies independently. Byte limits do not prove actual token usage,
+upstream charges, a total elapsed-time limit or upstream cancellation.
+Limits apply only to protected dispatch; default web imports do not require
+optional SDK/HTTP libraries. No compression fallback or extra send is attempted.
+
 Normal responses, malformed responses, errors and cancellations retain the full
 hold; token usage never refunds it automatically. A send/parsing/settlement
 failure blocks subsequent sends through the same dispatcher, including queued
@@ -139,6 +153,13 @@ HTTP attempt sees a committed hold, no SDK retry or redirect occurs, and no real
 provider request is made. Synthetic credentials, prices and reserved `.test`
 endpoints are used throughout. These tests prove the tested send paths, not
 current provider prices, model quality or deployed runtime behavior.
+
+`tests/test_response_limits.py` runs both installed SDKs against counted local
+streams. It checks early close, absent/false/invalid lengths, encoded bodies,
+exact body/text bounds, multi-byte output and invalid Unicode, and requires one
+held attempt without a retry. `tests/test_response_limits_http.py` checks that an
+output-limit rejection returns a bounded service error and preserves the active
+job and money hold through a fresh authenticated HTTP app and ledger reopen.
 
 ## Remaining gates
 
