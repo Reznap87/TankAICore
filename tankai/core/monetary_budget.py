@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import threading
 import tempfile
 import time
@@ -70,6 +71,22 @@ def _identifier(value: str, name: str) -> str:
 
 def _json(value: dict) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _sync_directory(path: Path) -> None:
+    """Persist a new recovery file's directory entry before reporting success."""
+    if os.name == "nt":
+        # Python cannot open Windows directories for FlushFileBuffers. Directory
+        # metadata durability remains an operator/filesystem responsibility.
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(Path(path), flags)
+    try:
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise BudgetStateError("budget recovery directory is invalid")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 @dataclass(frozen=True)
@@ -649,6 +666,7 @@ class MonetaryBudget:
                 output.flush()
                 os.fsync(output.fileno())
                 identity = os.fstat(output.fileno())
+            _sync_directory(destination.parent)
             current = destination.stat()
             if (destination.is_symlink() or current.st_nlink != 1 or has_sidecars()
                     or (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino)):

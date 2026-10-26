@@ -67,8 +67,10 @@ oversized, truncated, appended or foreign-format inputs fail closed.
 Output creation is exclusive. Existing backups, restored databases and SQLite
 sidecars are never replaced. A write/sync/verification failure may leave a new
 diagnostic ciphertext file; it is not acknowledged as a backup, and retry cannot
-overwrite it. Source/destination parents must be trusted operator directories.
-New files request POSIX mode 0600; Windows ACLs remain operator-managed.
+overwrite it. On POSIX, successful backup and restore receipts additionally
+require the new directory entry to be synced. Source/destination parents must be
+trusted operator directories. New files request POSIX mode 0600; Windows ACLs
+and directory-metadata durability remain operator-managed.
 
 ## Exact security boundary
 
@@ -94,9 +96,9 @@ the tests.
 It checks the persisted ciphertext, original-database loss, fresh nonces, wrong
 keys/policy/pins, tampering even with a recomputed digest, invalid encrypted
 database payloads, size bounds, changed reads, existing destinations/sidecars,
-write failure and unavailable optional encryption. A fresh process verifies that
-web imports do not activate the optional module/library. Unit network calls are
-forbidden.
+write failure, POSIX directory durability and unavailable optional encryption.
+A fresh process verifies that web imports do not activate the optional
+module/library. Unit network calls are forbidden.
 
 `tests/test_budget_backup_http.py` restores an uncertain encrypted ledger and
 starts fresh authenticated loopback HTTP apps: new owner jobs remain blocked

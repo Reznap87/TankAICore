@@ -63,6 +63,10 @@ Manipulationen oder abweichende Schlüssel/Politik sperren die Wiederherstellung
 Die Standardanwendung lädt diesen Wrapper nicht. Die Konten-/CSV-Vorarbeit in
 PR #102 bleibt getrennt und unverändert; ein konsistenter gemeinsamer Stand aller
 Konten-/Arbeitsraum-/Quellen-/Budgetdaten ist damit noch nicht nachgewiesen.
+Erweiterung vom 26. Oktober 2026: Erfolgreiche Geldbuch-Sicherungen und neue
+Restore-Dateien verlangen unter POSIX zusätzlich dauerhaft geschriebene
+Verzeichniseinträge; ein bloßes Datei-`fsync` reicht für das Erfolgs-Receipt nicht.
+Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
 Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.

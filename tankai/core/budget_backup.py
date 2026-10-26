@@ -16,7 +16,9 @@ import secrets
 import sqlite3
 import stat
 
-from .monetary_budget import BudgetStateError, MAX_LEDGER_BYTES, MonetaryBudget, PilotPolicy
+from .monetary_budget import (
+    BudgetStateError, MAX_LEDGER_BYTES, MonetaryBudget, PilotPolicy, _sync_directory,
+)
 
 
 MAGIC = b"TANKAI-MONETARY-BACKUP\x00\x01"
@@ -125,6 +127,7 @@ def create_backup(ledger: MonetaryBudget, destination: Path, key: bytes) -> dict
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+        _sync_directory(destination.parent)
         digest = hashlib.sha256(data).hexdigest()
         recovered, receipt = _decode(destination, key, digest, policy)
         if recovered != snapshot:

@@ -38,11 +38,14 @@ The destination must be new, with an existing trusted parent directory and no
 preexisting `-wal`, `-shm` or `-journal` companion. Existing files, symlinks,
 directories and sidecars are never deleted or replaced. Exclusive creation
 also rejects a concurrently created destination. The new image is flushed and
-synced before it is opened and revalidated as a ledger. It must still have
+synced before it is opened and revalidated as a ledger. On POSIX, the parent
+directory is synced as a separate durability boundary before success. It must
+still have
 exactly one filesystem link; a concurrently created hard-link alias aborts the
 restore before the ledger is returned. A failed write can leave
-a diagnostic file; a retry must fail rather than replace it. This is not a
-filesystem/power-loss durability proof for the deployment host.
+a diagnostic file; a retry must fail rather than replace it. Windows directory
+metadata durability and actual-host power-loss behavior remain operator/filesystem
+responsibilities.
 
 Held/unknown attempts keep their full exposure and replay denial. Active jobs
 remain active and block another owner HTTP job after fresh application, database
@@ -81,6 +84,8 @@ round-trip identity, pending/unknown/settled outcomes, replay protection, halt a
 clock/job/budget limits, invalid pins/policy/schema, size bounds, write failure,
 destination races and preservation of existing files/sidecars. A fresh Python
 process verifies that restored uncertainty still blocks a new job.
+POSIX regressions additionally require directory metadata to be synced before
+backup or restore success can be acknowledged.
 
 `tests/test_budget_recovery_http.py` uses actual session/CSRF/HTTP owner admission
 with a restored unknown hold and fresh app/ledger instances: no SDK send occurs.

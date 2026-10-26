@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import secrets
 import sqlite3
+import stat
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -164,6 +165,31 @@ def test_failed_ciphertext_sync_cannot_be_acknowledged_or_overwritten(tmp_path, 
     before = target.read_bytes()
     with pytest.raises(backup.BudgetBackupError): backup.create_backup(budget,target,key)
     assert target.read_bytes() == before
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose directory fsync through Python")
+@pytest.mark.parametrize("operation", ["backup", "restore"])
+def test_success_receipts_require_durable_directory_entries(
+    tmp_path, budget, monkeypatch, operation,
+):
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / "durable.enc"
+    receipt = backup.create_backup(budget, encrypted, key)
+    observed = []
+    real_fsync = backup.os.fsync
+
+    def recording_fsync(descriptor):
+        observed.append(stat.S_ISDIR(os.fstat(descriptor).st_mode))
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(backup.os, "fsync", recording_fsync)
+    if operation == "backup":
+        backup.create_backup(budget, tmp_path / "second.enc", key)
+    else:
+        backup.restore_backup(
+            encrypted, tmp_path / "restored.sqlite", key, **options(budget, receipt)
+        )
+    assert True in observed
 
 
 def test_persisted_ciphertext_is_checked_after_writing(tmp_path, budget, monkeypatch):
