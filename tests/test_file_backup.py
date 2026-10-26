@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import secrets
 import sqlite3
+import stat
 import subprocess
 import sys
 
@@ -270,6 +271,31 @@ def test_interrupted_write_does_not_remove_a_preexisting_file(original, tmp_path
         backup.create_backup(source, output, secrets.token_bytes(32))
     assert not output.exists()
     assert source.is_file()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Windows does not expose directory fsync through Python')
+def test_success_receipts_require_directory_metadata_flushes(original, tmp_path, monkeypatch):
+    """A successful backup/restore must persist new directory entries, not only file bytes."""
+    _, source, *_ = original
+    observed = []
+    real_fsync = backup.os.fsync
+
+    def recording_fsync(descriptor):
+        observed.append(stat.S_ISDIR(os.fstat(descriptor).st_mode))
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(backup.os, 'fsync', recording_fsync)
+    encrypted = tmp_path / 'durable.enc'
+    backup.create_backup(source, encrypted, secrets.token_bytes(32))
+    assert True in observed
+
+    observed.clear()
+    key = secrets.token_bytes(32)
+    second = tmp_path / 'restore.enc'
+    backup.create_backup(source, second, key)
+    observed.clear()
+    backup.restore_backup(second, tmp_path / 'durable-restore', key)
+    assert observed.count(True) >= 2
 
 
 @pytest.mark.parametrize('key', [b'', b'x' * 16, b'x' * 31, b'x' * 33, 'not-binary'])

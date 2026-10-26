@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import secrets
 import sqlite3
+import stat
 import subprocess
 import sys
 from urllib.request import Request
@@ -315,6 +316,27 @@ def test_existing_target_and_incomplete_restore_are_not_started(source, tmp_path
     monkeypatch.setenv('TANKAI_AUTH_MODE', 'session')
     with pytest.raises(RuntimeError, match='nicht abgeschlossen'):
         web_server.AppContext.from_env('127.0.0.1')
+
+
+@pytest.mark.skipif(recovery.csv_backup.os.name == 'nt',
+                    reason='Windows does not expose directory fsync through Python')
+def test_success_is_reported_only_after_recovery_metadata_is_durable(source, tmp_path, monkeypatch):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'pair.enc'
+    recovery.create_backup(root, encrypted, key)
+    observed = []
+    real_fsync = recovery.csv_backup.os.fsync
+
+    def recording_fsync(descriptor):
+        observed.append(stat.S_ISDIR(recovery.csv_backup.os.fstat(descriptor).st_mode))
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(recovery.csv_backup.os, 'fsync', recording_fsync)
+    recovery.restore_backup(encrypted, tmp_path / 'durable', key)
+    # Parent mkdir, completed database set and receipt/marker transition are
+    # separate metadata durability boundaries.
+    assert observed.count(True) >= 3
 
 
 def test_cli_receipts_contain_no_credentials_or_customer_content(source, tmp_path):

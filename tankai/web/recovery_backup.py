@@ -135,6 +135,7 @@ def create_backup(root, destination, key):
     data = MAGIC + nonce + cipher.encrypt(nonce, payload, AAD)
     destination = Path(destination)
     csv_backup._write_new(destination, data)
+    csv_backup._sync_directory(destination.parent)
     saved = csv_backup._read_regular(destination, MAX_ENCRYPTED_BYTES)
     verified, auth_data, csv_data, metadata = _decrypt(saved, key)
     if verified != payload:
@@ -169,10 +170,12 @@ def restore_backup(source, destination, key):
     restored_auth, access = _revoke_snapshot_access(auth_data)
     directory = Path(destination)
     directory.mkdir(mode=0o700)
+    csv_backup._sync_directory(directory.parent)
     pending = directory / RESTORE_PENDING_FILE
     csv_backup._write_new(pending, b"account-csv-recovery-v1\n")
     csv_backup._write_new(directory / "auth.db", restored_auth)
     csv_backup._write_new(directory / "csv-jobs.db", csv_data)
+    csv_backup._sync_directory(directory)
     if (csv_backup._read_regular(directory / "auth.db", MAX_AUTH_BYTES) != restored_auth or
             csv_backup._read_regular(directory / "csv-jobs.db", csv_backup.MAX_SNAPSHOT_BYTES) != csv_data):
         raise csv_backup.FileBackupError("Die wiederhergestellten Datenbanken stimmen nicht mit der Sicherung überein")
@@ -180,7 +183,9 @@ def restore_backup(source, destination, key):
               **access, "restoredAuthSha256": hashlib.sha256(restored_auth).hexdigest(),
               "restoredDatabasesVerified": True, "freshLoginRequired": True}
     csv_backup._write_new(directory / RECEIPT_FILE, (json.dumps(result) + "\n").encode())
+    csv_backup._sync_directory(directory)
     pending.unlink()
+    csv_backup._sync_directory(directory)
     return result
 
 

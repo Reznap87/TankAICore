@@ -211,6 +211,22 @@ def _write_new(path: Path, data: bytes) -> None:
         raise
 
 
+def _sync_directory(path: Path) -> None:
+    """Persist directory-entry changes before a success receipt on POSIX."""
+    if os.name == "nt":
+        # Python cannot open Windows directories for FlushFileBuffers. Directory
+        # ACLs and crash-consistent metadata remain an operator/filesystem duty.
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(Path(path), flags)
+    try:
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise FileBackupError("Sicherungsmetadaten konnten nicht dauerhaft geschrieben werden")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _receipt(data, payload, metadata):
     return {"format": "tankai-csv-backup-v1", "cipher": "AES-256-GCM", **metadata,
             "encryptedBytes": len(data), "encryptedSha256": hashlib.sha256(data).hexdigest(),
@@ -224,6 +240,7 @@ def create_backup(source: Path, destination: Path, key: bytes) -> dict:
     data = MAGIC + nonce + cipher.encrypt(nonce, payload, AAD)
     destination = Path(destination)
     _write_new(destination, data)
+    _sync_directory(destination.parent)
     # Verify persisted ciphertext rather than trusting an in-memory encryption buffer.
     saved = _read_regular(destination, MAX_ENCRYPTED_BYTES)
     verified, checked_metadata = _decrypt(saved, key)
@@ -245,8 +262,10 @@ def restore_backup(source: Path, destination_directory: Path, key: bytes) -> dic
     directory = Path(destination_directory)
     # A new directory also rules out existing WAL/SHM/journal sidecars at the destination.
     directory.mkdir(mode=0o700)
+    _sync_directory(directory.parent)
     destination = directory / "csv-jobs.db"
     _write_new(destination, payload)
+    _sync_directory(directory)
     saved = _read_regular(destination, MAX_SNAPSHOT_BYTES)
     if saved != payload:
         raise FileBackupError("Die zurückgespielte Datenbank stimmt nicht mit der Sicherung überein")

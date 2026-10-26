@@ -77,13 +77,19 @@ This avoids reactivating old credentials when recovering an earlier snapshot.
 
 The restore creates `.tankai-recovery-pending` before writing either database.
 It writes and verifies both databases and a value-free `recovery-receipt.json`,
-then removes the pending marker. The app refuses to start from a root with this
-marker. A failed restore can leave a partial new directory; inspect it and use a
-different new destination for a retry. Do not remove the marker to force startup.
+then removes the pending marker. On POSIX, the parent directory, completed
+database set, receipt and final marker removal are explicit directory-fsync
+durability boundaries before success is returned. The app refuses to start from
+a root with this marker. A failed restore can leave a partial new directory;
+inspect it and use a different new destination for a retry. Do not remove the
+marker to force startup.
 The app also refuses a completed recovery root if either member is missing, an
 external `TANKAI_AUTH_DB` points elsewhere, or external auth-state URL/token
 settings could overwrite the recovered accounts. Reconciling a remote auth-state
 service is a separate recovery/deployment action.
+
+Windows does not expose directory fsync through Python; directory-metadata
+durability and ACL enforcement there remain an operator/filesystem responsibility.
 
 The restored auth hash differs from the original snapshot hash because sessions
 and agent credentials were invalidated. Receipts distinguish the original auth

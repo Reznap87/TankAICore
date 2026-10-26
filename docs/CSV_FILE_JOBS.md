@@ -128,18 +128,22 @@ ciphertext with its authentication tag. The fixed format/cipher/scope header is
 authenticated as associated data. There is no compression or archive extraction.
 Only encrypted bytes are written during backup creation; the snapshot stays in
 process memory. The actual saved file is read back, authenticated and compared
-with the snapshot before success is returned. Snapshot size is limited to 64 MiB
-including SQLite overhead, with a 15-second snapshot deadline. Read size bounds
-also apply to encrypted input and key files.
+with the snapshot before success is returned. On POSIX, the containing directory
+is also flushed before the success receipt, so creating the encrypted file is a
+metadata durability boundary rather than only a file-content flush. Snapshot
+size is limited to 64 MiB including SQLite overhead, with a 15-second snapshot
+deadline. Read size bounds also apply to encrypted input and key files.
 
 `verify` authenticates and validates the saved file without creating an output.
 `restore` performs those checks **before** creating its destination. It requires
 a new directory and writes only `csv-jobs.db` there. An existing directory, file
 or journal sidecar is never replaced. The new file is flushed and reread; success
-includes its verified snapshot hash. A failed write returns an error and may
-leave an incomplete new restore directory; inspect it and choose a different new
-destination for a retry. On supported POSIX systems, files start at mode 0600
-and the new restore directory at mode 0700. Windows ACLs remain an operator duty.
+includes its verified snapshot hash. On POSIX, both the new directory entry and
+the restored database entry are flushed before success. A failed write returns
+an error and may leave an incomplete new restore directory; inspect it and choose
+a different new destination for a retry. On supported POSIX systems, files start
+at mode 0600 and the new restore directory at mode 0700. Windows ACLs and
+directory-metadata flushes remain an operator/filesystem duty.
 
 JSON receipts contain operation, format, cipher, job counts, byte counts and
 hashes. They contain no cell values, filenames, key material or passwords. The
