@@ -133,6 +133,10 @@ is also flushed before the success receipt, so creating the encrypted file is a
 metadata durability boundary rather than only a file-content flush. Snapshot
 size is limited to 64 MiB including SQLite overhead, with a 15-second snapshot
 deadline. Read size bounds also apply to encrypted input and key files.
+Every input read binds the path metadata before opening to the opened descriptor
+and checks the descriptor plus current path again after reading. Concurrent
+replacement, rename or mutation therefore fails closed instead of producing a
+receipt for bytes no longer named by the verified path.
 
 `verify` authenticates and validates the saved file without creating an output.
 `restore` performs those checks **before** creating its destination. It requires

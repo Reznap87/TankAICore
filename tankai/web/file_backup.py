@@ -40,18 +40,35 @@ def _cipher(key: bytes):
 
 def _read_regular(path: Path, limit: int, *, key_file=False) -> bytes:
     path = Path(path)
-    if path.is_symlink():
-        raise FileBackupError("Verknüpfte Eingabedateien sind nicht erlaubt")
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+        raise FileBackupError("Eingabedatei ist ungültig oder zu groß")
+    flags = (os.O_RDONLY | getattr(os, "O_BINARY", 0)
+             | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    descriptor = os.open(path, flags)
+
+    def identity(info):
+        # Windows lstat and descriptor stat expose different legacy ctime
+        # meanings. File ID/size/mtime remain checked there; POSIX also checks
+        # ctime. AES-GCM authenticates the bytes after this stable read.
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+                info.st_ctime_ns if os.name != "nt" else 0)
+
     with os.fdopen(descriptor, "rb") as handle:
-        info = os.fstat(handle.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
-            raise FileBackupError("Eingabedatei ist ungültig oder zu groß")
-        if key_file and os.name != "nt" and info.st_mode & 0o077:
+        opened = os.fstat(handle.fileno())
+        if not stat.S_ISREG(opened.st_mode) or identity(opened) != identity(before):
+            raise FileBackupError("Eingabedatei wurde vor dem Lesen geändert")
+        if key_file and os.name != "nt" and opened.st_mode & 0o077:
             raise FileBackupError("Die Schlüsseldatei darf nur dem Besitzer zugänglich sein")
         data = handle.read(limit + 1)
-        if len(data) > limit:
-            raise FileBackupError("Eingabedatei ist zu groß")
+        after = os.fstat(handle.fileno())
+        try:
+            current = path.lstat()
+        except OSError:
+            raise FileBackupError("Eingabedatei wurde während des Lesens geändert") from None
+        if (len(data) != opened.st_size or identity(after) != identity(opened)
+                or not stat.S_ISREG(current.st_mode) or identity(current) != identity(opened)):
+            raise FileBackupError("Eingabedatei wurde während des Lesens geändert")
         return data
 
 

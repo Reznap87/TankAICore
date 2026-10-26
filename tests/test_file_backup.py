@@ -238,6 +238,30 @@ def test_linked_inputs_or_outputs_are_not_followed(original, tmp_path):
     assert target.read_bytes() == b'leave unchanged'
 
 
+def test_backup_path_replacement_during_read_is_rejected(original, tmp_path, monkeypatch):
+    _, source, *_ = original
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'replaceable.enc'
+    moved = tmp_path / 'opened-inode.enc'
+    backup.create_backup(source, encrypted, key)
+    original_fstat = backup.os.fstat
+    replaced = False
+
+    def replace_after_open(descriptor):
+        nonlocal replaced
+        info = original_fstat(descriptor)
+        if not replaced:
+            replaced = True
+            encrypted.rename(moved)
+            encrypted.write_bytes(b'x' * info.st_size)
+        return info
+
+    monkeypatch.setattr(backup.os, 'fstat', replace_after_open)
+    with pytest.raises(backup.FileBackupError, match='geändert'):
+        backup.verify_backup(encrypted, key)
+    assert encrypted.read_bytes() != moved.read_bytes()
+
+
 @pytest.mark.skipif(os.name == 'nt', reason='POSIX permission contract; Windows uses directory ACLs')
 def test_cli_rejects_key_files_readable_by_other_accounts(original, tmp_path):
     _, source, *_ = original
