@@ -262,6 +262,28 @@ def test_backup_path_replacement_during_read_is_rejected(original, tmp_path, mon
     assert encrypted.read_bytes() != moved.read_bytes()
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX hard-link contract')
+def test_hard_linked_backup_and_key_inputs_are_rejected(original, tmp_path):
+    _, source, *_ = original
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'backup.enc'
+    backup.create_backup(source, encrypted, key)
+    encrypted_alias = tmp_path / 'backup-alias.enc'
+    key_path = tmp_path / 'recovery.key'
+    key_alias = tmp_path / 'recovery-alias.key'
+    key_file(key_path, key)
+    try:
+        os.link(encrypted, encrypted_alias)
+        os.link(key_path, key_alias)
+    except OSError:
+        pytest.skip('Creating hard links is unavailable on this filesystem')
+
+    with pytest.raises(backup.FileBackupError, match='Hardlink'):
+        backup.verify_backup(encrypted, key)
+    with pytest.raises(backup.FileBackupError, match='Hardlink'):
+        backup._read_regular(key_path, 32, key_file=True)
+
+
 @pytest.mark.skipif(os.name == 'nt', reason='POSIX permission contract; Windows uses directory ACLs')
 def test_cli_rejects_key_files_readable_by_other_accounts(original, tmp_path):
     _, source, *_ = original

@@ -136,7 +136,10 @@ deadline. Read size bounds also apply to encrypted input and key files.
 Every input read binds the path metadata before opening to the opened descriptor
 and checks the descriptor plus current path again after reading. Concurrent
 replacement, rename or mutation therefore fails closed instead of producing a
-receipt for bytes no longer named by the verified path.
+receipt for bytes no longer named by the verified path. On POSIX, encrypted
+inputs and key files must also have exactly one directory link. Hard-linked
+aliases are rejected, and the link count remains part of the stable read identity.
+Windows link and ACL policy remains an operator/filesystem responsibility.
 
 `verify` authenticates and validates the saved file without creating an output.
 `restore` performs those checks **before** creating its destination. It requires

@@ -69,6 +69,12 @@ relationship without writing a recovered root. `restore` completes all validatio
 before creating the new root. Files start at POSIX mode 0600 and the root at 0700;
 Windows requires appropriate operator-managed ACLs.
 
+Every encrypted-package and key-file read uses the shared bounded stable-file
+reader. On POSIX, those inputs must have exactly one directory link; hard-linked
+aliases are rejected and link-count changes during a read fail closed. This keeps
+the verified operator path bound to one file name. Windows hard-link and ACL
+policy remains an operator/filesystem responsibility.
+
 ## Fresh login and failure handling
 
 The restored copy retains password hashes, account IDs, roles, memberships,

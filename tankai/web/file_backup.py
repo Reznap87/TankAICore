@@ -43,6 +43,8 @@ def _read_regular(path: Path, limit: int, *, key_file=False) -> bytes:
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
         raise FileBackupError("Eingabedatei ist ungültig oder zu groß")
+    if os.name != "nt" and before.st_nlink != 1:
+        raise FileBackupError("Eingabedatei besitzt einen Hardlink-Alias")
     flags = (os.O_RDONLY | getattr(os, "O_BINARY", 0)
              | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     descriptor = os.open(path, flags)
@@ -51,7 +53,7 @@ def _read_regular(path: Path, limit: int, *, key_file=False) -> bytes:
         # Windows lstat and descriptor stat expose different legacy ctime
         # meanings. File ID/size/mtime remain checked there; POSIX also checks
         # ctime. AES-GCM authenticates the bytes after this stable read.
-        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+        return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
                 info.st_ctime_ns if os.name != "nt" else 0)
 
     with os.fdopen(descriptor, "rb") as handle:
