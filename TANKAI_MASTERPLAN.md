@@ -1781,7 +1781,9 @@ Neue Worker-Runs können lokal ab ihrem gespeicherten Implementierungscommit
 fortgesetzt werden. Auftrag, Task-/Agentenvertrag, Quellstand, Worktree und
 Prüfbelege werden erneut gebunden; gespeicherte Befehlsbelege müssen dabei exakt
 vollständig und in ihrer ursprünglichen Reihenfolge vorliegen. Zusätzliche oder
-umsortierte Belege werden abgewiesen. Die Implementierung wird nicht wiederholt.
+umsortierte Belege werden abgewiesen. Bestandene QA muss im Task und Worker-Run
+denselben vollständigen Belegsatz besitzen; ein gespaltenes Journal wird vor jeder
+Fortsetzung abgewiesen. Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
 abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme
 verlangt die bestehende Queue-/Fence-Kontrolle und eine verwaisungsfreie Inventur;

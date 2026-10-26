@@ -332,6 +332,8 @@ class WorkerPipelineRunner:
                     run.qa_executions,
                     [render_command(command) for command in job.gates.qa_commands],
                 )
+                if task.qa_executions != run.qa_executions:
+                    raise ValidationError("Gespeicherte QA-Belege unterscheiden sich")
             elif task.qa_status != QAStatus.PENDING:
                 raise ValidationError("Fehlgeschlagene QA kann nicht fortgesetzt werden")
             if task.state == TaskState.READY_TO_INTEGRATE:

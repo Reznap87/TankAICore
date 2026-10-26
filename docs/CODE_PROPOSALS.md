@@ -270,7 +270,10 @@ unveränderte Vorgaben, denselben gespeicherten Worktree und einen sauberen,
 unveränderten Commit. Bereits gespeicherte Implementierungs-, Test-, Review-,
 Security- und QA-Belege müssen vollständig erfolgreich sein und exakt in der
 ursprünglichen Befehlsreihenfolge vorliegen; zusätzliche oder umsortierte Belege
-werden abgewiesen. Die Repository-Zugehörigkeit wird geprüft. Ein pro Agent
+werden abgewiesen. Bei bestandener QA müssen außerdem die im Task und Worker-Run
+getrennt gespeicherten vollständigen QA-Belege identisch sein; abweichende
+Zusammenfassungen oder Zeitstempel sperren die Wiederaufnahme. Die
+Repository-Zugehörigkeit wird geprüft. Ein pro Agent
 gehaltener Betriebssystem-Lock verhindert gleichzeitig laufende lokale Executor;
 der Lock wird beim Prozessende freigegeben. Seine Datei bleibt in den Git-Metadaten.
 
