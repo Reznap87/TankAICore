@@ -233,6 +233,18 @@ def test_saved_approvals_require_the_matching_command_receipts(source_contract, 
     assert restarted.store.path.read_bytes() == before
 
 
+def test_resume_requires_the_original_implementation_receipts(source_contract, monkeypatch):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract)
+    restarted.store.transaction(
+        lambda state: state.worker_runs[saved.run_id].implementation_executions.clear()
+    )
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Befehlsbelege"):
+        WorkerPipelineRunner(restarted, manager).resume(job, run_id=saved.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
 @pytest.mark.parametrize("kind", ["extra", "reordered"])
 def test_saved_approvals_require_exact_ordered_command_receipts(
     source_contract, monkeypatch, kind,

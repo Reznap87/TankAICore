@@ -299,7 +299,8 @@ werden durch diese Ergänzung noch nicht automatisch auf Wiederaufnahme umgestel
 
 Die Tests decken mehrere persistierte Übergänge, einen tatsächlichen Prozess-Exit
 mit anschließendem CLI-Neustart, unveränderte Run-Identität, konkurrierende
-Prozesse, Vertrags-/Dateiänderungen und verweigerte Containerumgehungen ab.
+Prozesse, Vertrags-/Dateiänderungen, fehlende Implementierungsbelege und
+verweigerte Containerumgehungen ab.
 Containerprüfungen dieser neuen Wiederaufnahme verwenden einen Testexecutor;
 ein realer Container-Neustart oder ein öffentlicher Dauerbetrieb ist damit noch
 nicht belegt. Automatische Inferenz und Reparatur nach fehlgeschlagenen Tests

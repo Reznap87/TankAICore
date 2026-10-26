@@ -290,10 +290,10 @@ class WorkerPipelineRunner:
             )
             if not changed or sorted(changed) != sorted(run.changed_files):
                 raise ValidationError("Implementierungscommit und gespeicherte Dateien unterscheiden sich")
-                self._require_saved_commands(
-                    run.implementation_executions,
-                    [render_command(command) for command in job.worker.implementation_commands],
-                )
+            self._require_saved_commands(
+                run.implementation_executions,
+                [render_command(command) for command in job.worker.implementation_commands],
+            )
             if task.state != TaskState.ACTIVE:
                 if (task.implementation_commit != run.implementation_commit
                         or sorted(task.changed_files) != sorted(run.changed_files)):
