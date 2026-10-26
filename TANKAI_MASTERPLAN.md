@@ -66,6 +66,9 @@ Konten-/Arbeitsraum-/Quellen-/Budgetdaten ist damit noch nicht nachgewiesen.
 Erweiterung vom 26. Oktober 2026: Erfolgreiche Geldbuch-Sicherungen und neue
 Restore-Dateien verlangen unter POSIX zusätzlich dauerhaft geschriebene
 Verzeichniseinträge; ein bloßes Datei-`fsync` reicht für das Erfolgs-Receipt nicht.
+Auch die erstmalige Anlage des aktiven Geldbuchs bestätigt Erfolg erst nach
+Synchronisation seines Verzeichniseintrags; damit kann ein bestätigter
+Schutzspeicher nicht allein wegen noch flüchtiger Verzeichnismetadaten fehlen.
 Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche

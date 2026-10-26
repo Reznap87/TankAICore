@@ -28,7 +28,11 @@ upstream work. A clock rollback cannot restart an observed expired pilot.
 
 Missing, empty, corrupt, incompatible or unexpectedly changed state blocks new
 reservations. Only `create()` explicitly initializes a new file, with exclusive
-creation; it never resets an existing ledger. Every transaction revalidates the
+creation; it never resets an existing ledger. On POSIX, creation also syncs the
+parent directory after the SQLite commit and before returning the initialized
+ledger. A file-content commit without a durable directory entry is not reported
+as successful creation. Windows directory-metadata durability remains an
+operator/filesystem responsibility. Every transaction revalidates the
 schema, immutable policy and bounded state. Unapproved tables, views and
 triggers are rejected, including ordinary `sqliteX...` names that a SQL `LIKE`
 underscore wildcard would incorrectly hide. The private prototype's wildcard

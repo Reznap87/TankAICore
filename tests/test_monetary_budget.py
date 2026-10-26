@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import subprocess
 import sys
 
@@ -387,6 +388,21 @@ os._exit(0)
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose directory fsync through Python")
+def test_initial_ledger_creation_syncs_parent_directory_before_success(tmp_path, monkeypatch):
+    observed = []
+    real_fsync = os.fsync
+
+    def recording_fsync(descriptor):
+        observed.append(stat.S_ISDIR(os.fstat(descriptor).st_mode))
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+    with MonetaryBudget.create(tmp_path / "budget.sqlite", policy(), clock=Clock()):
+        pass
+    assert True in observed
 
 
 def test_missing_empty_corrupt_or_existing_database_is_never_initialized_silently(tmp_path):

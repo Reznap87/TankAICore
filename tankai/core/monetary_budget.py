@@ -244,6 +244,7 @@ class MonetaryBudget:
                 conn.close()
         # An initialization failure deliberately leaves the failed file in place
         # for diagnosis; a retry must not silently replace an existing budget.
+        _sync_directory(path.parent)
         return cls(path, clock=clock)
 
     @staticmethod
