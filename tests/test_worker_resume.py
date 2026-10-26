@@ -233,6 +233,27 @@ def test_saved_approvals_require_the_matching_command_receipts(source_contract, 
     assert restarted.store.path.read_bytes() == before
 
 
+@pytest.mark.parametrize("kind", ["extra", "reordered"])
+def test_saved_approvals_require_exact_ordered_command_receipts(
+    source_contract, monkeypatch, kind,
+):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract, "qa:command:1:before")
+
+    def mutate(state):
+        receipts = state.worker_runs[saved.run_id].review_executions
+        if kind == "extra":
+            receipts.append(receipts[-1].model_copy(deep=True))
+        else:
+            receipts.reverse()
+
+    restarted.store.transaction(mutate)
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Befehlsbelege"):
+        WorkerPipelineRunner(restarted, manager).resume(job, run_id=saved.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
 @pytest.mark.parametrize("guarded,orphan", [(False, False), (True, True), (True, False)])
 def test_container_resume_requires_fence_and_no_remaining_run_container(source_contract, monkeypatch, guarded, orphan):
     from types import SimpleNamespace

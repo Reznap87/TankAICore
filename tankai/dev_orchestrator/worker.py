@@ -12,7 +12,6 @@ import inspect
 import json
 import shlex
 import uuid
-from collections import Counter
 from dataclasses import dataclass
 from typing import Callable
 
@@ -291,30 +290,48 @@ class WorkerPipelineRunner:
             )
             if not changed or sorted(changed) != sorted(run.changed_files):
                 raise ValidationError("Implementierungscommit und gespeicherte Dateien unterscheiden sich")
-            self._require_saved_commands(run.implementation_executions, job.worker.implementation_commands)
+                self._require_saved_commands(
+                    run.implementation_executions,
+                    [render_command(command) for command in job.worker.implementation_commands],
+                )
             if task.state != TaskState.ACTIVE:
                 if (task.implementation_commit != run.implementation_commit
                         or sorted(task.changed_files) != sorted(run.changed_files)):
                     raise ValidationError("Task-Einreichung gehört nicht zum gespeicherten Commit")
-                self._require_saved_commands(run.test_executions, job.worker.test_commands)
+                self._require_saved_commands(
+                    run.test_executions,
+                    [render_command(command) for command in job.worker.test_commands],
+                )
                 if task.test_executions != run.test_executions:
                     raise ValidationError("Gespeicherte Testbelege unterscheiden sich")
             if task.state in {TaskState.QA_PENDING, TaskState.READY_TO_INTEGRATE}:
                 if (task.review_decision != ReviewDecision.APPROVED
                         or task.reviewer_agent_id != job.gates.reviewer_agent_id):
                     raise ValidationError("Gespeicherte Reviewfreigabe fehlt")
-                self._require_saved_commands(run.review_executions, job.gates.review_commands)
+                self._require_saved_commands(
+                    run.review_executions,
+                    [
+                        f"git diff --check {run.base_commit}..{run.implementation_commit}",
+                        *(render_command(command) for command in job.gates.review_commands),
+                    ],
+                )
             elif task.review_decision != ReviewDecision.PENDING:
                 raise ValidationError("Reviewzustand passt nicht zum Wiederaufnahmepunkt")
             if task.security_approved is not None:
                 if (not task.requires_security_review or task.security_approved is not True
                         or task.security_agent_id != job.gates.security_agent_id):
                     raise ValidationError("Gespeicherte Securityfreigabe ist ungültig")
-                self._require_saved_commands(run.security_executions, job.gates.security_commands)
+                self._require_saved_commands(
+                    run.security_executions,
+                    [render_command(command) for command in job.gates.security_commands],
+                )
             if task.qa_status == QAStatus.PASSED:
                 if task.qa_agent_id != job.gates.qa_agent_id:
                     raise ValidationError("Gespeicherte QA-Identität unterscheidet sich")
-                self._require_saved_commands(run.qa_executions, job.gates.qa_commands)
+                self._require_saved_commands(
+                    run.qa_executions,
+                    [render_command(command) for command in job.gates.qa_commands],
+                )
             elif task.qa_status != QAStatus.PENDING:
                 raise ValidationError("Fehlgeschlagene QA kann nicht fortgesetzt werden")
             if task.state == TaskState.READY_TO_INTEGRATE:
@@ -353,10 +370,9 @@ class WorkerPipelineRunner:
                 raise WorkerExecutionError(str(exc), run_id=run_id) from exc
 
     @staticmethod
-    def _require_saved_commands(executions: list[TestExecution], commands: list[CommandSpec]) -> None:
+    def _require_saved_commands(executions: list[TestExecution], expected: list[str]) -> None:
         if (not executions or not all(item.passed for item in executions)
-                or not Counter(render_command(command) for command in commands)
-                <= Counter(item.command for item in executions)):
+                or [item.command for item in executions] != expected):
             raise ValidationError("Gespeicherte Befehlsbelege sind unvollständig oder fehlgeschlagen")
 
     def _finish_committed_run(

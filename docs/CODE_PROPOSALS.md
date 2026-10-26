@@ -267,7 +267,10 @@ python -m tankai.dev_orchestrator.cli --state .tankai/project-state.json \
 Der ursprüngliche Executor und seine Kindprozesse müssen beendet sein. Die
 Wiederaufnahme verlangt denselben Auftrag, dieselben Tests und Prüfer,
 unveränderte Vorgaben, denselben gespeicherten Worktree und einen sauberen,
-unveränderten Commit. Die Repository-Zugehörigkeit wird geprüft. Ein pro Agent
+unveränderten Commit. Bereits gespeicherte Implementierungs-, Test-, Review-,
+Security- und QA-Belege müssen vollständig erfolgreich sein und exakt in der
+ursprünglichen Befehlsreihenfolge vorliegen; zusätzliche oder umsortierte Belege
+werden abgewiesen. Die Repository-Zugehörigkeit wird geprüft. Ein pro Agent
 gehaltener Betriebssystem-Lock verhindert gleichzeitig laufende lokale Executor;
 der Lock wird beim Prozessende freigegeben. Seine Datei bleibt in den Git-Metadaten.
 
