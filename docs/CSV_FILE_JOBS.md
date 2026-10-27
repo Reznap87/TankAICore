@@ -139,6 +139,10 @@ replacement, rename or mutation therefore fails closed instead of producing a
 receipt for bytes no longer named by the verified path. On POSIX, encrypted
 inputs and key files must also have exactly one directory link. Hard-linked
 aliases are rejected, and the link count remains part of the stable read identity.
+The plaintext SQLite source database is subject to the same single-link rule;
+its device, inode and link count are checked again after the online snapshot.
+This prevents a second pathname from acquiring a snapshot whose WAL/SHM sidecars
+belong to the original path.
 Windows link and ACL policy remains an operator/filesystem responsibility.
 
 `verify` authenticates and validates the saved file without creating an output.

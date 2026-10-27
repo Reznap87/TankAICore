@@ -284,6 +284,42 @@ def test_hard_linked_backup_and_key_inputs_are_rejected(original, tmp_path):
         backup._read_regular(key_path, 32, key_file=True)
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX hard-link contract')
+def test_hard_linked_source_database_is_rejected(original, tmp_path):
+    _, source, *_ = original
+    alias = tmp_path / 'source-alias.db'
+    try:
+        os.link(source, alias)
+    except OSError:
+        pytest.skip('Creating hard links is unavailable on this filesystem')
+
+    output = tmp_path / 'must-not-exist.enc'
+    with pytest.raises(backup.FileBackupError, match='Hardlink'):
+        backup.create_backup(source, output, secrets.token_bytes(32))
+    assert not output.exists()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX hard-link contract')
+def test_source_hardlink_created_during_snapshot_is_rejected(original, tmp_path, monkeypatch):
+    _, source, *_ = original
+    alias = tmp_path / 'late-source-alias.db'
+    validate = backup._validate_database
+
+    def create_alias_during_validation(database):
+        result = validate(database)
+        try:
+            os.link(source, alias)
+        except OSError:
+            pytest.skip('Creating hard links is unavailable on this filesystem')
+        return result
+
+    monkeypatch.setattr(backup, '_validate_database', create_alias_during_validation)
+    output = tmp_path / 'must-not-exist.enc'
+    with pytest.raises(backup.FileBackupError, match='geändert'):
+        backup.create_backup(source, output, secrets.token_bytes(32))
+    assert not output.exists()
+
+
 @pytest.mark.skipif(os.name == 'nt', reason='POSIX permission contract; Windows uses directory ACLs')
 def test_cli_rejects_key_files_readable_by_other_accounts(original, tmp_path):
     _, source, *_ = original

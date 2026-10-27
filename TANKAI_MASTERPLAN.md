@@ -7,6 +7,14 @@ Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Übe
 
 0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
 
+Entwurfsnachweis PR #102, 27. Oktober 2026: Die koordinierte lokale Konto-/CSV-
+Sicherung weist auf POSIX auch Hardlink-Aliasse der beiden SQLite-Quelldatenbanken
+zurück. Gerätekennung, Inode und Linkzahl müssen bis zum Ende jeder Online-
+Momentaufnahme stabil bleiben, damit pfadgebundene WAL-/SHM-Sidecars nicht von
+einem Alias getrennt werden. Synthetische Tests decken bestehende und während der
+Momentaufnahme neu angelegte Aliasse ab. Der PR bleibt Entwurf; dies ist weder ein
+Produktions-Backup-Beleg noch eine Deployment-, Secret- oder Provideränderung.
+
 5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als
 gewöhnliche SQLite-Tabellen und weist Trigger auf diesen Tabellen zurück. Views mit
 passenden Spalten oder nachgelagerte Trigger können damit keine Kontodatenbank ersetzen

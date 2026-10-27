@@ -31,7 +31,11 @@ source must contain both databases. Inputs must be regular files, not symlinks;
 their path and open-file identity, size and modification metadata must remain
 stable through the complete bounded read. A concurrent rename, replacement or
 write is rejected before any successful verification receipt. Missing databases
-are not created. Existing output files/directories are never replaced. A restored
+are not created. On POSIX, each source database must have exactly one directory
+link, and its device, inode and link count must remain stable until its online
+snapshot is complete. This keeps pathname-bound WAL/SHM sidecars associated with
+the source being copied. Windows hard-link policy remains an operator duty.
+Existing output files/directories are never replaced. A restored
 root is an offline recovery candidate, not an automatic
 switch of a running service. Use `TANKAI_AUTH_DB` pointing to its `auth.db` and
 `TANKAI_DATA_ROOT` pointing to the same new root for a private verification server.

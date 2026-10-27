@@ -158,8 +158,15 @@ def _snapshot(source: Path) -> tuple[bytes, dict]:
 
 def _sqlite_snapshot(source: Path, max_bytes: int, validator, *, deadline=None) -> tuple[bytes, dict]:
     source = Path(source)
-    if source.is_symlink() or not source.is_file() or source.stat().st_size > max_bytes:
+    try:
+        before = source.lstat()
+    except OSError:
+        raise FileBackupError("Die Quelldatenbank fehlt oder ist ungültig") from None
+    if (not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes):
         raise FileBackupError("Die Quelldatenbank fehlt oder ist ungültig")
+    if os.name != "nt" and before.st_nlink != 1:
+        raise FileBackupError("Die Quelldatenbank besitzt einen Hardlink-Alias")
+    source_identity = (before.st_dev, before.st_ino, before.st_nlink)
     if deadline is None:
         deadline = time.monotonic() + SNAPSHOT_TIMEOUT_SECONDS
     src = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
@@ -182,6 +189,13 @@ def _sqlite_snapshot(source: Path, max_bytes: int, validator, *, deadline=None) 
         # deserialize: https://www.sqlite.org/c3ref/deserialize.html
         if data[18:20] not in (b"\x01\x01", b"\x02\x02"):
             raise FileBackupError("Die Momentaufnahme hat ein unbekanntes Journalformat")
+        try:
+            current = source.lstat()
+        except OSError:
+            raise FileBackupError("Die Quelldatenbank wurde während der Momentaufnahme geändert") from None
+        if (not stat.S_ISREG(current.st_mode)
+                or (current.st_dev, current.st_ino, current.st_nlink) != source_identity):
+            raise FileBackupError("Die Quelldatenbank wurde während der Momentaufnahme geändert")
         data = data[:18] + b"\x01\x01" + data[20:]
         return data, metadata
     finally:

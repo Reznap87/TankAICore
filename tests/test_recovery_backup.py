@@ -1,5 +1,6 @@
 """Account and CSV recovery from one encrypted, coordinated offline package."""
 import json
+import os
 from pathlib import Path
 import secrets
 import sqlite3
@@ -271,6 +272,22 @@ def test_missing_source_does_not_create_databases(tmp_path):
     with pytest.raises(recovery.csv_backup.FileBackupError):
         recovery.create_backup(root, tmp_path / 'not-created.enc', secrets.token_bytes(32))
     assert list(root.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX hard-link contract')
+@pytest.mark.parametrize('database', ['auth.db', 'csv-jobs.db'])
+def test_hard_linked_pair_source_database_is_rejected(source, tmp_path, database):
+    root, *_ = source
+    alias = tmp_path / f'{database}.alias'
+    try:
+        os.link(root / database, alias)
+    except OSError:
+        pytest.skip('Creating hard links is unavailable on this filesystem')
+
+    output = tmp_path / 'must-not-exist.enc'
+    with pytest.raises(recovery.csv_backup.FileBackupError, match='Hardlink'):
+        recovery.create_backup(root, output, secrets.token_bytes(32))
+    assert not output.exists()
 
 
 def test_disabled_account_and_revoked_membership_remain_denied(source, tmp_path):
