@@ -133,6 +133,16 @@ share that in-memory lock, but their reservations still share SQLite limits.
 
 ## Verification
 
+The ledger rechecks its file identity, regular-file type, size and exclusive
+directory link after acquiring SQLite's writer lock and immediately before
+committing a normal or denied operation. Opening a ledger uses the same locked
+checks. A pathname preflight alone can become stale while `BEGIN IMMEDIATE`
+waits. A changed or newly aliased file now aborts and rolls back the transaction;
+it cannot return a new dispatch authorization. A previously committed hold is
+not refunded when the final dispatch check detects the change. This narrows the
+transaction race; it is not filesystem locking against an administrator or a
+guarantee against replacement after the final check.
+
 Run locally without provider credentials or network inference:
 
 ```sh
@@ -147,6 +157,11 @@ process exit, reopen/replay, job/day/total limits, unknown outcomes, settlement
 overruns, expiry/clock rollback, invalid input and manipulated SQLite schemas.
 The five regression cases for SQLite-like object names fail against the private
 prototype's old filter and pass with the literal-prefix check.
+Eight additional regressions inject a real filesystem hard link at SQLite lock
+acquisition, during mutation or during denial. They check constructor cleanup,
+rollback and both protected adapter paths: no SDK invocation, no retry, and the
+already committed monetary hold and active job remain intact. All eight fail
+against the preceding implementation before the locked file checks are added.
 
 Adapter tests execute the real Core pipeline with local SDK doubles and run the
 installed SDKs against intercepted HTTP responses. Both providers are checked

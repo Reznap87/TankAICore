@@ -281,7 +281,9 @@ class MonetaryBudget:
             if self._conn.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise BudgetStateError("budget integrity check failed")
             self._conn.execute("BEGIN IMMEDIATE")
+            self._check_file()
             self.policy = self._validate_state()
+            self._check_file()
             self._conn.commit()
         except (OSError, ValueError, TypeError, KeyError, sqlite3.Error) as exc:
             if self._conn is not None:
@@ -386,25 +388,32 @@ class MonetaryBudget:
             raise BudgetStateError("stored exposure or attempt ceiling exceeded")
         return policy
 
+    def _check_file(self) -> None:
+        # A preflight can become stale while SQLite waits for its writer lock.
+        # Keep the pathname bound to this connection at transaction boundaries.
+        if self.path.is_symlink() or not self.path.is_file():
+            raise BudgetStateError("budget database is missing or replaced")
+        info = self.path.stat()
+        if info.st_nlink != 1:
+            raise BudgetStateError("budget database has an unsafe file alias")
+        if info.st_size > MAX_LEDGER_BYTES:
+            raise BudgetStateError("budget database exceeds bounded pilot size")
+        if (info.st_dev, info.st_ino) != self._file_identity:
+            raise BudgetStateError("budget database was replaced")
+
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         with self._lock:
             if self._closed or self._conn is None:
                 raise BudgetStateError("budget database is closed")
             try:
-                if self.path.is_symlink() or not self.path.is_file():
-                    raise BudgetStateError("budget database is missing or replaced")
-                stat = self.path.stat()
-                if stat.st_nlink != 1:
-                    raise BudgetStateError("budget database has an unsafe file alias")
-                if stat.st_size > MAX_LEDGER_BYTES:
-                    raise BudgetStateError("budget database exceeds bounded pilot size")
-                if (stat.st_dev, stat.st_ino) != self._file_identity:
-                    raise BudgetStateError("budget database was replaced")
+                self._check_file()
                 self._conn.execute("BEGIN IMMEDIATE")
+                self._check_file()
                 self._validate_state()
                 yield self._conn
                 self._validate_state()
+                self._check_file()
                 self._conn.commit()
             except BudgetDenied:
                 # A denied request does not consume an attempt, but observing
@@ -412,6 +421,7 @@ class MonetaryBudget:
                 # Denial branches only change the clock or sticky halt marker.
                 try:
                     self._validate_state()
+                    self._check_file()
                     self._conn.commit()
                 except BaseException:
                     if self._conn.in_transaction:

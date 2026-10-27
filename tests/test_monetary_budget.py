@@ -447,6 +447,126 @@ def test_new_hardlink_fails_closed_on_open_connection(tmp_path):
             ledger.begin_job("blocked", owner_id=OWNER)
 
 
+@pytest.mark.parametrize("operation", ["begin", "reserve", "check_dispatch"])
+def test_alias_created_while_acquiring_writer_lock_blocks_operation(tmp_path, operation):
+    path = tmp_path / "budget.sqlite"
+    alias = tmp_path / "late-alias.sqlite"
+    with MonetaryBudget.create(path, policy(), clock=Clock()) as ledger:
+        if operation != "begin":
+            begin(ledger)
+        if operation == "check_dispatch":
+            reserve(ledger)
+        original = ledger.snapshot()
+        linked = []
+
+        def acquire(statement):
+            # SQLite runs this after the pathname preflight, at lock acquisition.
+            # It models a filesystem change during a blocked BEGIN IMMEDIATE.
+            if statement == "BEGIN IMMEDIATE" and not linked:
+                os.link(path, alias)
+                linked.append(True)
+
+        ledger._conn.set_trace_callback(acquire)
+        try:
+            with pytest.raises(BudgetStateError):
+                if operation == "begin":
+                    ledger.begin_job("blocked", owner_id=OWNER)
+                elif operation == "reserve":
+                    reserve(ledger, "blocked")
+                else:
+                    ledger.check_dispatch("job", "attempt", owner_id=OWNER)
+        finally:
+            ledger._conn.set_trace_callback(None)
+            if alias.exists():
+                alias.unlink()
+        assert linked == [True]
+        assert not ledger._conn.in_transaction
+        assert ledger.snapshot() == original
+
+
+def test_alias_created_during_reservation_is_rejected_before_commit(tmp_path):
+    path = tmp_path / "budget.sqlite"
+    alias = tmp_path / "late-alias.sqlite"
+    with MonetaryBudget.create(path, policy(), clock=Clock()) as ledger:
+        begin(ledger)
+        original = ledger.snapshot()
+        linked = []
+
+        def insert(statement):
+            if statement.startswith("INSERT INTO attempts") and not linked:
+                os.link(path, alias)
+                linked.append(True)
+
+        ledger._conn.set_trace_callback(insert)
+        try:
+            with pytest.raises(BudgetStateError):
+                reserve(ledger)
+        finally:
+            ledger._conn.set_trace_callback(None)
+            if alias.exists():
+                alias.unlink()
+        assert linked == [True]
+        assert not ledger._conn.in_transaction
+        assert ledger.snapshot() == original
+
+
+def test_alias_created_during_denial_prevents_clock_commit(tmp_path):
+    path = tmp_path / "budget.sqlite"
+    alias = tmp_path / "late-alias.sqlite"
+    clock = Clock()
+    with MonetaryBudget.create(path, policy(), clock=clock) as ledger:
+        begin(ledger)
+        original_clock = ledger._conn.execute("SELECT last_observed_at FROM pilot").fetchone()[0]
+        clock.now += 1
+        linked = []
+
+        def observe(statement):
+            if statement.startswith("UPDATE pilot SET last_observed_at") and not linked:
+                os.link(path, alias)
+                linked.append(True)
+
+        ledger._conn.set_trace_callback(observe)
+        try:
+            with pytest.raises(BudgetStateError):
+                ledger.begin_job("blocked-by-active-job", owner_id=OWNER)
+        finally:
+            ledger._conn.set_trace_callback(None)
+            if alias.exists():
+                alias.unlink()
+        assert linked == [True]
+        assert not ledger._conn.in_transaction
+        assert ledger._conn.execute("SELECT last_observed_at FROM pilot").fetchone()[0] == original_clock
+
+
+def test_alias_created_while_opening_ledger_is_rejected_and_connection_closed(tmp_path, monkeypatch):
+    path = tmp_path / "budget.sqlite"
+    alias = tmp_path / "late-alias.sqlite"
+    MonetaryBudget.create(path, policy(), clock=Clock()).close()
+    connect = sqlite3.connect
+    opened = []
+
+    def connect_then_alias(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        opened.append(connection)
+        def acquire(statement):
+            if statement == "BEGIN IMMEDIATE" and not alias.exists():
+                os.link(path, alias)
+        connection.set_trace_callback(acquire)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", connect_then_alias)
+    try:
+        with pytest.raises(BudgetStateError):
+            MonetaryBudget(path, clock=Clock())
+        assert alias.exists()
+        assert len(opened) == 1
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            opened[0].execute("SELECT 1")
+    finally:
+        if alias.exists():
+            alias.unlink()
+
+
 def test_oversized_state_is_rejected_before_loading_or_integrity_work(tmp_path):
     path = tmp_path / "budget"
     with path.open("wb") as stream:

@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 import sys
 from types import SimpleNamespace
 
@@ -11,7 +12,7 @@ import pytest
 
 from tankai import TankAI
 from tankai.core.llm import AnthropicLLM, BaseLLM, BudgetedLLM, LLMCallBudget, OpenAILLM
-from tankai.core.monetary_budget import BudgetDenied, MonetaryBudget, PilotPolicy
+from tankai.core.monetary_budget import BudgetDenied, BudgetStateError, MonetaryBudget, PilotPolicy
 from tankai.core.request_dispatch import DispatchDenied, FrozenTextRequest, MonetaryDispatch
 from tankai.core.request_pricing import PricingError, TextTariff
 
@@ -402,6 +403,66 @@ def test_dispatcher_clock_tariff_expiry_after_authorization_prevents_send(ledger
         main.complete("expired target")
     assert not any(sdk.calls for sdk in sdks)
     assert ledger.snapshot()["held_micro_eur"] == 2000
+
+
+@pytest.mark.parametrize("provider_index", [0, 1])
+def test_late_ledger_alias_blocks_adapter_send_and_preserves_committed_hold(ledger, sdks, provider_index):
+    dispatcher = guard(ledger)
+    aliases = []
+    authorizations = []
+    sdk_entries = []
+    alias = ledger.path.with_name("late-alias.sqlite")
+
+    def acquire(statement):
+        if statement == "BEGIN IMMEDIATE" and not aliases:
+            os.link(ledger.path, alias)
+            aliases.append(True)
+
+    def authorize():
+        authorizations.append(True)
+        if len(authorizations) == 2:
+            # The hold is already committed; inject at final check_dispatch's
+            # SQLite lock boundary, after its pathname preflight.
+            ledger._conn.set_trace_callback(acquire)
+
+    dispatcher._authorize = authorize
+    wrappers = wrapped(ledger, sdks, dispatcher=dispatcher)
+    selected = wrappers[provider_index]
+    sdk = sdks[provider_index]
+    original_send = sdk.messages.create if provider_index else sdk.chat.completions.create
+
+    def record_send(**parameters):
+        sdk_entries.append(True)
+        return original_send(**parameters)
+
+    # with_options constructs another Client, so observe entry through its
+    # shared root callback rather than inside the independent-ledger assertion.
+    original_options = sdk.with_options
+    def observe_client(**options):
+        client = original_options(**options)
+        if provider_index:
+            client.messages.create = record_send
+        else:
+            client.chat.completions.create = record_send
+        return client
+    sdk.with_options = observe_client
+    try:
+        with pytest.raises(BudgetStateError):
+            selected.complete("must not spend through stale ledger")
+    finally:
+        ledger._conn.set_trace_callback(None)
+        if alias.exists():
+            alias.unlink()
+    assert aliases == [True]
+    assert authorizations == [True, True]
+    assert sdk_entries == []
+    assert dispatcher.uncertain_upstream
+    state = ledger.snapshot()
+    assert state["held_micro_eur"] == 2000
+    assert state["attempts"] == state["unresolved_attempts"] == state["active_jobs"] == 1
+    with pytest.raises(DispatchDenied, match="uncertain upstream"):
+        selected.complete("no automatic retry")
+    assert sdk_entries == []
 
 
 def test_unsupported_delegate_cannot_silently_ignore_admission(ledger):
