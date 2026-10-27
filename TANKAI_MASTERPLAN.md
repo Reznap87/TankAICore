@@ -104,6 +104,14 @@ Lesens werden abgewiesen, damit der unabhängig gepinnte Betreiberpfad eindeutig
 an das geprüfte Artefakt gebunden bleibt.
 Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
+Ein zusätzlicher künstlicher Kalt-Restore-Probelauf erfasst jetzt Konten,
+zwei getrennte Arbeitsräume mit Verlauf/Memory/Vektoren/Cold-Archive,
+Quellenfreigabe und Geldbuch gemeinsam. Der Writer beendet sich vor der
+Aufnahme; nach Entfernen der künstlichen Originaldaten prüfen zwei neue
+Prozesse Anmeldung, Trennung, Daten und unveränderte Kosten-/Wiederholsperren.
+Der Ablauf aktiviert keinen Produkt-Backupdienst und übernimmt PR #102 nicht.
+Vertrag und ausdrücklich verbleibende Host-/Drain-Gates:
+`docs/COLD_RECOVERY_DRILL.md`.
 Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
 Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 
