@@ -277,6 +277,23 @@ def test_resume_requires_task_and_run_approval_receipts_to_match(
     assert restarted.store.path.read_bytes() == before
 
 
+@pytest.mark.parametrize("gate", ["review", "security"])
+def test_resume_requires_approval_summary_to_match_its_receipts(
+    source_contract, monkeypatch, gate,
+):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract, "qa:command:1:before")
+
+    def mutate(state):
+        setattr(state.tasks[saved.task_id], f"{gate}_notes", "different persisted approval summary")
+
+    restarted.store.transaction(mutate)
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match=f"{gate.capitalize()}-Zusammenfassung"):
+        WorkerPipelineRunner(restarted, manager).resume(job, run_id=saved.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
 @pytest.mark.parametrize("kind", ["extra", "reordered"])
 def test_saved_approvals_require_exact_ordered_command_receipts(
     source_contract, monkeypatch, kind,

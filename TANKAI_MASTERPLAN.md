@@ -1785,7 +1785,10 @@ umsortierte Belege werden abgewiesen. Bestandene QA muss im Task und Worker-Run
 denselben vollständigen Belegsatz besitzen; ein gespaltenes Journal wird vor jeder
 Fortsetzung abgewiesen. Neue Review- und Security-Freigaben speichern ihre
 vollständigen Belege ebenfalls im Task und Worker-Run; Wiederaufnahme verlangt
-auch dort exakte Übereinstimmung und weist ältere Freigaben ohne Task-Belege ab.
+auch dort exakte Übereinstimmung. Die gespeicherten Review- und Security-
+Zusammenfassungen müssen sich unverändert aus diesen Belegen neu ableiten lassen;
+abweichende Texte werden vor jeder Fortsetzung abgewiesen. Ältere Freigaben ohne
+Task-Belege bleiben nicht wiederaufnehmbar.
 Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
 abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme

@@ -317,6 +317,8 @@ class WorkerPipelineRunner:
                 )
                 if task.review_executions != run.review_executions:
                     raise ValidationError("Gespeicherte Review-Belege unterscheiden sich")
+                if task.review_notes != self._gate_summary("Review", run.review_executions):
+                    raise ValidationError("Gespeicherte Review-Zusammenfassung unterscheidet sich")
             elif task.review_decision != ReviewDecision.PENDING:
                 raise ValidationError("Reviewzustand passt nicht zum Wiederaufnahmepunkt")
             if task.security_approved is not None:
@@ -329,6 +331,8 @@ class WorkerPipelineRunner:
                 )
                 if task.security_executions != run.security_executions:
                     raise ValidationError("Gespeicherte Security-Belege unterscheiden sich")
+                if task.security_notes != self._gate_summary("Security", run.security_executions):
+                    raise ValidationError("Gespeicherte Security-Zusammenfassung unterscheidet sich")
             if task.qa_status == QAStatus.PASSED:
                 if task.qa_agent_id != job.gates.qa_agent_id:
                     raise ValidationError("Gespeicherte QA-Identität unterscheidet sich")
