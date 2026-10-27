@@ -12,7 +12,10 @@ Sicherung weist auf POSIX auch Hardlink-Aliasse der beiden SQLite-Quelldatenbank
 zurück. Gerätekennung, Inode und Linkzahl müssen bis zum Ende jeder Online-
 Momentaufnahme stabil bleiben, damit pfadgebundene WAL-/SHM-Sidecars nicht von
 einem Alias getrennt werden. Synthetische Tests decken bestehende und während der
-Momentaufnahme neu angelegte Aliasse ab. Der PR bleibt Entwurf; dies ist weder ein
+Momentaufnahme neu angelegte Aliasse ab. Das abschließende Recovery-Receipt wird
+außerdem bytegenau aus der gespeicherten Datei zurückgelesen, bevor der Pending-
+Marker entfernt wird; ein beschädigtes Receipt lässt den Restore gesperrt. Der
+PR bleibt Entwurf; dies ist weder ein
 Produktions-Backup-Beleg noch eine Deployment-, Secret- oder Provideränderung.
 
 5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als

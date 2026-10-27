@@ -182,8 +182,12 @@ def restore_backup(source, destination, key):
     result = {"ok": True, "operation": "restore", **_receipt(data, auth_data, csv_data, metadata),
               **access, "restoredAuthSha256": hashlib.sha256(restored_auth).hexdigest(),
               "restoredDatabasesVerified": True, "freshLoginRequired": True}
-    csv_backup._write_new(directory / RECEIPT_FILE, (json.dumps(result) + "\n").encode())
+    receipt_path = directory / RECEIPT_FILE
+    receipt_data = (json.dumps(result) + "\n").encode()
+    csv_backup._write_new(receipt_path, receipt_data)
     csv_backup._sync_directory(directory)
+    if csv_backup._read_regular(receipt_path, len(receipt_data)) != receipt_data:
+        raise csv_backup.FileBackupError("Das Recovery-Receipt stimmt nicht mit dem Ergebnis überein")
     pending.unlink()
     csv_backup._sync_directory(directory)
     return result

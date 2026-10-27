@@ -89,8 +89,10 @@ their existing password. Agent credentials need a separately authorized reissue.
 This avoids reactivating old credentials when recovering an earlier snapshot.
 
 The restore creates `.tankai-recovery-pending` before writing either database.
-It writes and verifies both databases and a value-free `recovery-receipt.json`,
-then removes the pending marker. On POSIX, the parent directory, completed
+It writes and verifies both databases and a value-free `recovery-receipt.json`.
+The saved receipt is read back byte-for-byte before the pending marker is
+removed; a missing, replaced, aliased or corrupted receipt leaves the recovered
+root blocked. On POSIX, the parent directory, completed
 database set, receipt and final marker removal are explicit directory-fsync
 durability boundaries before success is returned. The app refuses to start from
 a root with this marker. A failed restore can leave a partial new directory;

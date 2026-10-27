@@ -356,6 +356,26 @@ def test_success_is_reported_only_after_recovery_metadata_is_durable(source, tmp
     assert observed.count(True) >= 3
 
 
+def test_corrupted_recovery_receipt_keeps_pending_marker(source, tmp_path, monkeypatch):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'pair.enc'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery.csv_backup._write_new
+
+    def corrupt_receipt(path, data):
+        original(path, data)
+        if path.name == recovery.RECEIPT_FILE:
+            path.write_bytes(b'{"ok":false}\n')
+
+    monkeypatch.setattr(recovery.csv_backup, '_write_new', corrupt_receipt)
+    destination = tmp_path / 'corrupt-receipt'
+    with pytest.raises(recovery.csv_backup.FileBackupError, match='Receipt'):
+        recovery.restore_backup(encrypted, destination, key)
+    assert (destination / recovery.RESTORE_PENDING_FILE).exists()
+    assert (destination / recovery.RECEIPT_FILE).read_bytes() == b'{"ok":false}\n'
+
+
 def test_cli_receipts_contain_no_credentials_or_customer_content(source, tmp_path):
     root, _, _, session, *_ = source
     key = secrets.token_bytes(32)
