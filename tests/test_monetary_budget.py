@@ -420,6 +420,79 @@ def test_missing_empty_corrupt_or_existing_database_is_never_initialized_silentl
         assert path.read_bytes() == content
 
 
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_create_refuses_orphan_sidecar_without_creating_or_modifying_files(tmp_path, suffix):
+    path = tmp_path / "budget.sqlite"
+    sidecar = Path(str(path) + suffix)
+    content = b"preserved previous ledger recovery material"
+    sidecar.write_bytes(content)
+    with pytest.raises(BudgetStateError):
+        MonetaryBudget.create(path, policy(), clock=Clock())
+    assert not path.exists()
+    assert sidecar.read_bytes() == content
+    assert set(tmp_path.iterdir()) == {sidecar}
+
+
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_sidecar_created_during_exclusive_create_blocks_before_sqlite(tmp_path, monkeypatch, suffix):
+    path = tmp_path / "budget.sqlite"
+    sidecar = Path(str(path) + suffix)
+    content = b"concurrent recovery material"
+    open_file = os.open
+    sqlite_entries = []
+
+    def create_then_sidecar(selected, flags, *args, **kwargs):
+        descriptor = open_file(selected, flags, *args, **kwargs)
+        if Path(selected) == path and flags & os.O_EXCL:
+            sidecar.write_bytes(content)
+        return descriptor
+
+    def no_sqlite(*args, **kwargs):
+        sqlite_entries.append(True)
+        raise AssertionError("SQLite must not touch orphan recovery files")
+
+    monkeypatch.setattr(os, "open", create_then_sidecar)
+    monkeypatch.setattr(sqlite3, "connect", no_sqlite)
+    with pytest.raises(BudgetStateError):
+        MonetaryBudget.create(path, policy(), clock=Clock())
+    assert sqlite_entries == []
+    assert sidecar.read_bytes() == content
+    assert path.read_bytes() == b""  # Failed exclusive creation stays diagnostic.
+    with pytest.raises(BudgetStateError):
+        MonetaryBudget.create(path, policy(), clock=Clock())
+    assert sqlite_entries == []
+    assert sidecar.read_bytes() == content
+    assert path.read_bytes() == b""
+
+
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_create_refuses_sidecar_directory_before_creating_leaf(tmp_path, suffix):
+    path = tmp_path / "budget.sqlite"
+    sidecar = Path(str(path) + suffix)
+    sidecar.mkdir()
+    sentinel = sidecar / "preserve"
+    sentinel.write_bytes(b"retained")
+    with pytest.raises(BudgetStateError):
+        MonetaryBudget.create(path, policy(), clock=Clock())
+    assert not path.exists()
+    assert sentinel.read_bytes() == b"retained"
+
+
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_create_refuses_dangling_sidecar_link_before_creating_leaf(tmp_path, suffix):
+    path = tmp_path / "budget.sqlite"
+    sidecar = Path(str(path) + suffix)
+    target = tmp_path / "missing"
+    try:
+        sidecar.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink privilege unavailable")
+    with pytest.raises(BudgetStateError):
+        MonetaryBudget.create(path, policy(), clock=Clock())
+    assert not path.exists()
+    assert sidecar.is_symlink() and not target.exists()
+
+
 def test_hardlinked_ledger_is_rejected_before_open(tmp_path):
     path = tmp_path / "budget.sqlite"
     alias = tmp_path / "budget-alias.sqlite"

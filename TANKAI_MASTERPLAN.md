@@ -74,6 +74,13 @@ Vorgang ab; eine bereits bestätigte Geldreservierung bleibt bei einem gesperrte
 Versand erhalten. Acht gezielt zunächst fehlschlagende Regressionen prüfen
 Öffnen, Rollback und beide Adapter ohne tatsächlichen Anbieteraufruf.
 Dies ersetzt keinen Betriebssystemschutz gegen spätere Dateimanipulation.
+Auch die erstmalige Anlage des Geldbuchs weist vorhandene SQLite-Begleitdateien
+(-wal/-shm/-journal), Verzeichnisse und verwaiste Symlinks zurück, bevor SQLite
+den neuen Pfad öffnet. Ein zweiter Abgleich nach exklusiver Dateianlage erkennt
+zwischenzeitlich erschienene Begleitdateien; die leere Diagnose-Datei bleibt
+erhalten. Sechs zunächst fehlschlagende Fälle belegten die fehlende Sperre;
+zusätzliche Verzeichnis-/Symlink-Tests und Restore-Regressionen prüfen den
+gemeinsamen Schutz gegen unbeabsichtigtes Ersetzen alter Wiederherstellungsdaten.
 Der rohe Snapshot-Baustein allein ist kein produktiver Gesamtrestore, keine Verschlüsselung und kein Schutz
 gegen das absichtliche Zurückspielen alter Abbilder. Koordinierte Arbeitsraum-/
 Kontodaten, externer Aktualitätsnachweis und Host-Abnahme bleiben offen.

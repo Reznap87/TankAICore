@@ -133,6 +133,16 @@ share that in-memory lock, but their reservations still share SQLite limits.
 
 ## Verification
 
+Initial `create()` now requires that no `-wal`, `-shm` or `-journal` companion
+exists, including directories and dangling links. This is checked before
+creating the database leaf and again before SQLite opens it. SQLite can otherwise
+remove orphan WAL/journal files during new database initialization. A companion
+created during exclusive leaf creation stops initialization before SQLite;
+the new empty diagnostic file stays in place and retries cannot replace it.
+The same sidecar-presence predicate is reused by `restore_new`. These checks
+require a trusted parent directory; they are not OS-level exclusion of arbitrary
+filesystem writers after the final check.
+
 The ledger rechecks its file identity, regular-file type, size and exclusive
 directory link after acquiring SQLite's writer lock and immediately before
 committing a normal or denied operation. Opening a ledger uses the same locked

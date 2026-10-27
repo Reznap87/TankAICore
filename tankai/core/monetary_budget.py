@@ -89,6 +89,12 @@ def _sync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _has_sidecars(path: Path) -> bool:
+    # lexists also catches dangling links, which SQLite must not replace/follow.
+    return any(os.path.lexists(str(path) + suffix)
+               for suffix in ("-wal", "-shm", "-journal"))
+
+
 @dataclass(frozen=True)
 class PilotPolicy:
     owner_id: str
@@ -226,9 +232,15 @@ class MonetaryBudget:
             raise ValueError("an explicit PilotPolicy is required")
         path = Path(path).absolute()
         now = cls._now(clock)
+        if _has_sidecars(path):
+            raise BudgetStateError("new isolated budget destination required")
         # O_EXCL includes an existing empty file or symlink: neither is replaced.
         descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.close(descriptor)
+        # A companion may have appeared during exclusive leaf creation. Leave
+        # the new empty diagnostic file intact; never let SQLite touch it yet.
+        if _has_sidecars(path):
+            raise BudgetStateError("budget destination changed during initialization")
         conn = None
         try:
             conn = sqlite3.connect(str(path), isolation_level=None)
@@ -690,10 +702,7 @@ class MonetaryBudget:
             raise BudgetStateError("invalid pinned budget snapshot")
         try:
             destination = Path(path).absolute()
-            def has_sidecars() -> bool:
-                return any(os.path.lexists(str(destination) + suffix)
-                           for suffix in ("-wal", "-shm", "-journal"))
-            if os.path.lexists(destination) or has_sidecars():
+            if os.path.lexists(destination) or _has_sidecars(destination):
                 raise BudgetStateError("new isolated budget destination required")
             cls._check_snapshot(data, expected_policy)
             descriptor = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -704,7 +713,7 @@ class MonetaryBudget:
                 identity = os.fstat(output.fileno())
             _sync_directory(destination.parent)
             current = destination.stat()
-            if (destination.is_symlink() or current.st_nlink != 1 or has_sidecars()
+            if (destination.is_symlink() or current.st_nlink != 1 or _has_sidecars(destination)
                     or (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino)):
                 raise BudgetStateError("budget destination changed during restore")
             restored = cls(destination, clock=clock)
