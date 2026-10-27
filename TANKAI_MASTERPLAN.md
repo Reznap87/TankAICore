@@ -67,6 +67,13 @@ Besitzerzulassung bleiben bei unklaren restaurierten Aufträgen gesperrt.
 Das Geldbuch akzeptiert außerdem keine Hardlink-Aliase: Vor dem Öffnen, vor jeder
 Transaktion und beim Restore muss die SQLite-Datei genau einen Dateinamen besitzen,
 damit abweichende WAL-/Journal-Pfade die gemeinsame Schreibsperre nicht umgehen.
+Ergänzung vom 27. Oktober 2026: Nach Erwerb der SQLite-Schreibsperre und vor
+jedem Commit werden Dateityp, Identität, Größe und Linkanzahl erneut geprüft.
+Während der Sperrwartezeit oder der Transaktion entstandene Aliase brechen den
+Vorgang ab; eine bereits bestätigte Geldreservierung bleibt bei einem gesperrten
+Versand erhalten. Acht gezielt zunächst fehlschlagende Regressionen prüfen
+Öffnen, Rollback und beide Adapter ohne tatsächlichen Anbieteraufruf.
+Dies ersetzt keinen Betriebssystemschutz gegen spätere Dateimanipulation.
 Der rohe Snapshot-Baustein allein ist kein produktiver Gesamtrestore, keine Verschlüsselung und kein Schutz
 gegen das absichtliche Zurückspielen alter Abbilder. Koordinierte Arbeitsraum-/
 Kontodaten, externer Aktualitätsnachweis und Host-Abnahme bleiben offen.
