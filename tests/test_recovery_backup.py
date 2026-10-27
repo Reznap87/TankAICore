@@ -376,6 +376,44 @@ def test_corrupted_recovery_receipt_keeps_pending_marker(source, tmp_path, monke
     assert (destination / recovery.RECEIPT_FILE).read_bytes() == b'{"ok":false}\n'
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX pending-marker identity contract')
+@pytest.mark.parametrize('alteration', ['missing', 'replaced', 'hard-linked'])
+def test_changed_pending_marker_is_preserved_and_blocks_success(
+    source, tmp_path, monkeypatch, alteration,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'pair.enc'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery.csv_backup._read_regular
+    replacement = b'foreign recovery marker\n'
+
+    def replace_marker_after_receipt_check(path, limit, **kwargs):
+        data = original(path, limit, **kwargs)
+        if path.name == recovery.RECEIPT_FILE:
+            pending = path.parent / recovery.RESTORE_PENDING_FILE
+            foreign = path.parent / 'foreign-marker.tmp'
+            if alteration != 'missing':
+                foreign.write_bytes(replacement)
+            pending.unlink()
+            if alteration != 'missing':
+                if alteration == 'replaced':
+                    foreign.rename(pending)
+                else:
+                    os.link(foreign, pending)
+        return data
+
+    monkeypatch.setattr(recovery.csv_backup, '_read_regular', replace_marker_after_receipt_check)
+    destination = tmp_path / 'replaced-marker'
+    with pytest.raises(recovery.csv_backup.FileBackupError, match='Pending-Marker'):
+        recovery.restore_backup(encrypted, destination, key)
+    pending = destination / recovery.RESTORE_PENDING_FILE
+    if alteration == 'missing':
+        assert not pending.exists()
+    else:
+        assert pending.read_bytes() == replacement
+
+
 def test_cli_receipts_contain_no_credentials_or_customer_content(source, tmp_path):
     root, _, _, session, *_ = source
     key = secrets.token_bytes(32)

@@ -6,9 +6,11 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import secrets
 import sqlite3
+import stat
 import struct
 import sys
 import time
@@ -172,7 +174,7 @@ def restore_backup(source, destination, key):
     directory.mkdir(mode=0o700)
     csv_backup._sync_directory(directory.parent)
     pending = directory / RESTORE_PENDING_FILE
-    csv_backup._write_new(pending, b"account-csv-recovery-v1\n")
+    pending_identity = csv_backup._write_new(pending, b"account-csv-recovery-v1\n")
     csv_backup._write_new(directory / "auth.db", restored_auth)
     csv_backup._write_new(directory / "csv-jobs.db", csv_data)
     csv_backup._sync_directory(directory)
@@ -188,6 +190,14 @@ def restore_backup(source, destination, key):
     csv_backup._sync_directory(directory)
     if csv_backup._read_regular(receipt_path, len(receipt_data)) != receipt_data:
         raise csv_backup.FileBackupError("Das Recovery-Receipt stimmt nicht mit dem Ergebnis überein")
+    try:
+        current_pending = pending.lstat()
+    except OSError:
+        raise csv_backup.FileBackupError("Recovery-Pending-Marker wurde vor Abschluss entfernt") from None
+    if (not stat.S_ISREG(current_pending.st_mode)
+            or (current_pending.st_dev, current_pending.st_ino) != pending_identity
+            or (os.name != "nt" and current_pending.st_nlink != 1)):
+        raise csv_backup.FileBackupError("Recovery-Pending-Marker wurde vor Abschluss ersetzt")
     pending.unlink()
     csv_backup._sync_directory(directory)
     return result

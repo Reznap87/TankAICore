@@ -225,7 +225,7 @@ def _decrypt(data: bytes, key: bytes) -> tuple[bytes, dict]:
     return payload, metadata
 
 
-def _write_new(path: Path, data: bytes) -> None:
+def _write_new(path: Path, data: bytes) -> tuple[int, int]:
     """Never replace a file; remove only our own inode on an interrupted write."""
     descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     identity = os.fstat(descriptor)
@@ -242,6 +242,7 @@ def _write_new(path: Path, data: bytes) -> None:
         except OSError:
             pass
         raise
+    return identity.st_dev, identity.st_ino
 
 
 def _sync_directory(path: Path) -> None:
