@@ -1789,6 +1789,10 @@ auch dort exakte Übereinstimmung. Die gespeicherten Review- und Security-
 Zusammenfassungen müssen sich unverändert aus diesen Belegen neu ableiten lassen;
 abweichende Texte werden vor jeder Fortsetzung abgewiesen. Ältere Freigaben ohne
 Task-Belege bleiben nicht wiederaufnehmbar.
+Eine bereits gespeicherte Einreichung muss außerdem dieselbe
+Implementierungszusammenfassung wie der hashgebundene Worker-Auftrag tragen;
+abweichende Receipt-Texte werden vor jeder weiteren Ausführung ohne
+Zustandsänderung abgewiesen.
 Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
 abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme

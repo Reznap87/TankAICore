@@ -283,6 +283,11 @@ Repository-Zugehörigkeit wird geprüft. Ein pro Agent
 gehaltener Betriebssystem-Lock verhindert gleichzeitig laufende lokale Executor;
 der Lock wird beim Prozessende freigegeben. Seine Datei bleibt in den Git-Metadaten.
 
+Nach einer bereits gespeicherten Einreichung muss außerdem deren
+Implementierungszusammenfassung exakt dem gebundenen Worker-Auftrag entsprechen.
+Ein abweichender Receipt-Text wird vor einer weiteren Ausführung zurückgewiesen;
+der persistierte Zustand bleibt dabei unverändert.
+
 Implementierungsbefehle werden nicht wiederholt. Vor einer bereits gespeicherten
 Einreichung laufen die lokalen Worker-Tests erneut. Nach der Einreichung werden
 nur die noch offenen technischen Gates ausgeführt; gespeicherte Freigaben
@@ -310,7 +315,8 @@ Die Tests decken mehrere persistierte Übergänge, einen tatsächlichen Prozess-
 mit anschließendem CLI-Neustart, unveränderte Run-Identität, konkurrierende
 Prozesse, Vertrags-/Dateiänderungen, fehlende Implementierungsbelege, gespaltene
 Review-/Security-/QA-Journale, manipulierte Freigabezusammenfassungen und
-verweigerte Containerumgehungen ab.
+eine manipulierte Implementierungszusammenfassung sowie verweigerte
+Containerumgehungen ab.
 Containerprüfungen dieser neuen Wiederaufnahme verwenden einen Testexecutor;
 ein realer Container-Neustart oder ein öffentlicher Dauerbetrieb ist damit noch
 nicht belegt. Automatische Inferenz und Reparatur nach fehlgeschlagenen Tests

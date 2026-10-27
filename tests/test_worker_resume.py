@@ -223,6 +223,22 @@ def test_resume_handles_submission_persisted_before_run_status(source_contract, 
     assert result.run.state == WorkerRunState.READY_TO_INTEGRATE
 
 
+def test_resume_requires_submitted_implementation_summary_to_match(source_contract, monkeypatch):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract, "begin_independent_gates")
+    restarted.store.transaction(
+        lambda state: setattr(
+            state.tasks[saved.task_id],
+            "implementation_summary",
+            "different persisted implementation summary",
+        )
+    )
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Implementierungszusammenfassung"):
+        WorkerPipelineRunner(restarted, manager).resume(job, run_id=saved.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
 def test_saved_approvals_require_the_matching_command_receipts(source_contract, monkeypatch):
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
     job, saved, restarted, manager = interrupt(source_contract, "qa:command:1:before")

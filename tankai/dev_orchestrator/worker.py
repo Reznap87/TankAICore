@@ -298,6 +298,10 @@ class WorkerPipelineRunner:
                 if (task.implementation_commit != run.implementation_commit
                         or sorted(task.changed_files) != sorted(run.changed_files)):
                     raise ValidationError("Task-Einreichung gehört nicht zum gespeicherten Commit")
+                if task.implementation_summary != job.worker.implementation_summary:
+                    raise ValidationError(
+                        "Gespeicherte Implementierungszusammenfassung unterscheidet sich"
+                    )
                 self._require_saved_commands(
                     run.test_executions,
                     [render_command(command) for command in job.worker.test_commands],
