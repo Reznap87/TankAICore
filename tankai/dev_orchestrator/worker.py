@@ -279,6 +279,11 @@ class WorkerPipelineRunner:
                     or run.workspace_path != agent.workspace_path or run.isolation != job.isolation
                     or (run.execution_backend == WorkerExecutionBackend.DOCKER) != (job.isolation is not None)):
                 raise ValidationError("Worker-Journal und aktuelle Zuweisung stimmen nicht überein")
+            if run.state == WorkerRunState.READY_TO_INTEGRATE:
+                if run.phase != WorkerPhase.COMPLETE or run.finished_at is None or run.error:
+                    raise ValidationError("Gespeicherter Worker-Abschlussbeleg ist inkonsistent")
+            elif run.finished_at is not None or run.error:
+                raise ValidationError("Unfertiger Worker-Run trägt einen Abschlussbeleg")
             workspace = self.workspace_manager.workspace_from_binding(
                 agent_id=run.agent_id, branch=run.branch, workspace_path=run.workspace_path,
                 base_commit=run.base_commit,

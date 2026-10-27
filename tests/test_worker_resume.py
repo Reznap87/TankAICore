@@ -10,7 +10,7 @@ import pytest
 from test_code_request import SOURCE, FIXED, prepare, request, response_for, source_contract
 from tankai.dev_orchestrator import (
     DevelopmentOrchestrator, GitWorkspaceError, ProjectStateStore, TaskState,
-    WorkerExecutionError, WorkerPipelineRunner, WorkerRunState,
+    WorkerExecutionError, WorkerPhase, WorkerPipelineRunner, WorkerRunState,
 )
 
 
@@ -236,6 +236,29 @@ def test_resume_requires_submitted_implementation_summary_to_match(source_contra
     before = restarted.store.path.read_bytes()
     with pytest.raises(RuntimeError, match="Implementierungszusammenfassung"):
         WorkerPipelineRunner(restarted, manager).resume(job, run_id=saved.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("kind", ["phase", "finished_at", "error"])
+def test_resume_requires_coherent_terminal_run_receipt(source_contract, monkeypatch, kind):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract, "complete_worker_run")
+    runner = WorkerPipelineRunner(restarted, manager)
+    completed = runner.resume(job, run_id=saved.run_id).run
+
+    def mutate(state):
+        run = state.worker_runs[completed.run_id]
+        if kind == "phase":
+            run.phase = WorkerPhase.QA
+        elif kind == "finished_at":
+            run.finished_at = None
+        else:
+            run.error = "unexpected terminal error"
+
+    restarted.store.transaction(mutate)
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Abschlussbeleg"):
+        runner.resume(job, run_id=completed.run_id)
     assert restarted.store.path.read_bytes() == before
 
 

@@ -1793,6 +1793,10 @@ Eine bereits gespeicherte Einreichung muss außerdem dieselbe
 Implementierungszusammenfassung wie der hashgebundene Worker-Auftrag tragen;
 abweichende Receipt-Texte werden vor jeder weiteren Ausführung ohne
 Zustandsänderung abgewiesen.
+Integrationsbereite Runs benötigen außerdem Phase `complete`, einen gespeicherten
+Abschlusszeitpunkt und einen leeren Fehlertext. Unfertige Runs dürfen keinen
+Abschlusszeitpunkt oder Fehlertext tragen; widersprüchliche Terminal-Receipts
+werden ohne Fortsetzung abgewiesen.
 Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
 abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme

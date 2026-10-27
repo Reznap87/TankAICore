@@ -288,6 +288,11 @@ Implementierungszusammenfassung exakt dem gebundenen Worker-Auftrag entsprechen.
 Ein abweichender Receipt-Text wird vor einer weiteren Ausführung zurückgewiesen;
 der persistierte Zustand bleibt dabei unverändert.
 
+Ein bereits integrationsbereiter Run gilt nur mit Phase `complete`, vorhandenem
+Abschlusszeitpunkt und leerem Fehlertext als abgeschlossen. Laufende oder lediglich
+eingereichte Runs dürfen umgekehrt weder Abschlusszeitpunkt noch Fehlertext tragen.
+Inkonsistente Terminal-Receipts werden ohne Zustandsänderung abgewiesen.
+
 Implementierungsbefehle werden nicht wiederholt. Vor einer bereits gespeicherten
 Einreichung laufen die lokalen Worker-Tests erneut. Nach der Einreichung werden
 nur die noch offenen technischen Gates ausgeführt; gespeicherte Freigaben
@@ -316,7 +321,7 @@ mit anschließendem CLI-Neustart, unveränderte Run-Identität, konkurrierende
 Prozesse, Vertrags-/Dateiänderungen, fehlende Implementierungsbelege, gespaltene
 Review-/Security-/QA-Journale, manipulierte Freigabezusammenfassungen und
 eine manipulierte Implementierungszusammenfassung sowie verweigerte
-Containerumgehungen ab.
+Containerumgehungen und inkonsistente Terminal-Receipts ab.
 Containerprüfungen dieser neuen Wiederaufnahme verwenden einen Testexecutor;
 ein realer Container-Neustart oder ein öffentlicher Dauerbetrieb ist damit noch
 nicht belegt. Automatische Inferenz und Reparatur nach fehlgeschlagenen Tests
