@@ -24,8 +24,9 @@ def bounded_text(text: str) -> str:
 def bounded_transport(inner):
     """Limit streaming bytes before SDK buffering, decompression or JSON parsing.
 
-    The protected path requests identity encoding and rejects other encodings,
-    so a compressed body cannot inflate after the transport's byte check. The
+    The protected path requests identity encoding and rejects compressed content
+    or transfer codings, so a compressed body cannot inflate after the
+    transport's byte check. Ordinary chunked framing remains permitted. The
     actual stream is counted even when Content-Length is absent or inaccurate.
     """
     import httpx2
@@ -58,6 +59,12 @@ def bounded_transport(inner):
             try:
                 if response.headers.get("content-encoding", "identity").strip().lower() != "identity":
                     raise DispatchDenied("encoded provider responses are not allowed")
+                transfer_encoding = response.headers.get("transfer-encoding")
+                if transfer_encoding is not None and transfer_encoding.strip().lower() not in {
+                    "identity",
+                    "chunked",
+                }:
+                    raise DispatchDenied("encoded provider transfer responses are not allowed")
                 declared = response.headers.get("content-length")
                 if declared is not None and (
                     not 1 <= len(declared) <= 7 or not declared.isascii()

@@ -109,7 +109,9 @@ even without `Content-Length` or with a false small length. An oversized chunk
 is rejected before entering the SDK's body buffer; the remaining stream is
 closed. Invalid or oversized declared lengths are rejected without reading the
 body. The transport requests `Accept-Encoding: identity` and rejects other
-response encodings before reading, preventing decompression after the byte cap.
+content encodings before reading. It also rejects compressing or combined HTTP
+transfer codings; ordinary `chunked` framing remains allowed and its yielded
+body bytes are counted. This prevents decompression after the byte cap.
 Returned text has a separate **128,000 UTF-8 byte** ceiling; invalid Unicode and
 oversized text fail before entering the Core. The requested 2,048-token ceiling
 still applies independently. Byte limits do not prove actual token usage,

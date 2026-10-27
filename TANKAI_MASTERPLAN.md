@@ -30,8 +30,10 @@ erhält die volle Geldreservierung und erlaubt keinen automatischen Neuversuch.
 Der geschützte Antwortpfad begrenzt außerdem den HTTP-Body vor dem SDK-JSON-Parser
 auf 256.000 Bytes und den zurückgegebenen Text auf 128.000 UTF-8-Bytes. Gezählt
 wird der gelesene Stream unabhängig von einer fehlenden oder falschen Längenangabe;
-überzählige Daten und komprimierte Antworten werden vor der Weiterverarbeitung
-abgewiesen und der Stream geschlossen. Geldreservierung und Auftragsstopp bleiben
+überzählige Daten sowie komprimierte Inhalts- oder Transferkodierungen werden vor
+der Weiterverarbeitung abgewiesen und der Stream geschlossen. Gewöhnliches
+HTTP-Chunking bleibt erlaubt und wird anhand der gelieferten Body-Bytes gezählt.
+Geldreservierung und Auftragsstopp bleiben
 auch nach einem Antwortlimit-Fehler über Anwendungsneustarts erhalten. Diese
 Byte-Grenzen ersetzen keinen Nachweis tatsächlich berechneter Anbietertokens.
 Die explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,

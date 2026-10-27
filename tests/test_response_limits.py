@@ -156,6 +156,29 @@ def test_encoded_body_is_closed_before_reading_or_decompression(protected, encod
     assert_stopped(protected)
 
 
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "gzip, chunked"])
+def test_encoded_transfer_body_is_closed_before_reading_or_decompression(protected, encoding):
+    payload = gzip.compress(reply(protected.provider) + b" " * BODY_LIMIT)
+    stream = CountedStream([payload])
+    install_stream(protected, stream, {"transfer-encoding": encoding})
+    sdk = importlib.import_module(protected.provider)
+    with pytest.raises((DispatchDenied, sdk.APIConnectionError)):
+        protected.wrapped.complete("reject transfer compression")
+    assert stream.read_bytes == 0
+    assert stream.close_calls >= 1
+    assert_stopped(protected)
+
+
+def test_chunked_transfer_is_counted_and_accepted(protected):
+    payload = reply(protected.provider)
+    stream = CountedStream([payload[:13], payload[13:]])
+    install_stream(protected, stream, {"transfer-encoding": "chunked"})
+    assert protected.wrapped.complete("bounded chunked response") == "offline answer"
+    assert stream.read_bytes == len(payload)
+    assert stream.close_calls >= 1
+    assert not protected.dispatcher.uncertain_upstream
+
+
 @pytest.mark.parametrize("length", ["-1", "unknown", "1, 1", "9" * 100])
 def test_malformed_length_is_closed_without_body_read(protected, length):
     stream = CountedStream([reply(protected.provider)])
