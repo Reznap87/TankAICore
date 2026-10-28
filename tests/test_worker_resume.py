@@ -316,6 +316,45 @@ def test_resume_requires_ordered_terminal_receipt_journal(
     assert restarted.store.path.read_bytes() == before
 
 
+@pytest.mark.parametrize("kind", ["phase-regression", "premature-complete"])
+def test_resume_requires_coherent_status_phase_journal(
+    source_contract, monkeypatch, kind,
+):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract, "complete_worker_run")
+    runner = WorkerPipelineRunner(restarted, manager)
+    completed = runner.resume(job, run_id=saved.run_id).run
+
+    def mutate(state):
+        run = state.worker_runs[completed.run_id]
+        if kind == "phase-regression":
+            run.status_messages[1].phase = WorkerPhase.COMPLETE
+        else:
+            run.status_messages[-2].phase = WorkerPhase.COMPLETE
+
+    restarted.store.transaction(mutate)
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Phasenfolge"):
+        runner.resume(job, run_id=completed.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
+def test_resume_requires_latest_status_to_match_current_phase(
+    source_contract, monkeypatch,
+):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract)
+    restarted.store.transaction(
+        lambda state: setattr(
+            state.worker_runs[saved.run_id], "phase", WorkerPhase.TEST,
+        )
+    )
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Phasenfolge"):
+        WorkerPipelineRunner(restarted, manager).resume(job, run_id=saved.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
 def test_saved_approvals_require_the_matching_command_receipts(source_contract, monkeypatch):
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
     job, saved, restarted, manager = interrupt(source_contract, "qa:command:1:before")

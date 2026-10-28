@@ -1802,8 +1802,11 @@ abschließende `complete`-Status ist exakt an den Abschlusszeitpunkt gebunden;
 Belege außerhalb des Laufintervalls werden vor jeder Zustandsänderung abgewiesen.
 Die gespeicherten Befehlsbelege müssen außerdem in der Phasenfolge chronologisch
 bleiben; Statusbelege benötigen eine lückenlose Sequenz und nicht rückläufige
-Zeitstempel. Rückwärts laufende oder doppelt nummerierte Journale werden damit
-ebenfalls vor jeder Fortsetzung abgewiesen.
+Zeitstempel. Ihre Phasen dürfen innerhalb des Resume-Vertrags nicht rückwärts
+laufen und der letzte Status muss die aktuelle Run-Phase belegen; `complete` ist
+ausschließlich als letzter Status zulässig. Rückwärts
+laufende, vorzeitig abgeschlossene oder doppelt nummerierte Journale werden damit
+vor jeder Fortsetzung abgewiesen.
 Dies schützt die Journal-Konsistenz, ersetzt aber keine vertrauenswürdige Host-Uhr.
 Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression

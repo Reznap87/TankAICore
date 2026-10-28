@@ -422,15 +422,43 @@ class WorkerPipelineRunner:
                 execution_timestamps, execution_timestamps[1:])):
             raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungeordnete Befehlsbelege")
 
+        resumable_phase_order = {
+            phase: index for index, phase in enumerate((
+                WorkerPhase.PREPARE,
+                WorkerPhase.IMPLEMENT,
+                WorkerPhase.VALIDATE_SCOPE,
+                WorkerPhase.COMMIT,
+                WorkerPhase.TEST,
+                WorkerPhase.SUBMIT,
+                WorkerPhase.REVIEW,
+                WorkerPhase.SECURITY,
+                WorkerPhase.QA,
+                WorkerPhase.COMPLETE,
+            ))
+        }
         status_timestamps = []
+        status_phase_positions = []
         for expected_sequence, status in enumerate(run.status_messages, start=1):
             if status.sequence != expected_sequence:
                 raise ValidationError("Gespeicherte Worker-Statusfolge ist nicht lückenlos")
+            phase_position = resumable_phase_order.get(status.phase)
+            if (phase_position is None
+                    or (status.phase == WorkerPhase.COMPLETE
+                        and expected_sequence != len(run.status_messages))):
+                raise ValidationError("Gespeicherte Worker-Phasenfolge ist ungültig")
             timestamp = status.created_at
             if (timestamp.utcoffset() is None or timestamp < start
                     or (finish is not None and timestamp > finish)):
                 raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Statusbelege")
             status_timestamps.append(timestamp)
+            status_phase_positions.append(phase_position)
+        if any(current < previous for previous, current in zip(
+                status_phase_positions, status_phase_positions[1:])):
+            raise ValidationError("Gespeicherte Worker-Phasenfolge läuft rückwärts")
+        if not run.status_messages or run.status_messages[-1].phase != run.phase:
+            raise ValidationError(
+                "Gespeicherte Worker-Phasenfolge endet nicht in der aktuellen Phase"
+            )
         if any(current < previous for previous, current in zip(
                 status_timestamps, status_timestamps[1:])):
             raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungeordnete Statusbelege")

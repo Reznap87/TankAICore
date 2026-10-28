@@ -297,8 +297,10 @@ eine zeitzonenbezogene, widerspruchsfreie Zeitachse bilden. Der abschließende
 nach dem Abschluss oder ein Abschluss vor dem Start werden ohne Zustandsänderung
 abgewiesen. Befehlsbelege müssen innerhalb ihrer gespeicherten Phasenfolge
 chronologisch sein. Statusbelege benötigen zusätzlich lückenlose Sequenznummern
-und dürfen zeitlich nicht zurückspringen. Diese Prüfung belegt Journal-Konsistenz,
-nicht die Vertrauenswürdigkeit der Host-Uhr.
+und dürfen zeitlich oder in der gespeicherten Resume-Phasenfolge nicht
+zurückspringen. Der letzte Status muss der aktuellen Run-Phase entsprechen;
+`complete` darf ausschließlich den letzten Status bilden. Diese
+Prüfung belegt Journal-Konsistenz, nicht die Vertrauenswürdigkeit der Host-Uhr.
 
 Implementierungsbefehle werden nicht wiederholt. Vor einer bereits gespeicherten
 Einreichung laufen die lokalen Worker-Tests erneut. Nach der Einreichung werden
