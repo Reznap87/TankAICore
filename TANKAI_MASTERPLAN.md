@@ -16,7 +16,8 @@ Momentaufnahme neu angelegte Aliasse ab. Das abschließende Recovery-Receipt wir
 außerdem bytegenau aus der gespeicherten Datei zurückgelesen, bevor der Pending-
 Marker entfernt wird; ein beschädigtes Receipt lässt den Restore gesperrt. Der
 Restore bindet beide Datenbanken und das Receipt zusätzlich an ihre exklusiv
-angelegte Dateiidentität und prüft die Datenbanken nach dem Receipt erneut. Eine
+angelegte Dateiidentität. Diese Identität wird vor und nach jedem bytegenauen
+Lesen kontrolliert; die Datenbanken werden nach dem Receipt erneut geprüft. Eine
 fehlende, ersetzte, per Hardlink aliasierte oder nachträglich geänderte Datei
 verhindert damit den Abschluss und erhält die Sperrmarkierung. Der
 Marker selbst bleibt dabei an die exklusiv angelegte Dateiidentität gebunden;

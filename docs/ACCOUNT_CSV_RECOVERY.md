@@ -91,9 +91,11 @@ This avoids reactivating old credentials when recovering an earlier snapshot.
 The restore creates `.tankai-recovery-pending` before writing either database.
 It writes both databases and a value-free `recovery-receipt.json` as exclusive
 new files. Each artifact must remain the same file identity and match its
-expected bytes. After the receipt durability boundary, both databases are
-checked again before the pending marker is removed; a missing, replaced,
-hard-linked or modified database or receipt leaves the recovered root blocked.
+expected bytes. Identity is checked immediately before and after each bounded
+byte read, including the receipt read. After the receipt durability boundary,
+both databases are checked again before the pending marker is removed; a
+missing, replaced, hard-linked or modified database or receipt leaves the
+recovered root blocked.
 The marker must likewise remain the same exclusively created file, so a missing,
 replaced or hard-linked marker blocks completion without deleting a foreign
 file. On POSIX, the parent directory, completed database set, receipt and final

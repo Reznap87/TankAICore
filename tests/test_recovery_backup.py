@@ -423,6 +423,29 @@ def test_identical_replacement_receipt_keeps_pending_marker(source, tmp_path, mo
     assert (destination / recovery.RESTORE_PENDING_FILE).exists()
 
 
+def test_identical_replacement_during_receipt_read_keeps_pending_marker(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'pair.enc'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery.csv_backup._read_regular
+
+    def replace_receipt_after_read(path, limit, **kwargs):
+        data = original(path, limit, **kwargs)
+        if path.name == recovery.RECEIPT_FILE:
+            path.unlink()
+            path.write_bytes(data)
+        return data
+
+    monkeypatch.setattr(recovery.csv_backup, '_read_regular', replace_receipt_after_read)
+    destination = tmp_path / 'replaced-during-read'
+    with pytest.raises(recovery.csv_backup.FileBackupError, match='Receipt.*ersetzt'):
+        recovery.restore_backup(encrypted, destination, key)
+    assert (destination / recovery.RESTORE_PENDING_FILE).exists()
+
+
 @pytest.mark.skipif(os.name == 'nt', reason='POSIX pending-marker identity contract')
 @pytest.mark.parametrize('alteration', ['missing', 'replaced', 'hard-linked'])
 def test_changed_pending_marker_is_preserved_and_blocks_success(

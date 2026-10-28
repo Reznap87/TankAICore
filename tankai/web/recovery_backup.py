@@ -167,15 +167,20 @@ def _revoke_snapshot_access(auth_data):
 
 
 def _verify_restored_file(path, expected, limit, identity, label):
-    try:
-        current = path.lstat()
-    except OSError:
-        raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss entfernt") from None
-    if (not stat.S_ISREG(current.st_mode)
-            or csv_backup._write_identity(current) != identity
-            or (os.name != "nt" and current.st_nlink != 1)):
-        raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss ersetzt")
-    if csv_backup._read_regular(path, limit) != expected:
+    def require_identity():
+        try:
+            current = path.lstat()
+        except OSError:
+            raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss entfernt") from None
+        if (not stat.S_ISREG(current.st_mode)
+                or csv_backup._write_identity(current) != identity
+                or (os.name != "nt" and current.st_nlink != 1)):
+            raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss ersetzt")
+
+    require_identity()
+    restored = csv_backup._read_regular(path, limit)
+    require_identity()
+    if restored != expected:
         raise csv_backup.FileBackupError(f"{label} stimmt nicht mit dem Wiederherstellungspaket überein")
 
 
