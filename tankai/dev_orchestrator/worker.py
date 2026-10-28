@@ -284,6 +284,7 @@ class WorkerPipelineRunner:
                     raise ValidationError("Gespeicherter Worker-Abschlussbeleg ist inkonsistent")
             elif run.finished_at is not None or run.error:
                 raise ValidationError("Unfertiger Worker-Run trägt einen Abschlussbeleg")
+            self._require_coherent_timeline(run)
             workspace = self.workspace_manager.workspace_from_binding(
                 agent_id=run.agent_id, branch=run.branch, workspace_path=run.workspace_path,
                 base_commit=run.base_commit,
@@ -393,6 +394,38 @@ class WorkerPipelineRunner:
         if (not executions or not all(item.passed for item in executions)
                 or [item.command for item in executions] != expected):
             raise ValidationError("Gespeicherte Befehlsbelege sind unvollständig oder fehlgeschlagen")
+
+    @staticmethod
+    def _require_coherent_timeline(run: WorkerRunRecord) -> None:
+        start = run.started_at
+        finish = run.finished_at
+        if start.utcoffset() is None or (finish is not None and finish.utcoffset() is None):
+            raise ValidationError("Gespeicherte Worker-Zeitachse benötigt Zeitzonenbezug")
+        if finish is not None and finish < start:
+            raise ValidationError("Gespeicherte Worker-Zeitachse endet vor ihrem Start")
+
+        executions = (
+            run.implementation_executions
+            + run.test_executions
+            + run.review_executions
+            + run.security_executions
+            + run.qa_executions
+        )
+        for execution in executions:
+            timestamp = execution.executed_at
+            if (timestamp.utcoffset() is None or timestamp < start
+                    or (finish is not None and timestamp > finish)):
+                raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Befehlsbelege")
+
+        for status in run.status_messages:
+            timestamp = status.created_at
+            if (timestamp.utcoffset() is None or timestamp < start
+                    or (finish is not None and timestamp > finish)):
+                raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Statusbelege")
+        if (finish is not None and (not run.status_messages
+                or run.status_messages[-1].phase != WorkerPhase.COMPLETE
+                or run.status_messages[-1].created_at != finish)):
+            raise ValidationError("Gespeicherte Worker-Zeitachse besitzt keinen exakten Abschlussstatus")
 
     def _finish_committed_run(
         self, run_id: str, workspace: Workspace, job: WorkerPipelineJob,

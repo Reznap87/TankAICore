@@ -1796,7 +1796,11 @@ Zustandsänderung abgewiesen.
 Integrationsbereite Runs benötigen außerdem Phase `complete`, einen gespeicherten
 Abschlusszeitpunkt und einen leeren Fehlertext. Unfertige Runs dürfen keinen
 Abschlusszeitpunkt oder Fehlertext tragen; widersprüchliche Terminal-Receipts
-werden ohne Fortsetzung abgewiesen.
+werden ohne Fortsetzung abgewiesen. Start, Befehls- und Statusbelege sowie Abschluss
+müssen außerdem eine zeitzonenbezogene, widerspruchsfreie Zeitachse bilden. Der
+abschließende `complete`-Status ist exakt an den Abschlusszeitpunkt gebunden;
+Belege außerhalb des Laufintervalls werden vor jeder Zustandsänderung abgewiesen.
+Dies schützt die Journal-Konsistenz, ersetzt aber keine vertrauenswürdige Host-Uhr.
 Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
 abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme

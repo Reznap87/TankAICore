@@ -291,7 +291,12 @@ der persistierte Zustand bleibt dabei unverändert.
 Ein bereits integrationsbereiter Run gilt nur mit Phase `complete`, vorhandenem
 Abschlusszeitpunkt und leerem Fehlertext als abgeschlossen. Laufende oder lediglich
 eingereichte Runs dürfen umgekehrt weder Abschlusszeitpunkt noch Fehlertext tragen.
-Inkonsistente Terminal-Receipts werden ohne Zustandsänderung abgewiesen.
+Zusätzlich müssen Start, sämtliche Befehls- und Statusbelege sowie der Abschluss
+eine zeitzonenbezogene, widerspruchsfreie Zeitachse bilden. Der abschließende
+`complete`-Status und der Abschlusszeitpunkt sind identisch. Belege vor dem Start,
+nach dem Abschluss oder ein Abschluss vor dem Start werden ohne Zustandsänderung
+abgewiesen. Diese Prüfung belegt Journal-Konsistenz, nicht die Vertrauenswürdigkeit
+der Host-Uhr.
 
 Implementierungsbefehle werden nicht wiederholt. Vor einer bereits gespeicherten
 Einreichung laufen die lokalen Worker-Tests erneut. Nach der Einreichung werden

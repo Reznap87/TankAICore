@@ -704,12 +704,13 @@ class DevelopmentOrchestrator:
                 raise TransitionError("Worker-Run und Task besitzen keinen identischen Implementierungs-Commit")
             run.state = WorkerRunState.READY_TO_INTEGRATE
             run.phase = WorkerPhase.COMPLETE
-            run.finished_at = utcnow()
-            run.status_messages.append(WorkerStatusMessage(
+            completed_status = WorkerStatusMessage(
                 sequence=len(run.status_messages) + 1,
                 phase=WorkerPhase.COMPLETE,
                 message="Review-, QA- und erforderliches Security-Gate bestanden.",
-            ))
+            )
+            run.status_messages.append(completed_status)
+            run.finished_at = completed_status.created_at
             self._event(state, "worker_run_ready_to_integrate", run.agent_id, {
                 "run_id": run_id,
                 "task_id": run.task_id,

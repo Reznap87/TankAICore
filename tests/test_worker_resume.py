@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 import subprocess
 import sys
@@ -258,6 +259,31 @@ def test_resume_requires_coherent_terminal_run_receipt(source_contract, monkeypa
     restarted.store.transaction(mutate)
     before = restarted.store.path.read_bytes()
     with pytest.raises(RuntimeError, match="Abschlussbeleg"):
+        runner.resume(job, run_id=completed.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("kind", ["run", "execution", "status"])
+def test_resume_requires_coherent_terminal_receipt_timeline(
+    source_contract, monkeypatch, kind,
+):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract, "complete_worker_run")
+    runner = WorkerPipelineRunner(restarted, manager)
+    completed = runner.resume(job, run_id=saved.run_id).run
+
+    def mutate(state):
+        run = state.worker_runs[completed.run_id]
+        if kind == "run":
+            run.started_at = run.finished_at + timedelta(seconds=1)
+        elif kind == "execution":
+            run.implementation_executions[0].executed_at = run.finished_at + timedelta(seconds=1)
+        else:
+            run.status_messages[-1].created_at = run.finished_at + timedelta(seconds=1)
+
+    restarted.store.transaction(mutate)
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Zeitachse"):
         runner.resume(job, run_id=completed.run_id)
     assert restarted.store.path.read_bytes() == before
 
