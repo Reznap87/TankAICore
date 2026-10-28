@@ -7,6 +7,9 @@ OpenAI and Anthropic text adapters. A programmatically supplied `OwnerPilot` now
 binds the same guard to session-authenticated `/api/run` admission; see
 [the owner admission contract](OWNER_PILOT_ADMISSION.md). Default startup and
 production configuration do not activate it. This code is not live-provider approval.
+The ordinary web route now rejects real or mixed adapter requests when no
+shared owner pilot is attached; see [REQUIRED_WEB_BUDGET.md](REQUIRED_WEB_BUDGET.md).
+Installing the code does not guess missing prices or create a spend policy.
 
 ## Contract
 

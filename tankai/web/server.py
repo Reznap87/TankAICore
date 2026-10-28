@@ -864,6 +864,8 @@ class Handler(BaseHTTPRequestHandler):
                 "registration_enabled": self.app.allow_registration,
                 "production_ready": False,
                 "development_queue_enabled": self.app.job_queue is not None,
+                "live_model_requests_require_budget": True,
+                "monetary_admission_configured": self.app.owner_pilot is not None,
             }
             if context is not None:
                 try:
@@ -882,7 +884,8 @@ class Handler(BaseHTTPRequestHandler):
                             "web_research": web_status,
                             "execution_mode": mode,
                             "live_provider": mode == "live",
-                            "verification_ready": mode == "live" and tank.critic_independent and web_status != "disabled",
+                            "verification_ready": (mode == "live" and self.app.owner_pilot is not None
+                                                   and tank.critic_independent and web_status != "disabled"),
                             "tenant_isolation": True,
                             "ltm": tank.ltm.summary() if tank.ltm else "",
                         })
@@ -2051,6 +2054,21 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
                 tank = runtime.tank
+                # The legacy web path must never bypass monetary admission.
+                # A mixed simulation/live pair can still spend on its real
+                # adapter, so it requires exactly the same shared owner pilot.
+                # Keep read-only history and account access available while
+                # reviewed prices/counters/sources are still missing.
+                if pilot is None and (not tank.llm.is_simulation or not tank.critic_llm.is_simulation):
+                    self.app.auth.audit(
+                        "run", user_id=context.user_id, workspace_id=context.workspace_id,
+                        success=False, details='{"reason":"monetary_admission_required"}',
+                    )
+                    self._json({
+                        "error": "Reale Modellaufrufe benötigen eine geprüfte gemeinsame Geldfreigabe",
+                        "error_code": "monetary_admission_required",
+                    }, 503)
+                    return
                 tank.parallel = parallel
                 def admit_provider_call(identity: str) -> None:
                     if pilot is not None:
