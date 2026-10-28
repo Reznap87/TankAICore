@@ -52,6 +52,8 @@ HEALTH_KEYS = {
     "registration_enabled",
     "production_ready",
     "development_queue_enabled",
+    "live_model_requests_require_budget",
+    "monetary_admission_configured",
 }
 HEALTH_BASE = {
     "Test": [
@@ -601,7 +603,7 @@ def html_contract(base: str) -> None:
 
 def health_contract(headers: Any, payload: dict[str, Any], version: str) -> None:
     public_json_headers(headers, "/api/health")
-    require(set(payload) == HEALTH_KEYS, "health does not have exactly seven keys")
+    require(set(payload) == HEALTH_KEYS, "health keys differ from the public contract")
     require(payload["ok"] is True, "health ok differs")
     require(payload["version"] == version, "health version differs")
     require(payload["auth_mode"] == "session", "auth mode differs")
@@ -612,6 +614,10 @@ def health_contract(headers: Any, payload: dict[str, Any], version: str) -> None
         payload["development_queue_enabled"] is False,
         "development queue enabled",
     )
+    require(payload["live_model_requests_require_budget"] is True,
+            "real model requests do not require a monetary budget")
+    require(payload["monetary_admission_configured"] is False,
+            "smoke fixture unexpectedly activates a monetary pilot")
 
 
 def unauthenticated_me(base: str) -> None:
