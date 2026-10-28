@@ -411,17 +411,29 @@ class WorkerPipelineRunner:
             + run.security_executions
             + run.qa_executions
         )
+        execution_timestamps = []
         for execution in executions:
             timestamp = execution.executed_at
             if (timestamp.utcoffset() is None or timestamp < start
                     or (finish is not None and timestamp > finish)):
                 raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Befehlsbelege")
+            execution_timestamps.append(timestamp)
+        if any(current < previous for previous, current in zip(
+                execution_timestamps, execution_timestamps[1:])):
+            raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungeordnete Befehlsbelege")
 
-        for status in run.status_messages:
+        status_timestamps = []
+        for expected_sequence, status in enumerate(run.status_messages, start=1):
+            if status.sequence != expected_sequence:
+                raise ValidationError("Gespeicherte Worker-Statusfolge ist nicht lückenlos")
             timestamp = status.created_at
             if (timestamp.utcoffset() is None or timestamp < start
                     or (finish is not None and timestamp > finish)):
                 raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Statusbelege")
+            status_timestamps.append(timestamp)
+        if any(current < previous for previous, current in zip(
+                status_timestamps, status_timestamps[1:])):
+            raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungeordnete Statusbelege")
         if (finish is not None and (not run.status_messages
                 or run.status_messages[-1].phase != WorkerPhase.COMPLETE
                 or run.status_messages[-1].created_at != finish)):

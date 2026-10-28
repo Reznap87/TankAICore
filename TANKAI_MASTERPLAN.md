@@ -1800,6 +1800,10 @@ werden ohne Fortsetzung abgewiesen. Start, Befehls- und Statusbelege sowie Absch
 müssen außerdem eine zeitzonenbezogene, widerspruchsfreie Zeitachse bilden. Der
 abschließende `complete`-Status ist exakt an den Abschlusszeitpunkt gebunden;
 Belege außerhalb des Laufintervalls werden vor jeder Zustandsänderung abgewiesen.
+Die gespeicherten Befehlsbelege müssen außerdem in der Phasenfolge chronologisch
+bleiben; Statusbelege benötigen eine lückenlose Sequenz und nicht rückläufige
+Zeitstempel. Rückwärts laufende oder doppelt nummerierte Journale werden damit
+ebenfalls vor jeder Fortsetzung abgewiesen.
 Dies schützt die Journal-Konsistenz, ersetzt aber keine vertrauenswürdige Host-Uhr.
 Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression

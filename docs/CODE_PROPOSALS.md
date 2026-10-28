@@ -295,8 +295,10 @@ Zusätzlich müssen Start, sämtliche Befehls- und Statusbelege sowie der Abschl
 eine zeitzonenbezogene, widerspruchsfreie Zeitachse bilden. Der abschließende
 `complete`-Status und der Abschlusszeitpunkt sind identisch. Belege vor dem Start,
 nach dem Abschluss oder ein Abschluss vor dem Start werden ohne Zustandsänderung
-abgewiesen. Diese Prüfung belegt Journal-Konsistenz, nicht die Vertrauenswürdigkeit
-der Host-Uhr.
+abgewiesen. Befehlsbelege müssen innerhalb ihrer gespeicherten Phasenfolge
+chronologisch sein. Statusbelege benötigen zusätzlich lückenlose Sequenznummern
+und dürfen zeitlich nicht zurückspringen. Diese Prüfung belegt Journal-Konsistenz,
+nicht die Vertrauenswürdigkeit der Host-Uhr.
 
 Implementierungsbefehle werden nicht wiederholt. Vor einer bereits gespeicherten
 Einreichung laufen die lokalen Worker-Tests erneut. Nach der Einreichung werden
@@ -326,7 +328,8 @@ mit anschließendem CLI-Neustart, unveränderte Run-Identität, konkurrierende
 Prozesse, Vertrags-/Dateiänderungen, fehlende Implementierungsbelege, gespaltene
 Review-/Security-/QA-Journale, manipulierte Freigabezusammenfassungen und
 eine manipulierte Implementierungszusammenfassung sowie verweigerte
-Containerumgehungen und inkonsistente Terminal-Receipts ab.
+Containerumgehungen, inkonsistente Terminal-Receipts und rückwärts laufende oder
+dupliziert nummerierte Belegfolgen ab.
 Containerprüfungen dieser neuen Wiederaufnahme verwenden einen Testexecutor;
 ein realer Container-Neustart oder ein öffentlicher Dauerbetrieb ist damit noch
 nicht belegt. Automatische Inferenz und Reparatur nach fehlgeschlagenen Tests

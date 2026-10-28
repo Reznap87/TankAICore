@@ -288,6 +288,34 @@ def test_resume_requires_coherent_terminal_receipt_timeline(
     assert restarted.store.path.read_bytes() == before
 
 
+@pytest.mark.parametrize("kind", ["execution-order", "status-order", "status-sequence"])
+def test_resume_requires_ordered_terminal_receipt_journal(
+    source_contract, monkeypatch, kind,
+):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    job, saved, restarted, manager = interrupt(source_contract, "complete_worker_run")
+    runner = WorkerPipelineRunner(restarted, manager)
+    completed = runner.resume(job, run_id=saved.run_id).run
+
+    def mutate(state):
+        run = state.worker_runs[completed.run_id]
+        if kind == "execution-order":
+            run.implementation_executions[-1].executed_at = (
+                run.test_executions[0].executed_at + timedelta(microseconds=1)
+            )
+        elif kind == "status-order":
+            run.status_messages[0].created_at = run.status_messages[1].created_at
+            run.status_messages[1].created_at = run.started_at
+        else:
+            run.status_messages[1].sequence = run.status_messages[0].sequence
+
+    restarted.store.transaction(mutate)
+    before = restarted.store.path.read_bytes()
+    with pytest.raises(RuntimeError, match="Zeitachse|Statusfolge"):
+        runner.resume(job, run_id=completed.run_id)
+    assert restarted.store.path.read_bytes() == before
+
+
 def test_saved_approvals_require_the_matching_command_receipts(source_contract, monkeypatch):
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
     job, saved, restarted, manager = interrupt(source_contract, "qa:command:1:before")
