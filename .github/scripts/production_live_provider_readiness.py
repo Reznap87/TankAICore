@@ -2,6 +2,8 @@
 """Read-only production live-provider readiness receipt.
 
 This script inspects repository contracts and optional presence-only secret metadata.
+Those inputs cannot prove runtime monetary admission or coordinated recovery, so
+they never authorize production. Missing operational proof stays UNKNOWN.
 It never requests or prints secret values, calls a model/search provider, or deploys.
 """
 
@@ -323,6 +325,25 @@ def evaluate(
             )
         )
 
+    # This evaluator has no independently verified operational evidence channel.
+    # Source markers, environment flags, account metadata and secret names cannot
+    # establish reserve-before-send, durable holds or a current whole-data restore.
+    # Do not turn either check into PASS without implementing that verifier.
+    checks.extend((
+        Check(
+            "shared_monetary_admission_evidence",
+            "UNKNOWN",
+            "source and secret-name checks do not verify deployed reserve-before-send, "
+            "current all-in prices/token bounds or durable uncertain holds",
+        ),
+        Check(
+            "coordinated_recovery_evidence",
+            "UNKNOWN",
+            "no independently verified deployment-scoped account/workspace/budget "
+            "restore and writer-fencing evidence; an auth-only store is insufficient",
+        ),
+    ))
+
     statuses = {check.status for check in checks}
     if "FAIL" in statuses:
         overall = "NOT_READY"
@@ -333,6 +354,8 @@ def evaluate(
 
     return {
         "gate": "ops.production.live_provider_readiness",
+        "gate_scope": "source_and_presence_metadata_only",
+        "production_authorization": False,
         "overall": overall,
         "read_only": True,
         "secret_values_requested": False,
