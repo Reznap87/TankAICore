@@ -15,10 +15,13 @@ einem Alias getrennt werden. Synthetische Tests decken bestehende und während d
 Momentaufnahme neu angelegte Aliasse ab. Das abschließende Recovery-Receipt wird
 außerdem bytegenau aus der gespeicherten Datei zurückgelesen, bevor der Pending-
 Marker entfernt wird; ein beschädigtes Receipt lässt den Restore gesperrt. Der
+Restore bindet beide Datenbanken und das Receipt zusätzlich an ihre exklusiv
+angelegte Dateiidentität und prüft die Datenbanken nach dem Receipt erneut. Eine
+fehlende, ersetzte, per Hardlink aliasierte oder nachträglich geänderte Datei
+verhindert damit den Abschluss und erhält die Sperrmarkierung. Der
 Marker selbst bleibt dabei an die exklusiv angelegte Dateiidentität gebunden;
 ein fehlender, ersetzter oder per Hardlink aliasierter Marker blockiert den
-Abschluss, ohne eine fremde Datei zu entfernen. Der
-PR bleibt Entwurf; dies ist weder ein
+Abschluss, ohne eine fremde Datei zu entfernen. Der PR bleibt Entwurf; dies ist weder ein
 Produktions-Backup-Beleg noch eine Deployment-, Secret- oder Provideränderung.
 
 5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als

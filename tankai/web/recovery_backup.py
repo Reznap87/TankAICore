@@ -166,6 +166,19 @@ def _revoke_snapshot_access(auth_data):
         db.close()
 
 
+def _verify_restored_file(path, expected, limit, identity, label):
+    try:
+        current = path.lstat()
+    except OSError:
+        raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss entfernt") from None
+    if (not stat.S_ISREG(current.st_mode)
+            or csv_backup._write_identity(current) != identity
+            or (os.name != "nt" and current.st_nlink != 1)):
+        raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss ersetzt")
+    if csv_backup._read_regular(path, limit) != expected:
+        raise csv_backup.FileBackupError(f"{label} stimmt nicht mit dem Wiederherstellungspaket überein")
+
+
 def restore_backup(source, destination, key):
     data = csv_backup._read_regular(Path(source), MAX_ENCRYPTED_BYTES)
     _, auth_data, csv_data, metadata = _decrypt(data, key)
@@ -175,27 +188,35 @@ def restore_backup(source, destination, key):
     csv_backup._sync_directory(directory.parent)
     pending = directory / RESTORE_PENDING_FILE
     pending_identity = csv_backup._write_new(pending, b"account-csv-recovery-v1\n")
-    csv_backup._write_new(directory / "auth.db", restored_auth)
-    csv_backup._write_new(directory / "csv-jobs.db", csv_data)
+    auth_path, csv_path = directory / "auth.db", directory / "csv-jobs.db"
+    auth_identity = csv_backup._write_new(auth_path, restored_auth)
+    csv_identity = csv_backup._write_new(csv_path, csv_data)
     csv_backup._sync_directory(directory)
-    if (csv_backup._read_regular(directory / "auth.db", MAX_AUTH_BYTES) != restored_auth or
-            csv_backup._read_regular(directory / "csv-jobs.db", csv_backup.MAX_SNAPSHOT_BYTES) != csv_data):
-        raise csv_backup.FileBackupError("Die wiederhergestellten Datenbanken stimmen nicht mit der Sicherung überein")
+    _verify_restored_file(auth_path, restored_auth, MAX_AUTH_BYTES, auth_identity,
+                          "Die wiederhergestellte Kontendatenbank")
+    _verify_restored_file(csv_path, csv_data, csv_backup.MAX_SNAPSHOT_BYTES, csv_identity,
+                          "Die wiederhergestellte Dateiauftragsdatenbank")
     result = {"ok": True, "operation": "restore", **_receipt(data, auth_data, csv_data, metadata),
               **access, "restoredAuthSha256": hashlib.sha256(restored_auth).hexdigest(),
               "restoredDatabasesVerified": True, "freshLoginRequired": True}
     receipt_path = directory / RECEIPT_FILE
     receipt_data = (json.dumps(result) + "\n").encode()
-    csv_backup._write_new(receipt_path, receipt_data)
+    receipt_identity = csv_backup._write_new(receipt_path, receipt_data)
     csv_backup._sync_directory(directory)
-    if csv_backup._read_regular(receipt_path, len(receipt_data)) != receipt_data:
-        raise csv_backup.FileBackupError("Das Recovery-Receipt stimmt nicht mit dem Ergebnis überein")
+    _verify_restored_file(receipt_path, receipt_data, len(receipt_data), receipt_identity,
+                          "Das Recovery-Receipt")
+    # The receipt write is a separate durability boundary. Recheck both databases
+    # afterwards so the pending marker cannot be removed for a changed artifact set.
+    _verify_restored_file(auth_path, restored_auth, MAX_AUTH_BYTES, auth_identity,
+                          "Die wiederhergestellte Kontendatenbank")
+    _verify_restored_file(csv_path, csv_data, csv_backup.MAX_SNAPSHOT_BYTES, csv_identity,
+                          "Die wiederhergestellte Dateiauftragsdatenbank")
     try:
         current_pending = pending.lstat()
     except OSError:
         raise csv_backup.FileBackupError("Recovery-Pending-Marker wurde vor Abschluss entfernt") from None
     if (not stat.S_ISREG(current_pending.st_mode)
-            or (current_pending.st_dev, current_pending.st_ino) != pending_identity
+            or csv_backup._write_identity(current_pending) != pending_identity
             or (os.name != "nt" and current_pending.st_nlink != 1)):
         raise csv_backup.FileBackupError("Recovery-Pending-Marker wurde vor Abschluss ersetzt")
     pending.unlink()

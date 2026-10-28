@@ -364,9 +364,10 @@ def test_corrupted_recovery_receipt_keeps_pending_marker(source, tmp_path, monke
     original = recovery.csv_backup._write_new
 
     def corrupt_receipt(path, data):
-        original(path, data)
+        identity = original(path, data)
         if path.name == recovery.RECEIPT_FILE:
             path.write_bytes(b'{"ok":false}\n')
+        return identity
 
     monkeypatch.setattr(recovery.csv_backup, '_write_new', corrupt_receipt)
     destination = tmp_path / 'corrupt-receipt'
@@ -374,6 +375,52 @@ def test_corrupted_recovery_receipt_keeps_pending_marker(source, tmp_path, monke
         recovery.restore_backup(encrypted, destination, key)
     assert (destination / recovery.RESTORE_PENDING_FILE).exists()
     assert (destination / recovery.RECEIPT_FILE).read_bytes() == b'{"ok":false}\n'
+
+
+def test_database_changed_after_receipt_check_keeps_pending_marker(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'pair.enc'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery.csv_backup._read_regular
+
+    def change_auth_after_receipt_check(path, limit, **kwargs):
+        data = original(path, limit, **kwargs)
+        if path.name == recovery.RECEIPT_FILE:
+            auth_path = path.parent / 'auth.db'
+            changed = bytearray(auth_path.read_bytes())
+            changed[-1] ^= 1
+            auth_path.write_bytes(changed)
+        return data
+
+    monkeypatch.setattr(recovery.csv_backup, '_read_regular', change_auth_after_receipt_check)
+    destination = tmp_path / 'changed-after-receipt'
+    with pytest.raises(recovery.csv_backup.FileBackupError, match='Kontendatenbank'):
+        recovery.restore_backup(encrypted, destination, key)
+    assert (destination / recovery.RESTORE_PENDING_FILE).exists()
+
+
+def test_identical_replacement_receipt_keeps_pending_marker(source, tmp_path, monkeypatch):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'pair.enc'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery.csv_backup._write_new
+
+    def replace_receipt_with_identical_bytes(path, data):
+        identity = original(path, data)
+        if path.name == recovery.RECEIPT_FILE:
+            path.unlink()
+            path.write_bytes(data)
+        return identity
+
+    monkeypatch.setattr(recovery.csv_backup, '_write_new', replace_receipt_with_identical_bytes)
+    destination = tmp_path / 'replaced-receipt'
+    with pytest.raises(recovery.csv_backup.FileBackupError, match='Receipt.*ersetzt'):
+        recovery.restore_backup(encrypted, destination, key)
+    assert (destination / recovery.RESTORE_PENDING_FILE).exists()
 
 
 @pytest.mark.skipif(os.name == 'nt', reason='POSIX pending-marker identity contract')

@@ -225,7 +225,14 @@ def _decrypt(data: bytes, key: bytes) -> tuple[bytes, dict]:
     return payload, metadata
 
 
-def _write_new(path: Path, data: bytes) -> tuple[int, int]:
+def _write_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    # Match _read_regular's cross-platform identity contract: Windows exposes
+    # different legacy ctime meanings through descriptor and path stat calls.
+    return (info.st_dev, info.st_ino, info.st_nlink, info.st_size,
+            info.st_mtime_ns, info.st_ctime_ns if os.name != "nt" else 0)
+
+
+def _write_new(path: Path, data: bytes) -> tuple[int, int, int, int, int, int]:
     """Never replace a file; remove only our own inode on an interrupted write."""
     descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     identity = os.fstat(descriptor)
@@ -234,6 +241,7 @@ def _write_new(path: Path, data: bytes) -> tuple[int, int]:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+            persisted_identity = _write_identity(os.fstat(handle.fileno()))
     except BaseException:
         try:
             current = path.lstat()
@@ -242,7 +250,7 @@ def _write_new(path: Path, data: bytes) -> tuple[int, int]:
         except OSError:
             pass
         raise
-    return identity.st_dev, identity.st_ino
+    return persisted_identity
 
 
 def _sync_directory(path: Path) -> None:
