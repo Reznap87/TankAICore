@@ -5,6 +5,16 @@ Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/Ta
 Statusdatum: 24. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
+Ergänzung vom 28. Oktober 2026: Der normale HTTP-Chatpfad sperrt reale und
+gemischte Modellpaare ohne angehängten gemeinsamen Besitzerpilot vor dem ersten
+Modellaufruf mit HTTP 503. Damit ist der bislang ungeschützte Legacy-Ausweichweg
+im Webserver geschlossen. Anmeldung und vorhandene Verläufe bleiben lesbar.
+Vier zunächst fehlschlagende Regressionen und die bestehenden Besitzer-/Quellen-
+Prüfungen belegen die Änderung lokal ohne Anbieteraufrufe. Konfiguration,
+Installation, Linux-CI, reale Tarif-/Zählerfreigabe und öffentliche dauerhafte
+Workspace-/Budget-Speicherung bleiben gesondert nachzuweisen. Details:
+`docs/REQUIRED_WEB_BUDGET.md`. Kein automatischer Merge oder Deploy.
+
 0. Verifizierter Projektstand und Ausführungsvertrag am 24. Oktober 2026
 
 5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
