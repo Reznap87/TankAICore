@@ -253,18 +253,20 @@ def _write_new(path: Path, data: bytes) -> tuple[int, int, int, int, int, int]:
     return persisted_identity
 
 
-def _read_created_regular(path: Path, limit: int, identity) -> bytes:
+def _read_created_regular(
+        path: Path, limit: int, identity, *,
+        subject: str = "Die gespeicherte Sicherung") -> bytes:
     """Read back only the exact file identity created by _write_new."""
 
     def require_identity():
         try:
             current = Path(path).lstat()
         except OSError:
-            raise FileBackupError("Die gespeicherte Sicherung wurde vor Abschluss entfernt") from None
+            raise FileBackupError(f"{subject} wurde vor Abschluss entfernt") from None
         if (not stat.S_ISREG(current.st_mode)
                 or _write_identity(current) != identity
                 or (os.name != "nt" and current.st_nlink != 1)):
-            raise FileBackupError("Die gespeicherte Sicherung wurde vor Abschluss ersetzt")
+            raise FileBackupError(f"{subject} wurde vor Abschluss ersetzt")
 
     require_identity()
     saved = _read_regular(Path(path), limit)
@@ -326,9 +328,11 @@ def restore_backup(source: Path, destination_directory: Path, key: bytes) -> dic
     directory.mkdir(mode=0o700)
     _sync_directory(directory.parent)
     destination = directory / "csv-jobs.db"
-    _write_new(destination, payload)
+    destination_identity = _write_new(destination, payload)
     _sync_directory(directory)
-    saved = _read_regular(destination, MAX_SNAPSHOT_BYTES)
+    saved = _read_created_regular(
+        destination, MAX_SNAPSHOT_BYTES, destination_identity,
+        subject="Die zurückgespielte Datenbank")
     if saved != payload:
         raise FileBackupError("Die zurückgespielte Datenbank stimmt nicht mit der Sicherung überein")
     return {"ok": True, "operation": "restore", **_receipt(data, saved, metadata),

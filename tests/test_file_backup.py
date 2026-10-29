@@ -257,6 +257,28 @@ def test_identical_replacement_of_saved_ciphertext_is_rejected(original, tmp_pat
     assert encrypted.read_bytes() == created.read_bytes()
 
 
+def test_identical_replacement_of_restored_database_is_rejected(original, tmp_path, monkeypatch):
+    _, source, *_ = original
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'restore-source.enc'
+    backup.create_backup(source, encrypted, key)
+    created = tmp_path / 'exclusively-created-restored.db'
+    real_write_new = backup._write_new
+
+    def replace_restored_database(path, data):
+        identity = real_write_new(path, data)
+        if path.name == 'csv-jobs.db':
+            path.rename(created)
+            path.write_bytes(data)
+        return identity
+
+    monkeypatch.setattr(backup, '_write_new', replace_restored_database)
+    restored = tmp_path / 'replaceable-restore'
+    with pytest.raises(backup.FileBackupError, match='zurückgespielte Datenbank.*ersetzt'):
+        backup.restore_backup(encrypted, restored, key)
+    assert (restored / 'csv-jobs.db').read_bytes() == created.read_bytes()
+
+
 def test_backup_path_replacement_during_read_is_rejected(original, tmp_path, monkeypatch):
     _, source, *_ = original
     key = secrets.token_bytes(32)

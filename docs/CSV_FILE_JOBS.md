@@ -150,8 +150,10 @@ Windows link and ACL policy remains an operator/filesystem responsibility.
 `verify` authenticates and validates the saved file without creating an output.
 `restore` performs those checks **before** creating its destination. It requires
 a new directory and writes only `csv-jobs.db` there. An existing directory, file
-or journal sidecar is never replaced. The new file is flushed and reread; success
-includes its verified snapshot hash. On POSIX, both the new directory entry and
+or journal sidecar is never replaced. The new file is flushed and reread while remaining bound to the identity returned
+by its exclusive creation; a missing, replaced, hard-linked or modified restored
+database cannot receive a success receipt, even if replacement bytes are identical.
+Success includes its verified snapshot hash. On POSIX, both the new directory entry and
 the restored database entry are flushed before success. A failed write returns
 an error and may leave an incomplete new restore directory; inspect it and choose
 a different new destination for a retry. On supported POSIX systems, files start
