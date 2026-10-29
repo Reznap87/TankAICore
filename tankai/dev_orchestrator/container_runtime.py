@@ -189,8 +189,10 @@ class DockerCommandExecutor:
                 f"Container-Runtime nicht gefunden: {self.runtime_binary}"
             )
         try:
+            version_field = ("{{.Client.Version}}" if "podman" in Path(executable).name.casefold()
+                             else "{{.Server.Version}}")
             completed = subprocess.run(
-                [executable, "version", "--format", "{{.Server.Version}}"],
+                [executable, "version", "--format", version_field],
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -381,6 +383,12 @@ class DockerCommandExecutor:
             "--label",
             f"tankai.phase={_safe_label_value(phase, 'phase')}",
         ]
+        if self.require_rootless and "podman" in Path(self.runtime_binary).name.casefold():
+            # Rootless Podman otherwise maps the host owner to container root.
+            # Keep that owner mapped to the configured non-root worker UID/GID,
+            # without recursively changing ownership of the host worktree.
+            uid, gid = user.split(":")
+            args.extend(["--userns", f"keep-id:uid={uid},gid={gid}"])
         for key, value in sorted((metadata_labels or {}).items()):
             normalized_key = str(key).strip().lower()
             if not _LABEL_KEY_RE.fullmatch(normalized_key):

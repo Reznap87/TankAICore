@@ -14,6 +14,9 @@ class OrchestratorModel(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
 
+MAX_CODE_REPAIR_ATTEMPTS = 2
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -307,10 +310,16 @@ class WorkerPhase(str, Enum):
 class TestExecution(OrchestratorModel):
     __test__: ClassVar[bool] = False
     command: str = Field(min_length=1, max_length=4000)
-    passed: bool
+    passed: bool = Field(strict=True)
     exit_code: int | None = None
     summary: str = Field(default="", max_length=10_000)
     executed_at: datetime = Field(default_factory=utcnow)
+
+    @model_validator(mode="after")
+    def _require_zero_exit_code_for_success(self):
+        if self.passed and self.exit_code != 0:
+            raise ValueError("Erfolgreiche Befehlsbelege benötigen Exitcode 0")
+        return self
 
 
 class CommandSpec(OrchestratorModel):
@@ -548,6 +557,17 @@ class WorkerStatusMessage(OrchestratorModel):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class CodeRepairReservation(OrchestratorModel):
+    parent_run_id: str = Field(min_length=1, max_length=160)
+    attempt: int = Field(ge=1, le=MAX_CODE_REPAIR_ATTEMPTS, strict=True)
+    context_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    request_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    proposal_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    job_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    queue_job_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
 class WorkerRunRecord(OrchestratorModel):
     run_id: str = Field(min_length=1, max_length=160)
     agent_id: str = Field(min_length=1, max_length=120)
@@ -557,6 +577,8 @@ class WorkerRunRecord(OrchestratorModel):
     workspace_path: str = Field(min_length=1, max_length=4000)
     execution_backend: WorkerExecutionBackend = WorkerExecutionBackend.HOST
     isolation: WorkerIsolationSpec | None = None
+    resume_contract_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    code_repair: CodeRepairReservation | None = None
     integration_isolation: WorkerIsolationSpec | None = None
     state: WorkerRunState = WorkerRunState.PENDING
     phase: WorkerPhase = WorkerPhase.PREPARE
@@ -596,6 +618,8 @@ class TaskSpec(OrchestratorModel):
     qa_agent_id: str | None = None
     security_agent_id: str | None = None
     worker_run_id: str | None = None
+    code_repair_attempts: int = Field(default=0, ge=0, le=MAX_CODE_REPAIR_ATTEMPTS, strict=True)
+    pending_code_repair: CodeRepairReservation | None = None
     requires_security_review: bool = False
     security_approved: bool | None = None
     state: TaskState = TaskState.PENDING
@@ -605,9 +629,11 @@ class TaskSpec(OrchestratorModel):
     test_executions: list[TestExecution] = Field(default_factory=list)
     review_decision: ReviewDecision = ReviewDecision.PENDING
     review_notes: str = ""
+    review_executions: list[TestExecution] = Field(default_factory=list)
     qa_status: QAStatus = QAStatus.PENDING
     qa_executions: list[TestExecution] = Field(default_factory=list)
     security_notes: str = ""
+    security_executions: list[TestExecution] = Field(default_factory=list)
     integration_commit: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

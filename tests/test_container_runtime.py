@@ -167,6 +167,37 @@ def test_read_only_plan_does_not_add_writable_mounts(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("runtime,required,mapped", [
+    ("podman", True, True), ("/usr/bin/podman", True, True),
+    ("podman", False, False), ("docker", True, False),
+])
+def test_rootless_podman_keeps_host_file_owner_as_configured_non_root_user(tmp_path, runtime, required, mapped):
+    workspace = make_workspace(tmp_path)
+    plan = DockerCommandExecutor(runtime, require_rootless=required).build_plan(
+        workspace, CommandSpec(argv=["python", "-V"]),
+        WorkerIsolationSpec(image=DIGEST_IMAGE, user="10001:10002"),
+        allowed_paths=["backend/src/auth/**"], read_only_workspace=False,
+        run_id="RUN-KEEP-ID", phase="implement",
+    )
+    assert ("--userns" in plan.argv) is mapped
+    if mapped:
+        assert plan.argv[plan.argv.index("--userns") + 1] == "keep-id:uid=10001,gid=10002"
+    assert plan.argv[plan.argv.index("--user") + 1] == "10001:10002"
+    assert "--read-only" in plan.argv and "ALL" in plan.argv
+
+
+@pytest.mark.parametrize("binary,field", [("podman", "{{.Client.Version}}"), ("docker", "{{.Server.Version}}")])
+def test_runtime_version_uses_the_local_podman_or_docker_server_field(monkeypatch, binary, field):
+    from types import SimpleNamespace
+    import tankai.dev_orchestrator.container_runtime as module
+    monkeypatch.setattr(module.shutil, "which", lambda value: "/usr/bin/" + binary)
+    def version(arguments, **kwargs):
+        assert arguments == ["/usr/bin/" + binary, "version", "--format", field]
+        return SimpleNamespace(returncode=0, stdout="4.9.3\n")
+    monkeypatch.setattr(module.subprocess, "run", version)
+    assert DockerCommandExecutor(binary).ensure_available() == "4.9.3"
+
+
 def test_root_runner_without_explicit_nonroot_user_is_rejected(tmp_path: Path, monkeypatch) -> None:
     workspace = make_workspace(tmp_path)
     spec = WorkerIsolationSpec(image=DIGEST_IMAGE)
