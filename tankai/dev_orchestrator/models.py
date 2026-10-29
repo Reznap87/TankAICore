@@ -315,6 +315,12 @@ class TestExecution(OrchestratorModel):
     summary: str = Field(default="", max_length=10_000)
     executed_at: datetime = Field(default_factory=utcnow)
 
+    @model_validator(mode="after")
+    def _require_zero_exit_code_for_success(self):
+        if self.passed and self.exit_code != 0:
+            raise ValueError("Erfolgreiche Befehlsbelege benötigen Exitcode 0")
+        return self
+
 
 class CommandSpec(OrchestratorModel):
     """One process invocation. Commands are always executed without a shell."""

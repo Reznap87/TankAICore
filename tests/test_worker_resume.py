@@ -10,9 +10,22 @@ import pytest
 
 from test_code_request import SOURCE, FIXED, prepare, request, response_for, source_contract
 from tankai.dev_orchestrator import (
-    DevelopmentOrchestrator, GitWorkspaceError, ProjectStateStore, TaskState,
+    DevelopmentOrchestrator, GitWorkspaceError, ProjectStateStore, TaskState, TestExecution,
     WorkerExecutionError, WorkerPhase, WorkerPipelineRunner, WorkerRunState,
 )
+
+
+@pytest.mark.parametrize("exit_code", [None, 1, -1])
+def test_success_execution_receipts_require_zero_exit_code(exit_code):
+    with pytest.raises(ValueError, match="Exitcode 0"):
+        TestExecution(command="synthetic command", passed=True, exit_code=exit_code)
+
+    failure = TestExecution(
+        command="synthetic failed command",
+        passed=False,
+        exit_code=exit_code,
+    )
+    assert failure.passed is False
 
 
 class AbruptExit(BaseException):

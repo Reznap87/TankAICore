@@ -270,9 +270,13 @@ unveränderte Vorgaben, denselben gespeicherten Worktree und einen sauberen,
 unveränderten Commit. Bereits gespeicherte Implementierungs-, Test-, Review-,
 Security- und QA-Belege müssen vollständig erfolgreich sein, ausdrücklich
 `passed=true` sowie Exitcode 0 tragen und exakt in der ursprünglichen
-Befehlsreihenfolge vorliegen. Ein widersprüchlicher Erfolgsbeleg mit einem
-anderen Exitcode wird ebenso wie ein zusätzlicher oder umsortierter Beleg
-abgewiesen. Bei bestandener QA müssen außerdem die im Task und Worker-Run
+Befehlsreihenfolge vorliegen. Dieser Zusammenhang gilt bereits beim Erzeugen
+jedes neuen `TestExecution`-Receipts: `passed=true` mit fehlendem oder
+abweichendem Exitcode ist modellseitig ungültig und kann daher auch im aktiven
+Implementierungs-, Test-, Review-, Security- oder QA-Pfad keinen Erfolg belegen.
+Fehlerbelege dürfen weiterhin einen Timeout ohne Exitcode oder einen Fehlercode
+tragen. Ein widersprüchlicher Erfolgsbeleg wird ebenso wie ein zusätzlicher oder
+umsortierter Beleg abgewiesen. Bei bestandener QA müssen außerdem die im Task und Worker-Run
 getrennt gespeicherten vollständigen QA-Belege identisch sein; abweichende
 Zusammenfassungen oder Zeitstempel sperren die Wiederaufnahme. Dasselbe gilt für
 bereits freigegebene Review- und Security-Belege: neue Worker-Runs speichern diese
