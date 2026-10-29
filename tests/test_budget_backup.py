@@ -192,6 +192,26 @@ def test_success_receipts_require_durable_directory_entries(
     assert True in observed
 
 
+def test_identical_replacement_of_created_ciphertext_is_rejected(tmp_path, budget, monkeypatch):
+    target = tmp_path / "replaceable.enc"
+    created = tmp_path / "exclusively-created.enc"
+    real_sync = backup._sync_directory
+    replaced = False
+
+    def replace_after_sync(parent):
+        nonlocal replaced
+        real_sync(parent)
+        if not replaced and target.exists():
+            replaced = True
+            target.rename(created)
+            target.write_bytes(created.read_bytes())
+
+    monkeypatch.setattr(backup, "_sync_directory", replace_after_sync)
+    with pytest.raises(backup.BudgetBackupError, match="persisted encrypted backup was replaced"):
+        backup.create_backup(budget, target, secrets.token_bytes(32))
+    assert target.read_bytes() == created.read_bytes()
+
+
 def test_persisted_ciphertext_is_checked_after_writing(tmp_path, budget, monkeypatch):
     original = backup._read_regular
     def tamper(path):

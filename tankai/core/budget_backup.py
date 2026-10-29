@@ -47,6 +47,25 @@ def _policy_context(policy: PilotPolicy) -> bytes:
     return hashlib.sha256(canonical.encode("utf-8")).digest()
 
 
+def _file_identity(info):
+    # Windows lstat and descriptor stat can expose different legacy ctime
+    # meanings (creation vs change time). File ID/size/mtime remain checked;
+    # POSIX additionally compares ctime. The pinned hash and GCM tag cover bytes.
+    return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns if os.name != "nt" else 0)
+
+
+def _require_created_identity(path: Path, expected_identity) -> None:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("persisted encrypted backup was removed before verification") from None
+    if (not stat.S_ISREG(current.st_mode)
+            or _file_identity(current) != expected_identity
+            or (os.name != "nt" and current.st_nlink != 1)):
+        raise BudgetBackupError("persisted encrypted backup was replaced before verification")
+
+
 def _read_regular(path: Path) -> bytes:
     path = Path(path)
     before = path.lstat()
@@ -56,21 +75,16 @@ def _read_regular(path: Path) -> bytes:
         raise BudgetBackupError("exclusively named encrypted backup required")
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     descriptor = os.open(path, flags)
-    def identity(info):
-        # Windows lstat and descriptor stat can expose different legacy ctime
-        # meanings (creation vs change time). File ID/size/mtime remain checked;
-        # POSIX additionally compares ctime. The pinned hash and GCM tag cover bytes.
-        return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
-                info.st_ctime_ns if os.name != "nt" else 0)
     with os.fdopen(descriptor, "rb") as handle:
         opened = os.fstat(handle.fileno())
-        if not stat.S_ISREG(opened.st_mode) or identity(opened) != identity(before):
+        if not stat.S_ISREG(opened.st_mode) or _file_identity(opened) != _file_identity(before):
             raise BudgetBackupError("encrypted backup changed before reading")
         data = handle.read(MAX_ENCRYPTED_BYTES + 1)
         after = os.fstat(handle.fileno())
         current = path.lstat()
-        if (len(data) != opened.st_size or identity(after) != identity(opened)
-                or not stat.S_ISREG(current.st_mode) or identity(current) != identity(opened)):
+        if (len(data) != opened.st_size or _file_identity(after) != _file_identity(opened)
+                or not stat.S_ISREG(current.st_mode)
+                or _file_identity(current) != _file_identity(opened)):
             raise BudgetBackupError("encrypted backup changed during reading")
     return data
 
@@ -129,9 +143,12 @@ def create_backup(ledger: MonetaryBudget, destination: Path, key: bytes) -> dict
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+            persisted_identity = _file_identity(os.fstat(handle.fileno()))
         _sync_directory(destination.parent)
         digest = hashlib.sha256(data).hexdigest()
+        _require_created_identity(destination, persisted_identity)
         recovered, receipt = _decode(destination, key, digest, policy)
+        _require_created_identity(destination, persisted_identity)
         if recovered != snapshot:
             raise BudgetBackupError("persisted ciphertext does not match captured snapshot")
         return {"ok":True, "operation":"backup", **receipt, "persisted_ciphertext_verified":True}

@@ -67,10 +67,14 @@ authentication tag still apply, while hard-link/ACL policy remains an operator
 filesystem responsibility. Missing, linked, nonregular, changed, oversized,
 truncated, appended or foreign-format inputs fail closed.
 
-Output creation is exclusive. Existing backups, restored databases and SQLite
-sidecars are never replaced. A write/sync/verification failure may leave a new
-diagnostic ciphertext file; it is not acknowledged as a backup, and retry cannot
-overwrite it. On POSIX, successful backup and restore receipts additionally
+Output creation is exclusive. The persisted ciphertext remains bound to the
+identity returned by that exclusive creation before and after its bounded,
+authenticated readback. A missing, replaced, hard-linked or modified output
+cannot receive a successful persistence receipt, even when replacement bytes are
+identical. Existing backups, restored databases and SQLite sidecars are never
+replaced. A write/sync/verification failure may leave a new diagnostic ciphertext
+file; it is not acknowledged as a backup, and retry cannot overwrite it. On
+POSIX, successful backup and restore receipts additionally
 require the new directory entry to be synced. Source/destination parents must be
 trusted operator directories. New files request POSIX mode 0600; Windows ACLs
 and directory-metadata durability remain operator-managed.
