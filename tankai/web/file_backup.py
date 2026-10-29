@@ -253,6 +253,25 @@ def _write_new(path: Path, data: bytes) -> tuple[int, int, int, int, int, int]:
     return persisted_identity
 
 
+def _read_created_regular(path: Path, limit: int, identity) -> bytes:
+    """Read back only the exact file identity created by _write_new."""
+
+    def require_identity():
+        try:
+            current = Path(path).lstat()
+        except OSError:
+            raise FileBackupError("Die gespeicherte Sicherung wurde vor Abschluss entfernt") from None
+        if (not stat.S_ISREG(current.st_mode)
+                or _write_identity(current) != identity
+                or (os.name != "nt" and current.st_nlink != 1)):
+            raise FileBackupError("Die gespeicherte Sicherung wurde vor Abschluss ersetzt")
+
+    require_identity()
+    saved = _read_regular(Path(path), limit)
+    require_identity()
+    return saved
+
+
 def _sync_directory(path: Path) -> None:
     """Persist directory-entry changes before a success receipt on POSIX."""
     if os.name == "nt":
@@ -281,10 +300,11 @@ def create_backup(source: Path, destination: Path, key: bytes) -> dict:
     nonce = secrets.token_bytes(12)
     data = MAGIC + nonce + cipher.encrypt(nonce, payload, AAD)
     destination = Path(destination)
-    _write_new(destination, data)
+    destination_identity = _write_new(destination, data)
     _sync_directory(destination.parent)
-    # Verify persisted ciphertext rather than trusting an in-memory encryption buffer.
-    saved = _read_regular(destination, MAX_ENCRYPTED_BYTES)
+    # Verify the exact created ciphertext file rather than trusting a replacement
+    # that happens to contain the same authenticated bytes.
+    saved = _read_created_regular(destination, MAX_ENCRYPTED_BYTES, destination_identity)
     verified, checked_metadata = _decrypt(saved, key)
     if verified != payload or checked_metadata != metadata:
         raise FileBackupError("Die gespeicherte Sicherung stimmt nicht mit der Momentaufnahme überein")

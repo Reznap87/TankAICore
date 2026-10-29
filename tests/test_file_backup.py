@@ -238,6 +238,25 @@ def test_linked_inputs_or_outputs_are_not_followed(original, tmp_path):
     assert target.read_bytes() == b'leave unchanged'
 
 
+def test_identical_replacement_of_saved_ciphertext_is_rejected(original, tmp_path, monkeypatch):
+    _, source, *_ = original
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'replaceable-output.enc'
+    created = tmp_path / 'exclusively-created-output.enc'
+    real_write_new = backup._write_new
+
+    def replace_after_write(path, data):
+        identity = real_write_new(path, data)
+        path.rename(created)
+        path.write_bytes(data)
+        return identity
+
+    monkeypatch.setattr(backup, '_write_new', replace_after_write)
+    with pytest.raises(backup.FileBackupError, match='gespeicherte Sicherung.*ersetzt'):
+        backup.create_backup(source, encrypted, key)
+    assert encrypted.read_bytes() == created.read_bytes()
+
+
 def test_backup_path_replacement_during_read_is_rejected(original, tmp_path, monkeypatch):
     _, source, *_ = original
     key = secrets.token_bytes(32)

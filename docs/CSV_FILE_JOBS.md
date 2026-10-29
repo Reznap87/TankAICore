@@ -127,8 +127,10 @@ The envelope is `TANKAI-CSV-BACKUP\0\1`, a fresh 12-byte nonce and AES-256-GCM
 ciphertext with its authentication tag. The fixed format/cipher/scope header is
 authenticated as associated data. There is no compression or archive extraction.
 Only encrypted bytes are written during backup creation; the snapshot stays in
-process memory. The actual saved file is read back, authenticated and compared
-with the snapshot before success is returned. On POSIX, the containing directory
+process memory. The actual saved file remains bound to the identity returned by
+its exclusive creation while it is read back, authenticated and compared with
+the snapshot. A missing, replaced, hard-linked or modified output cannot receive
+a successful persistence receipt. On POSIX, the containing directory
 is also flushed before the success receipt, so creating the encrypted file is a
 metadata durability boundary rather than only a file-content flush. Snapshot
 size is limited to 64 MiB including SQLite overhead, with a 15-second snapshot
