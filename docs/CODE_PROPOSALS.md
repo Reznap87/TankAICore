@@ -525,3 +525,14 @@ Queue-/Run-Kennungen, Wiederanlauf und unveränderte Testhashes. Cleanup entfern
 ausschließlich verwaltete Container mit der in der privaten Fixture gespeicherten
 Repository-ID. Es gibt keinen globalen Prune und kein rekursives Löschen von
 Hostverzeichnissen. Der Test veröffentlicht keine Anwendung und ruft kein Modell auf.
+
+### Strikter Erfolgstyp für Befehlsbelege
+
+Das Feld `passed` eines `TestExecution`-Belegs akzeptiert ausschließlich echte
+JSON-/Python-Boolesche Werte. Zahlen und Zeichenketten werden nicht zu `True`
+oder `False` normalisiert. Die bestehende Revalidierung an der Host- und
+Container-Executor-Grenze weist damit auch intern per nicht validierendem
+`model_copy(update=...)` erzeugte Belege mit `passed=1` zurück, bevor sie
+journalisiert oder committed werden. Erfolgreiche Belege benötigen weiterhin
+zusätzlich Exitcode 0; Fehler- und Timeout-Belege bleiben unverändert darstellbar.
+

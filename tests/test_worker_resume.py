@@ -52,6 +52,30 @@ def test_executor_receipt_is_revalidated_before_persistence(
     assert run.implementation_commit is None
 
 
+def test_executor_receipt_rejects_non_boolean_passed_value(
+    source_contract, monkeypatch,
+):
+    _, orchestrator, manager, _, _ = source_contract
+    package = request(source_contract)
+    job = prepare(source_contract, package, response_for(package))
+    valid = TestExecution(command="adapter command", passed=True, exit_code=0)
+    invalid = valid.model_copy(update={"passed": 1})
+    assert invalid.passed == 1 and type(invalid.passed) is int
+
+    monkeypatch.setattr(
+        manager,
+        "run_command",
+        lambda *args, **kwargs: invalid.model_copy(deep=True),
+    )
+    with pytest.raises(WorkerExecutionError, match="valid boolean") as error:
+        WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    run = orchestrator.state().worker_runs[error.value.run_id]
+    assert run.state == WorkerRunState.FAILED
+    assert run.implementation_executions == []
+    assert run.implementation_commit is None
+
+
 class AbruptExit(BaseException):
     """Simulate loss of the process without normal exception persistence."""
 

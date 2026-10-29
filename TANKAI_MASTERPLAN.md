@@ -4560,3 +4560,15 @@ executableContentRun: false und factsVerified: false bleiben verbindlich.
 Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht blockierter Gate:
 begrenzte DFFITS-Einflussdiagnostik mit expliziter Schwellenregel oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
+
+## Entwurfsnachweis: strikt boolescher Befehlsbeleg
+
+`TestExecution.passed` ist nun strikt boolesch. Die Executor-Revalidierung
+normalisiert weder Ganzzahlen noch Zeichenketten zu einem Erfolg. Ein
+synthetischer Adaptertest erzeugt über Pydantics nicht validierenden
+`model_copy(update=...)`-Pfad einen Beleg mit `passed=1` und Exitcode 0 und
+verlangt dessen Ablehnung vor Implementierungsbeleg oder Commit. Der bestehende
+Erfolgsvertrag `passed=true` plus Exitcode 0 bleibt erhalten; Fehler- und
+Timeout-Belege werden nicht eingeschränkt. Dies ist Code-/CI-Evidenz, kein
+Produktionslauf oder unabhängiger Modellreview.
+
