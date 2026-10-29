@@ -95,6 +95,39 @@ def _has_sidecars(path: Path) -> bool:
                for suffix in ("-wal", "-shm", "-journal"))
 
 
+def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    # Windows descriptor/path ctime can expose different legacy meanings.
+    return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns if os.name != "nt" else 0)
+
+
+def _require_created_snapshot(path: Path, expected: bytes, identity) -> None:
+    """Read back only the exact restored database created by this operation."""
+
+    def require_identity() -> None:
+        try:
+            current = path.lstat()
+        except OSError:
+            raise BudgetStateError("restored budget database was removed") from None
+        if (not stat.S_ISREG(current.st_mode) or _stat_identity(current) != identity
+                or current.st_nlink != 1):
+            raise BudgetStateError("restored budget database identity changed")
+
+    require_identity()
+    flags = (os.O_RDONLY | getattr(os, "O_BINARY", 0)
+             | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if not stat.S_ISREG(opened.st_mode) or _stat_identity(opened) != identity:
+            raise BudgetStateError("restored budget database changed before reading")
+        saved = handle.read(MAX_LEDGER_BYTES + 1)
+        after = os.fstat(handle.fileno())
+    require_identity()
+    if _stat_identity(after) != identity or saved != expected:
+        raise BudgetStateError("restored budget database bytes changed")
+
+
 @dataclass(frozen=True)
 class PilotPolicy:
     owner_id: str
@@ -710,11 +743,12 @@ class MonetaryBudget:
                 output.write(data)
                 output.flush()
                 os.fsync(output.fileno())
-                identity = os.fstat(output.fileno())
+                identity = _stat_identity(os.fstat(output.fileno()))
             _sync_directory(destination.parent)
-            current = destination.stat()
-            if (destination.is_symlink() or current.st_nlink != 1 or _has_sidecars(destination)
-                    or (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino)):
+            if _has_sidecars(destination):
+                raise BudgetStateError("budget destination changed during restore")
+            _require_created_snapshot(destination, data, identity)
+            if _has_sidecars(destination):
                 raise BudgetStateError("budget destination changed during restore")
             restored = cls(destination, clock=clock)
             if restored.policy != expected_policy:

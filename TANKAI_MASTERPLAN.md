@@ -114,7 +114,10 @@ Lesens werden abgewiesen, damit der unabhängig gepinnte Betreiberpfad eindeutig
 an das geprüfte Artefakt gebunden bleibt. Die neu erzeugte Sicherung bleibt bis
 zum abgeschlossenen authentifizierten Rücklesen zusätzlich an die Identität der
 exklusiv angelegten Datei gebunden; auch eine bytegleiche Ersetzung erhält keinen
-Persistenzbeleg.
+Persistenzbeleg. Neue Geldbuch-Restore-Dateien werden zusätzlich descriptorgebunden
+aus der exklusiv erzeugten Datei zurückgelesen und müssen vor der Initialisierung
+bytegenau dem entschlüsselten Snapshot entsprechen. Eine andere gültige
+Momentaufnahme derselben Policy erhält damit keinen falschen Restore-Erfolgsbeleg.
 Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Ein zusätzlicher künstlicher Kalt-Restore-Probelauf erfasst jetzt Konten,

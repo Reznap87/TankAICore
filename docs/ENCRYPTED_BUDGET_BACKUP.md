@@ -69,9 +69,12 @@ truncated, appended or foreign-format inputs fail closed.
 
 Output creation is exclusive. The persisted ciphertext remains bound to the
 identity returned by that exclusive creation before and after its bounded,
-authenticated readback. A missing, replaced, hard-linked or modified output
-cannot receive a successful persistence receipt, even when replacement bytes are
-identical. Existing backups, restored databases and SQLite sidecars are never
+authenticated readback. Restored ledger files are likewise read back through a
+descriptor bound to their exclusive creation identity and must match the exact
+decrypted snapshot bytes before initialization can succeed. A missing, replaced,
+hard-linked or modified output cannot receive a successful persistence or restore
+receipt, even when it remains a valid ledger under the same policy. Existing
+backups, restored databases and SQLite sidecars are never
 replaced. A write/sync/verification failure may leave a new diagnostic ciphertext
 file; it is not acknowledged as a backup, and retry cannot overwrite it. On
 POSIX, successful backup and restore receipts additionally

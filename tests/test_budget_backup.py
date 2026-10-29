@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from tankai.core import budget_backup as backup
+from tankai.core import monetary_budget as monetary
 from tankai.core.monetary_budget import BudgetDenied, MonetaryBudget
 from test_budget_snapshots import budget, no_network
 from test_monetary_budget import Clock, OWNER, begin, reserve
@@ -210,6 +211,34 @@ def test_identical_replacement_of_created_ciphertext_is_rejected(tmp_path, budge
     with pytest.raises(backup.BudgetBackupError, match="persisted encrypted backup was replaced"):
         backup.create_backup(budget, target, secrets.token_bytes(32))
     assert target.read_bytes() == created.read_bytes()
+
+
+def test_in_place_mutated_restored_database_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch,
+):
+    path, key, receipt, _ = saved
+    begin(budget, "later-job")
+    reserve(budget, "later-attempt", job_id="later-job")
+    altered_snapshot = budget.export_snapshot()
+    target = tmp_path / "mutated-restore.sqlite"
+    real_sync = monetary._sync_directory
+    mutated = False
+
+    def mutate_after_directory_sync(parent):
+        nonlocal mutated
+        real_sync(parent)
+        if not mutated and target.exists():
+            mutated = True
+            with target.open("r+b") as output:
+                output.write(altered_snapshot)
+                output.truncate()
+                output.flush()
+                os.fsync(output.fileno())
+
+    monkeypatch.setattr(monetary, "_sync_directory", mutate_after_directory_sync)
+    with pytest.raises(backup.BudgetBackupError, match="restore failed closed"):
+        backup.restore_backup(target=target, source=path, key=key, **options(budget, receipt))
+    assert target.read_bytes() == altered_snapshot
 
 
 def test_persisted_ciphertext_is_checked_after_writing(tmp_path, budget, monkeypatch):
