@@ -88,9 +88,11 @@ def _write_barriers(paths):
             reader.execute("PRAGMA schema_version").fetchone()
             current = path.lstat()
             identity = (before.st_dev, before.st_ino, before.st_nlink)
+            if os.name != "nt" and (before.st_nlink != 1 or current.st_nlink != 1):
+                raise csv_backup.FileBackupError(
+                    "Quelldatenbank besitzt einen Hardlink-Alias")
             if (not stat.S_ISREG(current.st_mode)
-                    or (current.st_dev, current.st_ino, current.st_nlink) != identity
-                    or (os.name != "nt" and current.st_nlink != 1)):
+                    or (current.st_dev, current.st_ino, current.st_nlink) != identity):
                 raise csv_backup.FileBackupError(
                     "Quelldatenbank wurde während der Schreibbarriere ersetzt")
             bound_sources.append((reader, identity))
