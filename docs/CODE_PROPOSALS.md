@@ -268,9 +268,11 @@ Der ursprüngliche Executor und seine Kindprozesse müssen beendet sein. Die
 Wiederaufnahme verlangt denselben Auftrag, dieselben Tests und Prüfer,
 unveränderte Vorgaben, denselben gespeicherten Worktree und einen sauberen,
 unveränderten Commit. Bereits gespeicherte Implementierungs-, Test-, Review-,
-Security- und QA-Belege müssen vollständig erfolgreich sein und exakt in der
-ursprünglichen Befehlsreihenfolge vorliegen; zusätzliche oder umsortierte Belege
-werden abgewiesen. Bei bestandener QA müssen außerdem die im Task und Worker-Run
+Security- und QA-Belege müssen vollständig erfolgreich sein, ausdrücklich
+`passed=true` sowie Exitcode 0 tragen und exakt in der ursprünglichen
+Befehlsreihenfolge vorliegen. Ein widersprüchlicher Erfolgsbeleg mit einem
+anderen Exitcode wird ebenso wie ein zusätzlicher oder umsortierter Beleg
+abgewiesen. Bei bestandener QA müssen außerdem die im Task und Worker-Run
 getrennt gespeicherten vollständigen QA-Belege identisch sein; abweichende
 Zusammenfassungen oder Zeitstempel sperren die Wiederaufnahme. Dasselbe gilt für
 bereits freigegebene Review- und Security-Belege: neue Worker-Runs speichern diese

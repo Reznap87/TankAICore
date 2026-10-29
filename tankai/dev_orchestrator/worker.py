@@ -391,9 +391,12 @@ class WorkerPipelineRunner:
 
     @staticmethod
     def _require_saved_commands(executions: list[TestExecution], expected: list[str]) -> None:
-        if (not executions or not all(item.passed for item in executions)
-                or [item.command for item in executions] != expected):
-            raise ValidationError("Gespeicherte Befehlsbelege sind unvollständig oder fehlgeschlagen")
+        if (not executions or not all(
+                item.passed and item.exit_code == 0 for item in executions
+        ) or [item.command for item in executions] != expected):
+            raise ValidationError(
+                "Gespeicherte Befehlsbelege sind unvollständig, widersprüchlich oder fehlgeschlagen"
+            )
 
     @staticmethod
     def _require_coherent_timeline(run: WorkerRunRecord) -> None:
