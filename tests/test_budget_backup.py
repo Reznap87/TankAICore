@@ -237,7 +237,7 @@ def test_in_place_mutated_restored_database_cannot_receive_success(
 
     monkeypatch.setattr(monetary, "_sync_directory", mutate_after_directory_sync)
     with pytest.raises(backup.BudgetBackupError, match="restore failed closed"):
-        backup.restore_backup(target=target, source=path, key=key, **options(budget, receipt))
+        backup.restore_backup(source=path, destination=target, key=key, **options(budget, receipt))
     assert target.read_bytes() == altered_snapshot
 
 
