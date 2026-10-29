@@ -217,8 +217,7 @@ def test_in_place_mutated_restored_database_cannot_receive_success(
     tmp_path, budget, saved, monkeypatch,
 ):
     path, key, receipt, _ = saved
-    begin(budget, "later-job")
-    reserve(budget, "later-attempt", job_id="later-job")
+    budget.close_job("job", owner_id=OWNER)
     altered_snapshot = budget.export_snapshot()
     target = tmp_path / "mutated-restore.sqlite"
     real_sync = monetary._sync_directory
