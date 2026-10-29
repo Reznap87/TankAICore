@@ -17,7 +17,13 @@ import sqlite3
 import stat
 
 from .monetary_budget import (
-    BudgetStateError, MAX_LEDGER_BYTES, MonetaryBudget, PilotPolicy, _sync_directory,
+    BudgetStateError,
+    MAX_LEDGER_BYTES,
+    MonetaryBudget,
+    PilotPolicy,
+    _require_created_snapshot,
+    _stat_identity,
+    _sync_directory,
 )
 
 
@@ -173,9 +179,20 @@ def restore_backup(source: Path, destination: Path, key: bytes, *, expected_sha2
     """Validate before restore_new; never replace, renew or unlock a ledger."""
     try:
         snapshot, receipt = _decode(source, key, expected_sha256, expected_policy)
+        destination = Path(destination).absolute()
         with MonetaryBudget.restore_new(destination, data=snapshot,
-                expected_sha256=receipt["snapshot_sha256"], expected_policy=expected_policy, clock=clock):
-            pass
+                expected_sha256=receipt["snapshot_sha256"],
+                expected_policy=expected_policy, clock=clock) as restored:
+            current = destination.lstat()
+            if (not stat.S_ISREG(current.st_mode) or current.st_nlink != 1
+                    or (current.st_dev, current.st_ino) != restored._file_identity):
+                raise BudgetStateError("restored budget database identity changed")
+            restored_identity = _stat_identity(current)
+            _require_created_snapshot(destination, snapshot, restored_identity)
+        # Closing SQLite is part of the acknowledged restore boundary. Recheck
+        # afterwards so a byte-identical pathname replacement during close
+        # cannot receive a success receipt for another filesystem object.
+        _require_created_snapshot(destination, snapshot, restored_identity)
         return {"ok":True, "operation":"restore", **receipt, "restored_state_verified":True}
     except (OSError, sqlite3.Error, BudgetStateError):
         raise BudgetBackupError("encrypted monetary restore failed closed") from None

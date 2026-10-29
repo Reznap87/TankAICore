@@ -4579,3 +4579,15 @@ executableContentRun: false und factsVerified: false bleiben verbindlich.
 Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht blockierter Gate:
 begrenzte DFFITS-Einflussdiagnostik mit expliziter Schwellenregel oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
+
+## Entwurfsnachweis: monetärer Restore-Abschluss nach SQLite-Close
+
+Der verschlüsselte monetäre Restore bindet seinen Erfolgs-Receipt nun bis nach dem
+Schließen der neu geöffneten SQLite-Verbindung an die exklusiv erzeugte
+Zieldatei. Vor dem Close werden Gerät, Inode, Linkzahl und die exakten
+entschlüsselten Snapshot-Bytes festgehalten; danach werden dieselbe Identität und
+dieselben Bytes erneut geprüft. Ein bytegleicher Pfadaustausch im Close-Fenster
+wird damit fail-closed abgewiesen. Ein synthetischer Regressionstest ersetzt die
+Datei genau nach dem Close. Dies ist Code-/CI-Evidenz und kein produktiver
+Recovery-, Writer-Fencing- oder Anti-Rollback-Nachweis.
+

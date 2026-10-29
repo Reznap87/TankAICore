@@ -114,3 +114,16 @@ module/library. Unit network calls are forbidden.
 starts fresh authenticated loopback HTTP apps: new owner jobs remain blocked
 without an SDK send. Other snapshot, budget, pricing and SDK regressions remain
 required; these tests prove neither model quality nor deployed durability.
+
+### Erfolgsgrenze nach SQLite-Close
+
+Der Restore-Erfolg wird erst nach dem Schließen der neu geöffneten SQLite-Verbindung
+bestätigt. Die ausschließlich erzeugte Zieldatei wird vor dem Schließen an Gerät,
+Inode, Linkzahl und die entschlüsselten Snapshot-Bytes gebunden und anschließend
+noch einmal gegen dieselbe Identität und dieselben Bytes geprüft. Ein Austausch des
+Pfadnamens während des Close-Fensters – auch durch bytegleichen Inhalt – führt damit
+zu einem fehlgeschlagenen Restore statt zu einem Erfolgs-Receipt.
+
+Dieser Nachweis ist ein synthetischer Dateisystemtest. Er ersetzt weder
+Produktions-Writer-Fencing noch unabhängige Freshness-/Anti-Rollback-Nachweise.
+

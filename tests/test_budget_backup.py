@@ -240,6 +240,32 @@ def test_in_place_mutated_restored_database_cannot_receive_success(
     assert target.read_bytes() == altered_snapshot
 
 
+def test_identical_replacement_after_restore_close_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch,
+):
+    path, key, receipt, _ = saved
+    target = tmp_path / "closed-restore.sqlite"
+    created = tmp_path / "exclusively-created-restore.sqlite"
+    real_close = MonetaryBudget.close
+    replaced = False
+
+    def replace_after_close(self):
+        nonlocal replaced
+        real_close(self)
+        if not replaced and self.path == target.absolute():
+            replaced = True
+            target.rename(created)
+            target.write_bytes(created.read_bytes())
+
+    monkeypatch.setattr(MonetaryBudget, "close", replace_after_close)
+    with pytest.raises(backup.BudgetBackupError, match="restore failed closed"):
+        backup.restore_backup(
+            source=path, destination=target, key=key, **options(budget, receipt)
+        )
+    assert replaced
+    assert target.read_bytes() == created.read_bytes()
+
+
 def test_persisted_ciphertext_is_checked_after_writing(tmp_path, budget, monkeypatch):
     original = backup._read_regular
     def tamper(path):
