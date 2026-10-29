@@ -98,6 +98,37 @@ def test_pair_recovers_password_hashes_roles_choices_and_deliveries(source, tmp_
     assert restored_files.list(other.context) == []
 
 
+def test_restore_rechecks_artifacts_after_pending_marker_durability(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted, destination = tmp_path / "pair.enc", tmp_path / "final-check"
+    recovery.create_backup(root, encrypted, key)
+    original = recovery.csv_backup._sync_directory
+    preserved = tmp_path / "exclusive-auth.db"
+    replaced = False
+
+    def replace_after_final_sync(directory):
+        nonlocal replaced
+        original(directory)
+        pending = destination / recovery.RESTORE_PENDING_FILE
+        auth = destination / "auth.db"
+        if directory == destination and auth.exists() and not pending.exists() and not replaced:
+            replaced = True
+            auth.rename(preserved)
+            auth.write_bytes(preserved.read_bytes())
+
+    monkeypatch.setattr(recovery.csv_backup, "_sync_directory", replace_after_final_sync)
+    with pytest.raises(
+        recovery.csv_backup.FileBackupError,
+        match="Kontendatenbank wurde vor Abschluss ersetzt",
+    ):
+        recovery.restore_backup(encrypted, destination, key)
+    assert replaced
+    assert (destination / "auth.db").read_bytes() == preserved.read_bytes()
+
+
 def test_fresh_app_uses_both_recovered_databases_and_requires_new_login(source, tmp_path, monkeypatch):
     root, _, files, old_session, draft, done, _ = source
     key = secrets.token_bytes(32)

@@ -144,3 +144,16 @@ activation. The running databases remain in their existing plaintext format.
 References: [SQLite transactions](https://www.sqlite.org/lang_transaction.html),
 [online backup](https://www.sqlite.org/backup.html), and
 [authenticated encryption](https://cryptography.io/en/stable/hazmat/primitives/aead/).
+
+### Abschlussprüfung nach Entfernung des Pending-Markers
+
+Die Entfernung des Pending-Markers und das anschließende Verzeichnis-`fsync` bilden
+die letzte Durability-Grenze des koordinierten Restores. Danach werden
+Kontendatenbank, Dateiauftragsdatenbank und Recovery-Receipt erneut gegen ihre
+jeweils exklusiv erzeugte Dateiidentität und ihre erwarteten Bytes geprüft. Auch
+ein bytegleicher Austausch in diesem Abschlussfenster verhindert dadurch den
+Erfolgs-Receipt. Ein erneut angelegter Pending-Marker wird ebenfalls abgewiesen.
+
+Der Regressionstest nutzt ausschließlich synthetische Daten und ersetzt keine
+Produktions-Recovery-, Writer-Fencing- oder Anti-Rollback-Prüfung.
+

@@ -253,6 +253,18 @@ def restore_backup(source, destination, key):
         raise csv_backup.FileBackupError("Recovery-Pending-Marker wurde vor Abschluss ersetzt")
     pending.unlink()
     csv_backup._sync_directory(directory)
+    if os.path.lexists(pending):
+        raise csv_backup.FileBackupError(
+            "Recovery-Pending-Marker wurde nach Abschluss erneut angelegt"
+        )
+    # Removing the pending marker is the final durability boundary. Bind the
+    # success receipt to the same three exclusively created artifacts afterwards.
+    _verify_restored_file(auth_path, restored_auth, MAX_AUTH_BYTES, auth_identity,
+                          "Die wiederhergestellte Kontendatenbank")
+    _verify_restored_file(csv_path, csv_data, csv_backup.MAX_SNAPSHOT_BYTES, csv_identity,
+                          "Die wiederhergestellte Dateiauftragsdatenbank")
+    _verify_restored_file(receipt_path, receipt_data, len(receipt_data), receipt_identity,
+                          "Das Recovery-Receipt")
     return result
 
 

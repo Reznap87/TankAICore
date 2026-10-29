@@ -4484,3 +4484,16 @@ executableContentRun: false und factsVerified: false bleiben verbindlich.
 Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht blockierter Gate:
 begrenzte DFFITS-Einflussdiagnostik mit expliziter Schwellenregel oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
+
+## Entwurfsnachweis: koordinierter Restore nach Pending-Durability
+
+Der koordinierte Konten-/CSV-Restore bindet seinen Erfolgs-Receipt jetzt auch
+nach Entfernung des Pending-Markers und dem abschließenden Verzeichnis-`fsync`
+an alle drei exklusiv erzeugten Artefakte. Kontendatenbank,
+Dateiauftragsdatenbank und Recovery-Receipt werden danach erneut anhand von
+Dateiidentität und exakten Bytes geprüft; ein erneut angelegter Pending-Marker
+wird abgewiesen. Ein synthetischer Negativtest ersetzt die Kontendatenbank in
+diesem letzten Fenster durch eine bytegleiche andere Datei und verlangt
+fail-closed Ablehnung. Dies ist Code-/CI-Evidenz, kein produktiver Restore-,
+Writer-Fencing- oder Anti-Rollback-Nachweis.
+
