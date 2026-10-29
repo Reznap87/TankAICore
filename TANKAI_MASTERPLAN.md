@@ -1,11 +1,135 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.53
+Version: 5.7.54
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 23. Oktober 2026
+Statusdatum: 24. Oktober 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
+Ergänzung vom 28. Oktober 2026: Der normale HTTP-Chatpfad sperrt reale und
+gemischte Modellpaare ohne angehängten gemeinsamen Besitzerpilot vor dem ersten
+Modellaufruf mit HTTP 503. Damit ist der bislang ungeschützte Legacy-Ausweichweg
+im Webserver geschlossen. Anmeldung und vorhandene Verläufe bleiben lesbar.
+Vier zunächst fehlschlagende Regressionen und die bestehenden Besitzer-/Quellen-
+Prüfungen belegen die Änderung lokal ohne Anbieteraufrufe. Konfiguration,
+Installation, Linux-CI, reale Tarif-/Zählerfreigabe und öffentliche dauerhafte
+Workspace-/Budget-Speicherung bleiben gesondert nachzuweisen. Details:
+`docs/REQUIRED_WEB_BUDGET.md`. Kein automatischer Merge oder Deploy.
+
+0. Verifizierter Projektstand und Ausführungsvertrag am 24. Oktober 2026
+
+5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
+prüfbares SQLite-Fundament auf main-Ausgangsstand
+`b9eb349363889efe90e84460258ee19f0892b003` (übernommene Review-Korrekturen #100).
+Auftrags-, Tages- und Gesamtgrenzen gelten über mehrere lokale Prozesse; offene
+Reservierungen bleiben nach Neustart erhalten. Wiederholte Versuch-IDs erlauben
+keinen zweiten Versand. Ein Schemafilter-Fehler aus der privaten Vorarbeit wurde
+mit fünf zunächst fehlschlagenden Manipulationstests reproduziert und korrigiert.
+Vertrag, Prüfablauf und Grenzen: `docs/MONETARY_RESERVATIONS.md`.
+Erweiterung vom 25. Oktober 2026: Eine programmatische Opt-in-Anbindung an den
+Provider-Versand schützt die bestehenden OpenAI-/Anthropic-Textadapter. Der
+vollständige Request wird vor dem SDK-Versuch eingefroren und konservativ
+bepreist; erst die dauerhaft bestätigte Reservierung erlaubt den Versand.
+SDK-/Transport-Retries, Redirects und Umgebungsproxies sind im geschützten Pfad
+deaktiviert. Echte SDKs werden mit lokal abgefangenem HTTP geprüft. Die
+Nachprüfung vom 26. Oktober 2026 sperrt außerdem einen Versand, wenn während der
+letzten Berechtigungsprüfung nach dem Reservierungs-Commit Auftrag, Pilot oder
+Tarif ablaufen. Unmittelbar vor dem SDK-Aufruf werden Tarif und dauerhafter
+Reservierungs-/Auftragszustand erneut geprüft; auch inzwischen bestätigte
+Auftragsabschlüsse oder Preissperren stoppen den Versand. Eine späte Ablehnung
+erhält die volle Geldreservierung und erlaubt keinen automatischen Neuversuch.
+Der geschützte Antwortpfad begrenzt außerdem den HTTP-Body vor dem SDK-JSON-Parser
+auf 256.000 Bytes und den zurückgegebenen Text auf 128.000 UTF-8-Bytes. Gezählt
+wird der gelesene Stream unabhängig von einer fehlenden oder falschen Längenangabe;
+überzählige Daten sowie komprimierte Inhalts- oder Transferkodierungen werden vor
+der Weiterverarbeitung abgewiesen und der Stream geschlossen. Gewöhnliches
+HTTP-Chunking bleibt erlaubt und wird anhand der gelieferten Body-Bytes gezählt.
+Geldreservierung und Auftragsstopp bleiben
+auch nach einem Antwortlimit-Fehler über Anwendungsneustarts erhalten. Diese
+Byte-Grenzen ersetzen keinen Nachweis tatsächlich berechneter Anbietertokens.
+Die explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,
+Besitzerrolle, Mandant und freigegebene Arbeitsräume. Nach unsicheren Ausgängen
+oder Prozessabbruch bleibt der dauerhafte Auftragsplatz belegt; neue HTTP-Jobs
+umgehen ihn auch nach Neustart nicht. Zusätzliche Memory-Modellaufbereitung
+bleibt mit Nachweis ausstehend, der vollständige Lauf wird gespeichert.
+Die öffentliche Standardkonfiguration aktiviert diesen Pfad nicht. Belegte
+reale Tarife/Tokenzähler, freigegebene Quellen, geprüfte Wiederaufnahme,
+Cloudflare-übergreifende Speicherkoordination und die konkrete Pilotfreigabe
+bleiben offene Gates. Vertrag: `docs/OWNER_PILOT_ADMISSION.md`.
+Ein begrenzter Prüfbaustein für Quellenfreigaben validiert nun
+unveränderliche Text-Snapshots, Inhalts-/Dateiprüfsummen sowie Besitzer-,
+Mandanten-, Arbeitsraum- und Zeitbindung. Die explizite Chat-/Core-Anbindung
+dieser Freigaben ist implementiert und lokal ohne externe Aufrufe geprüft.
+Fehlende oder abgelaufene Freigaben sperren den Besitzerpilot; jede Planrolle
+nutzt nur diese Texte. Beide unabhängigen Ergebnisprüfungen erhalten die
+Quellentexte, unbekannte oder fehlende Quellen-IDs sperren die Freigabe.
+Externe Suche, zusätzliche Tools und ungeprüfter alter Quellenkontext bleiben
+im Quellenmodus aus. Quellenprompts unterliegen denselben Geld-/Request-Grenzen.
+Die öffentliche Standardkonfiguration aktiviert auch diesen Pfad nicht.
+Prüfsummen belegen Textidentität, nicht Wahrheit oder Aktualität; semantische
+Richtigkeit und echte Pilot-/Restore-Nachweise bleiben separat zu prüfen.
+Vertrag und Grenze: `docs/SOURCE_GRANTS.md`.
+Die Geldbuchhaltung besitzt jetzt zusätzlich einen begrenzten lokalen
+Snapshot-/Restore-Baustein mit WAL-Erfassung. Wiederherstellung in eine neue
+isolierte Datei erhält offene Reservierungen, aktive Auftragsplätze, Quoten,
+Preissperren und beobachtete Zeitgrenzen. Bestehende Dateien und SQLite-
+Begleitdateien werden nicht ersetzt. Ein frischer Prozess und die HTTP-
+Besitzerzulassung bleiben bei unklaren restaurierten Aufträgen gesperrt.
+Das Geldbuch akzeptiert außerdem keine Hardlink-Aliase: Vor dem Öffnen, vor jeder
+Transaktion und beim Restore muss die SQLite-Datei genau einen Dateinamen besitzen,
+damit abweichende WAL-/Journal-Pfade die gemeinsame Schreibsperre nicht umgehen.
+Ergänzung vom 27. Oktober 2026: Nach Erwerb der SQLite-Schreibsperre und vor
+jedem Commit werden Dateityp, Identität, Größe und Linkanzahl erneut geprüft.
+Während der Sperrwartezeit oder der Transaktion entstandene Aliase brechen den
+Vorgang ab; eine bereits bestätigte Geldreservierung bleibt bei einem gesperrten
+Versand erhalten. Acht gezielt zunächst fehlschlagende Regressionen prüfen
+Öffnen, Rollback und beide Adapter ohne tatsächlichen Anbieteraufruf.
+Dies ersetzt keinen Betriebssystemschutz gegen spätere Dateimanipulation.
+Auch die erstmalige Anlage des Geldbuchs weist vorhandene SQLite-Begleitdateien
+(-wal/-shm/-journal), Verzeichnisse und verwaiste Symlinks zurück, bevor SQLite
+den neuen Pfad öffnet. Ein zweiter Abgleich nach exklusiver Dateianlage erkennt
+zwischenzeitlich erschienene Begleitdateien; die leere Diagnose-Datei bleibt
+erhalten. Sechs zunächst fehlschlagende Fälle belegten die fehlende Sperre;
+zusätzliche Verzeichnis-/Symlink-Tests und Restore-Regressionen prüfen den
+gemeinsamen Schutz gegen unbeabsichtigtes Ersetzen alter Wiederherstellungsdaten.
+Der rohe Snapshot-Baustein allein ist kein produktiver Gesamtrestore, keine Verschlüsselung und kein Schutz
+gegen das absichtliche Zurückspielen alter Abbilder. Koordinierte Arbeitsraum-/
+Kontodaten, externer Aktualitätsnachweis und Host-Abnahme bleiben offen.
+Vertrag: `docs/BUDGET_SNAPSHOTS.md`.
+Ein optionaler Betreiber-Wrapper verschlüsselt jetzt die gespeicherte
+Geldbuch-Sicherung mit AES-256-GCM und prüft die zurückgelesene Datei. Schlüssel,
+Dateipin und vollständige Budgetpolitik müssen unabhängig freigegeben sein;
+Manipulationen oder abweichende Schlüssel/Politik sperren die Wiederherstellung.
+Die Standardanwendung lädt diesen Wrapper nicht. Die Konten-/CSV-Vorarbeit in
+PR #102 bleibt getrennt und unverändert; ein konsistenter gemeinsamer Stand aller
+Konten-/Arbeitsraum-/Quellen-/Budgetdaten ist damit noch nicht nachgewiesen.
+Erweiterung vom 26. Oktober 2026: Erfolgreiche Geldbuch-Sicherungen und neue
+Restore-Dateien verlangen unter POSIX zusätzlich dauerhaft geschriebene
+Verzeichniseinträge; ein bloßes Datei-`fsync` reicht für das Erfolgs-Receipt nicht.
+Auch die erstmalige Anlage des aktiven Geldbuchs bestätigt Erfolg erst nach
+Synchronisation seines Verzeichniseintrags; damit kann ein bestätigter
+Schutzspeicher nicht allein wegen noch flüchtiger Verzeichnismetadaten fehlen.
+Verschlüsselte Geldbuch-Sicherungen müssen unter POSIX außerdem genau einen
+Dateinamen besitzen. Hardlink-Aliase und Änderungen der Linkanzahl während des
+Lesens werden abgewiesen, damit der unabhängig gepinnte Betreiberpfad eindeutig
+an das geprüfte Artefakt gebunden bleibt. Die neu erzeugte Sicherung bleibt bis
+zum abgeschlossenen authentifizierten Rücklesen zusätzlich an die Identität der
+exklusiv angelegten Datei gebunden; auch eine bytegleiche Ersetzung erhält keinen
+Persistenzbeleg. Neue Geldbuch-Restore-Dateien werden zusätzlich descriptorgebunden
+aus der exklusiv erzeugten Datei zurückgelesen und müssen vor der Initialisierung
+bytegenau dem entschlüsselten Snapshot entsprechen. Eine andere gültige
+Momentaufnahme derselben Policy erhält damit keinen falschen Restore-Erfolgsbeleg.
+Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
+Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
+Ein zusätzlicher künstlicher Kalt-Restore-Probelauf erfasst jetzt Konten,
+zwei getrennte Arbeitsräume mit Verlauf/Memory/Vektoren/Cold-Archive,
+Quellenfreigabe und Geldbuch gemeinsam. Der Writer beendet sich vor der
+Aufnahme; nach Entfernen der künstlichen Originaldaten prüfen zwei neue
+Prozesse Anmeldung, Trennung, Daten und unveränderte Kosten-/Wiederholsperren.
+Der Ablauf aktiviert keinen Produkt-Backupdienst und übernimmt PR #102 nicht.
+Vertrag und ausdrücklich verbleibende Host-/Drain-Gates:
+`docs/COLD_RECOVERY_DRILL.md`.
+Issue #25 bleibt offen; PR #84 und #96 bleiben getrennt. Der bereits erfolgreiche
+Deployment-Lauf 40092122086 veröffentlichte b9eb349, nicht dieses neue Inkrement.
 
 5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als
 gewöhnliche SQLite-Tabellen und weist Trigger auf diesen Tabellen zurück. Views mit
@@ -4455,3 +4579,15 @@ executableContentRun: false und factsVerified: false bleiben verbindlich.
 Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht blockierter Gate:
 begrenzte DFFITS-Einflussdiagnostik mit expliziter Schwellenregel oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
+
+## Entwurfsnachweis: monetärer Restore-Abschluss nach SQLite-Close
+
+Der verschlüsselte monetäre Restore bindet seinen Erfolgs-Receipt nun bis nach dem
+Schließen der neu geöffneten SQLite-Verbindung an die exklusiv erzeugte
+Zieldatei. Vor dem Close werden Gerät, Inode, Linkzahl und die exakten
+entschlüsselten Snapshot-Bytes festgehalten; danach werden dieselbe Identität und
+dieselben Bytes erneut geprüft. Ein bytegleicher Pfadaustausch im Close-Fenster
+wird damit fail-closed abgewiesen. Ein synthetischer Regressionstest ersetzt die
+Datei genau nach dem Close. Dies ist Code-/CI-Evidenz und kein produktiver
+Recovery-, Writer-Fencing- oder Anti-Rollback-Nachweis.
+
