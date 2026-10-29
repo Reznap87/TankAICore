@@ -18,6 +18,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import UUID
 
 MAX_SNAPSHOT = 8 * 1024 * 1024
+RESTORE_PENDING_FILE = ".tankai-recovery-pending"
+RECOVERY_RECEIPT_FILE = "recovery-receipt.json"
 _REQUIRED_AUTH_COLUMNS = {
     "auth_meta": frozenset({"key", "value"}),
     "users": frozenset({
@@ -69,9 +71,17 @@ class _NoRedirect(HTTPRedirectHandler):
 
 def _validate_snapshot(path: str) -> None:
     """Reject healthy SQLite files that are not a compatible TankAI auth store."""
+    connection = sqlite3.connect(path)
+    try:
+        _validate_auth_connection(connection)
+    finally:
+        connection.close()
+
+
+def _validate_auth_connection(connection: sqlite3.Connection) -> None:
+    """The same validation contract also applies to encrypted in-memory recovery."""
     from .auth import AuthStore
 
-    connection = sqlite3.connect(path)
     try:
         required_names = tuple(_REQUIRED_AUTH_COLUMNS)
         placeholders = ",".join("?" for _ in required_names)
@@ -107,8 +117,6 @@ def _validate_snapshot(path: str) -> None:
             raise RuntimeError("Invalid auth state database")
     except sqlite3.DatabaseError as exc:
         raise RuntimeError("Invalid auth state database") from exc
-    finally:
-        connection.close()
 
 
 class AuthState:
