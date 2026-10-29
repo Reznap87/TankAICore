@@ -1811,9 +1811,13 @@ laufende, vorzeitig abgeschlossene oder doppelt nummerierte Journale werden dami
 vor jeder Fortsetzung abgewiesen.
 Dies schützt die Journal-Konsistenz, ersetzt aber keine vertrauenswürdige Host-Uhr.
 Neue Befehlsbelege erzwingen zentral, dass `passed=true` ausschließlich mit
-Exitcode 0 zulässig ist. Fehlende oder abweichende Exitcodes können damit weder
-im aktiven Implementierungs-/Gatepfad noch später beim Resume Erfolg belegen;
-Timeout- und Fehlerbelege bleiben weiterhin darstellbar.
+Exitcode 0 zulässig ist. Der Runner bindet die kanonische Befehlsdarstellung und
+revalidiert anschließend jeden vom Host- oder Container-Executor gelieferten
+Beleg; auch über umgangene Pydantic-Konstruktionsprüfungen erzeugte Adapterobjekte
+können deshalb keinen widersprüchlichen Erfolg persistieren. Fehlende oder
+abweichende Exitcodes können damit weder im aktiven Implementierungs-/Gatepfad
+noch später beim Resume Erfolg belegen; Timeout- und Fehlerbelege bleiben
+weiterhin darstellbar.
 Die Implementierung wird nicht wiederholt.
 Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
 abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme

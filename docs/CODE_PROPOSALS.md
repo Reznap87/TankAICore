@@ -274,7 +274,11 @@ Befehlsreihenfolge vorliegen. Dieser Zusammenhang gilt bereits beim Erzeugen
 jedes neuen `TestExecution`-Receipts: `passed=true` mit fehlendem oder
 abweichendem Exitcode ist modellseitig ungültig und kann daher auch im aktiven
 Implementierungs-, Test-, Review-, Security- oder QA-Pfad keinen Erfolg belegen.
-Fehlerbelege dürfen weiterhin einen Timeout ohne Exitcode oder einen Fehlercode
+Der Runner bindet zuerst die kanonische Befehlsdarstellung und validiert danach
+jeden vom Host- oder Container-Executor zurückgegebenen Beleg erneut. Auch ein
+Adapter, der Pydantic-Konstruktionsprüfungen umgeht, kann daher keinen
+widersprüchlichen Erfolgsbeleg persistieren. Fehlerbelege dürfen weiterhin einen
+Timeout ohne Exitcode oder einen Fehlercode
 tragen. Ein widersprüchlicher Erfolgsbeleg wird ebenso wie ein zusätzlicher oder
 umsortierter Beleg abgewiesen. Bei bestandener QA müssen außerdem die im Task und Worker-Run
 getrennt gespeicherten vollständigen QA-Belege identisch sein; abweichende
