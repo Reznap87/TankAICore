@@ -136,9 +136,12 @@ def create_backup(root, destination, key):
     nonce = secrets.token_bytes(12)
     data = MAGIC + nonce + cipher.encrypt(nonce, payload, AAD)
     destination = Path(destination)
-    csv_backup._write_new(destination, data)
+    destination_identity = csv_backup._write_new(destination, data)
     csv_backup._sync_directory(destination.parent)
-    saved = csv_backup._read_regular(destination, MAX_ENCRYPTED_BYTES)
+    saved = _verify_restored_file(
+        destination, data, MAX_ENCRYPTED_BYTES, destination_identity,
+        "Die gespeicherte Sicherung",
+    )
     verified, auth_data, csv_data, metadata = _decrypt(saved, key)
     if verified != payload:
         raise csv_backup.FileBackupError("Die gespeicherte Sicherung stimmt nicht mit der Momentaufnahme überein")
@@ -182,6 +185,7 @@ def _verify_restored_file(path, expected, limit, identity, label):
     require_identity()
     if restored != expected:
         raise csv_backup.FileBackupError(f"{label} stimmt nicht mit dem Wiederherstellungspaket überein")
+    return restored
 
 
 def restore_backup(source, destination, key):

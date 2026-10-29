@@ -42,6 +42,27 @@ def source(tmp_path):
     return root, auth, files, session, draft, done, token
 
 
+def test_identical_replacement_of_saved_backup_is_rejected(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    destination = tmp_path / 'replaced-backup.enc'
+    original = recovery.csv_backup._write_new
+
+    def replace_with_identical_bytes(path, data):
+        identity = original(path, data)
+        if path == destination:
+            path.unlink()
+            path.write_bytes(data)
+        return identity
+
+    monkeypatch.setattr(recovery.csv_backup, '_write_new', replace_with_identical_bytes)
+    with pytest.raises(recovery.csv_backup.FileBackupError, match='gespeicherte Sicherung.*ersetzt'):
+        recovery.create_backup(root, destination, key)
+    assert destination.exists()
+
+
 def test_pair_recovers_password_hashes_roles_choices_and_deliveries(source, tmp_path):
     root, auth, files, session, draft, done, agent_token = source
     assert auth.consume_provider_call_event(user_id=session.context.user_id, provider='fixture', limit=1, window_seconds=3600) is None

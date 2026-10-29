@@ -66,7 +66,10 @@ auth-v3 and CSV-v1 scopes. Inside the ciphertext, two fixed-width big-endian
 lengths identify the auth snapshot and CSV snapshot. There are no user-provided
 member names, archive paths or compression. Length mismatch, extra members and
 CSV-only/foreign formats are rejected. Only ciphertext is persisted during
-backup; the saved file is read back and validated before success is acknowledged.
+backup; the saved file remains bound to the exclusively created file identity
+while its exact bytes are read back and validated before success is acknowledged.
+A missing, replaced, hard-linked or modified output therefore cannot produce a
+successful backup receipt.
 
 `verify` authenticates the envelope and validates both databases and their
 relationship without writing a recovered root. `restore` completes all validation
