@@ -71,23 +71,39 @@ def _decode_payload(payload):
 
 @contextmanager
 def _write_barriers(paths):
-    """Take write reservations in a fixed order; copy using separate read connections."""
-    guards = []
+    """Reserve both files and bind snapshot readers to those exact identities."""
+    guards, readers, bound_sources = [], [], []
     deadline = time.monotonic() + WRITE_BARRIER_SECONDS
     try:
         for path in paths:
+            before = path.lstat()
             remaining = max(0, deadline - time.monotonic())
-            db = sqlite3.connect(path.resolve().as_uri() + "?mode=rw", uri=True, timeout=remaining)
-            guards.append(db)
-            db.execute("BEGIN IMMEDIATE")
-        yield
+            guard = sqlite3.connect(
+                path.resolve().as_uri() + "?mode=rw", uri=True, timeout=remaining)
+            guards.append(guard)
+            guard.execute("BEGIN IMMEDIATE")
+            reader = sqlite3.connect(
+                path.resolve().as_uri() + "?mode=ro", uri=True, timeout=remaining)
+            readers.append(reader)
+            reader.execute("PRAGMA schema_version").fetchone()
+            current = path.lstat()
+            identity = (before.st_dev, before.st_ino, before.st_nlink)
+            if (not stat.S_ISREG(current.st_mode)
+                    or (current.st_dev, current.st_ino, current.st_nlink) != identity
+                    or (os.name != "nt" and current.st_nlink != 1)):
+                raise csv_backup.FileBackupError(
+                    "Quelldatenbank wurde während der Schreibbarriere ersetzt")
+            bound_sources.append((reader, identity))
+        yield tuple(bound_sources)
     finally:
-        for db in reversed(guards):
+        for reader in reversed(readers):
+            reader.close()
+        for guard in reversed(guards):
             try:
-                if db.in_transaction:
-                    db.rollback()
+                if guard.in_transaction:
+                    guard.rollback()
             finally:
-                db.close()
+                guard.close()
 
 
 def _snapshot_pair(root):
@@ -100,11 +116,16 @@ def _snapshot_pair(root):
             raise csv_backup.FileBackupError("Konten- oder Dateiauftragsspeicher fehlt oder ist ungültig")
     if auth_path.samefile(csv_path):
         raise csv_backup.FileBackupError("Konten und Dateiaufträge benötigen getrennte Datenbanken")
-    with _write_barriers((auth_path, csv_path)):
+    with _write_barriers((auth_path, csv_path)) as bound_sources:
         deadline = time.monotonic() + SNAPSHOT_SECONDS
-        auth_data, _ = csv_backup._sqlite_snapshot(auth_path, MAX_AUTH_BYTES, _validate_auth, deadline=deadline)
-        csv_data, _ = csv_backup._sqlite_snapshot(csv_path, csv_backup.MAX_SNAPSHOT_BYTES,
-                                                csv_backup._validate_database, deadline=deadline)
+        (auth_reader, auth_identity), (csv_reader, csv_identity) = bound_sources
+        auth_data, _ = csv_backup._sqlite_snapshot(
+            auth_path, MAX_AUTH_BYTES, _validate_auth, deadline=deadline,
+            source_connection=auth_reader, expected_source_identity=auth_identity)
+        csv_data, _ = csv_backup._sqlite_snapshot(
+            csv_path, csv_backup.MAX_SNAPSHOT_BYTES, csv_backup._validate_database,
+            deadline=deadline, source_connection=csv_reader,
+            expected_source_identity=csv_identity)
     payload = LENGTHS.pack(len(auth_data), len(csv_data)) + auth_data + csv_data
     _, _, metadata = _decode_payload(payload)
     return payload, metadata

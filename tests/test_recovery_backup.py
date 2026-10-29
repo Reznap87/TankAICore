@@ -1,8 +1,10 @@
 """Account and CSV recovery from one encrypted, coordinated offline package."""
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import sqlite3
 import stat
 import subprocess
@@ -159,6 +161,33 @@ def test_both_write_barriers_are_held_and_released(source, tmp_path, monkeypatch
         connection.execute('BEGIN IMMEDIATE')
         connection.rollback()
         connection.close()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX directory replacement contract')
+def test_source_replacement_after_write_barriers_is_rejected(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    original = recovery._write_barriers
+    moved = tmp_path / 'reserved-source'
+
+    @contextmanager
+    def replace_root_after_reservations(paths):
+        with original(paths) as bound_sources:
+            root.rename(moved)
+            root.mkdir()
+            for item in moved.iterdir():
+                if item.is_file():
+                    shutil.copy2(item, root / item.name)
+            yield bound_sources
+
+    monkeypatch.setattr(recovery, '_write_barriers', replace_root_after_reservations)
+    output = tmp_path / 'must-not-exist.enc'
+    with pytest.raises(
+        recovery.csv_backup.FileBackupError, match='Schreibbarriere',
+    ):
+        recovery.create_backup(root, output, secrets.token_bytes(32))
+    assert not output.exists()
 
 
 def test_lock_failure_releases_first_reservation_and_creates_no_output(source, tmp_path, monkeypatch):

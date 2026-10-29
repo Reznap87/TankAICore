@@ -33,8 +33,11 @@ stable through the complete bounded read. A concurrent rename, replacement or
 write is rejected before any successful verification receipt. Missing databases
 are not created. On POSIX, each source database must have exactly one directory
 link, and its device, inode and link count must remain stable until its online
-snapshot is complete. This keeps pathname-bound WAL/SHM sidecars associated with
-the source being copied. Windows hard-link policy remains an operator duty.
+snapshot is complete. The read-only snapshot connection is opened while the
+corresponding write reservation is held and is reused for the copy; a pathname
+replacement after reservation cannot redirect the snapshot to an unreserved
+database. This keeps pathname-bound WAL/SHM sidecars associated with the source
+being copied. Windows hard-link policy remains an operator duty.
 Existing output files/directories are never replaced. A restored
 root is an offline recovery candidate, not an automatic
 switch of a running service. Use `TANKAI_AUTH_DB` pointing to its `auth.db` and

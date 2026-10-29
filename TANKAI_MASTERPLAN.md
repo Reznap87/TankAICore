@@ -10,9 +10,13 @@ Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Übe
 Entwurfsnachweis PR #102, 27. Oktober 2026: Die koordinierte lokale Konto-/CSV-
 Sicherung weist auf POSIX auch Hardlink-Aliasse der beiden SQLite-Quelldatenbanken
 zurück. Gerätekennung, Inode und Linkzahl müssen bis zum Ende jeder Online-
-Momentaufnahme stabil bleiben, damit pfadgebundene WAL-/SHM-Sidecars nicht von
-einem Alias getrennt werden. Synthetische Tests decken bestehende und während der
-Momentaufnahme neu angelegte Aliasse ab. Auch das neu erzeugte verschlüsselte
+Momentaufnahme stabil bleiben. Die lesenden Snapshot-Verbindungen werden bereits
+unter der jeweiligen Schreibbarriere geöffnet, an genau diese Identitäten
+gebunden und für die Kopie wiederverwendet; ein nach Sperrübernahme ausgetauschter
+Pfad kann deshalb nicht auf eine unreservierte Datenbank umleiten. Damit bleiben
+auch pfadgebundene WAL-/SHM-Sidecars bei der reservierten Quelle. Synthetische
+Tests decken Aliasse und den Austausch nach Sperrübernahme ab. Auch das neu
+erzeugte verschlüsselte
 Paket bleibt bis zum bytegenauen Rücklesen an seine exklusiv angelegte
 Dateiidentität gebunden; eine Ersetzung verhindert den Erfolgsbeleg. Derselbe
 Identitätsvertrag gilt nun auch für die eigenständige CSV-Sicherung: Selbst eine

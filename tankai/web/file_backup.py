@@ -156,7 +156,9 @@ def _snapshot(source: Path) -> tuple[bytes, dict]:
     return _sqlite_snapshot(source, MAX_SNAPSHOT_BYTES, _validate_database)
 
 
-def _sqlite_snapshot(source: Path, max_bytes: int, validator, *, deadline=None) -> tuple[bytes, dict]:
+def _sqlite_snapshot(
+        source: Path, max_bytes: int, validator, *, deadline=None,
+        source_connection=None, expected_source_identity=None) -> tuple[bytes, dict]:
     source = Path(source)
     try:
         before = source.lstat()
@@ -167,9 +169,13 @@ def _sqlite_snapshot(source: Path, max_bytes: int, validator, *, deadline=None) 
     if os.name != "nt" and before.st_nlink != 1:
         raise FileBackupError("Die Quelldatenbank besitzt einen Hardlink-Alias")
     source_identity = (before.st_dev, before.st_ino, before.st_nlink)
+    if expected_source_identity is not None and source_identity != expected_source_identity:
+        raise FileBackupError("Die Quelldatenbank gehört nicht zur aktiven Schreibbarriere")
     if deadline is None:
         deadline = time.monotonic() + SNAPSHOT_TIMEOUT_SECONDS
-    src = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+    owns_source_connection = source_connection is None
+    src = (sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+           if owns_source_connection else source_connection)
     snapshot = sqlite3.connect(":memory:")
     try:
         src.execute("PRAGMA query_only=ON")
@@ -200,7 +206,8 @@ def _sqlite_snapshot(source: Path, max_bytes: int, validator, *, deadline=None) 
         return data, metadata
     finally:
         snapshot.close()
-        src.close()
+        if owns_source_connection:
+            src.close()
 
 
 def _decrypt(data: bytes, key: bytes) -> tuple[bytes, dict]:
