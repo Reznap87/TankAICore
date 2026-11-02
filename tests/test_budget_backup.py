@@ -266,6 +266,33 @@ def test_identical_replacement_after_restore_close_cannot_receive_success(
     assert target.read_bytes() == created.read_bytes()
 
 
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_sidecar_created_during_restore_close_blocks_success(
+    tmp_path, budget, saved, monkeypatch, suffix,
+):
+    path, key, receipt, _ = saved
+    target = tmp_path / "sidecar-restore.sqlite"
+    sidecar = Path(str(target) + suffix)
+    real_close = MonetaryBudget.close
+    created = False
+
+    def close_with_sidecar(self):
+        nonlocal created
+        real_close(self)
+        if not created and self.path == target.absolute():
+            created = True
+            sidecar.write_bytes(b"synthetic untrusted SQLite companion")
+
+    monkeypatch.setattr(MonetaryBudget, "close", close_with_sidecar)
+    with pytest.raises(backup.BudgetBackupError, match="restore failed closed"):
+        backup.restore_backup(
+            source=path, destination=target, key=key, **options(budget, receipt)
+        )
+
+    assert created
+    assert sidecar.read_bytes() == b"synthetic untrusted SQLite companion"
+
+
 def test_persisted_ciphertext_is_checked_after_writing(tmp_path, budget, monkeypatch):
     original = backup._read_regular
     def tamper(path):

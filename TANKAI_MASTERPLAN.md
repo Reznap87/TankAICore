@@ -4600,3 +4600,15 @@ wird damit fail-closed abgewiesen. Ein synthetischer Regressionstest ersetzt die
 Datei genau nach dem Close. Dies ist Code-/CI-Evidenz und kein produktiver
 Recovery-, Writer-Fencing- oder Anti-Rollback-Nachweis.
 
+
+
+## Entwurfsnachweis: Sidecar-freier monetärer Restore-Abschluss
+
+Der verschlüsselte monetäre Restore verlangt nach dem Schließen der validierten
+SQLite-Verbindung zusätzlich die Abwesenheit von WAL-, SHM- und Journal-Sidecars.
+Solche Begleiter sind während der geöffneten Prüfung zulässig, dürfen aber keinen
+Erfolgs-Receipt erhalten, weil sie den nächsten Open verändern könnten, ohne die
+bereits geprüften Hauptdateibytes anzutasten. Drei synthetische Negativtests
+erzeugen die jeweiligen Sidecars während close und verlangen fail-closed
+Ablehnung. Dies ist Code-/CI-Evidenz, kein produktiver Restore-, Writer-Fencing-
+oder Anti-Rollback-Nachweis.

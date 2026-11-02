@@ -21,6 +21,7 @@ from .monetary_budget import (
     MAX_LEDGER_BYTES,
     MonetaryBudget,
     PilotPolicy,
+    _has_sidecars,
     _require_created_snapshot,
     _stat_identity,
     _sync_directory,
@@ -193,6 +194,11 @@ def restore_backup(source: Path, destination: Path, key: bytes, *, expected_sha2
         # afterwards so a byte-identical pathname replacement during close
         # cannot receive a success receipt for another filesystem object.
         _require_created_snapshot(destination, snapshot, restored_identity)
+        # WAL/SHM files are permitted only while the restored connection is
+        # validating its pinned view. After close, any companion could change
+        # the next open without changing the verified main-file bytes.
+        if _has_sidecars(destination):
+            raise BudgetStateError("restored budget database gained a sidecar during close")
         return {"ok":True, "operation":"restore", **receipt, "restored_state_verified":True}
     except (OSError, sqlite3.Error, BudgetStateError):
         raise BudgetBackupError("encrypted monetary restore failed closed") from None

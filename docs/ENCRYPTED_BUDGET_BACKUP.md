@@ -127,3 +127,15 @@ zu einem fehlgeschlagenen Restore statt zu einem Erfolgs-Receipt.
 Dieser Nachweis ist ein synthetischer Dateisystemtest. Er ersetzt weder
 Produktions-Writer-Fencing noch unabhängige Freshness-/Anti-Rollback-Nachweise.
 
+
+
+### Abschlussgrenze für SQLite-Sidecars
+
+WAL-, SHM- und Journal-Dateien dürfen während der geöffneten Validierung eines
+wiederhergestellten Ledgers entstehen. Nach dem Schließen der Verbindung darf
+jedoch keiner dieser Begleiter vorhanden sein: Ein nachträglich angelegter
+Sidecar könnte den nächsten Open verändern, ohne die bereits geprüften Bytes der
+Hauptdatei anzutasten. Der verschlüsselte Restore prüft deshalb nach close sowohl
+die exakte Hauptdatei als auch die vollständige Sidecar-Abwesenheit. Synthetische
+Negativtests decken alle drei Namen ab. Dies ist Code-/CI-Evidenz; tatsächliches
+Writer-Fencing, Freshness und produktive Recovery bleiben getrennte Gates.
