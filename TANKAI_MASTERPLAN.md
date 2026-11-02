@@ -29,6 +29,16 @@ dessen Merge und Issue #25 bleiben getrennt offen. Details:
 
 0. Verifizierter Projektstand und Ausführungsvertrag am 24. Oktober 2026
 
+Weiterer lokaler Pilot-Schritt vom 2. November 2026: Der Webserver erhält einen
+begrenzten HTTP-Drain vor dem Speicherabschluss. Neue Anfragen werden beim
+kontrollierten Stopp abgewiesen; registrierte Worker werden abgewartet.
+Ein Timeout schließt den Anwendungsspeicher nicht und ist kein Erfolgs-Receipt.
+Der Compose-Dienst bekommt dafür 150 Sekunden Stoppfrist. Das gilt nur für
+diese Serverinstanz und ersetzt weder gemeinsame Datenexporte noch zusätzliche
+Writer-Sperren oder einen Restore auf dem Produktionshost. PR #102 wurde
+geprüft; seine Konto-/CSV-Recovery bleibt eine getrennte Abhängigkeit.
+Details: `docs/WEB_SHUTDOWN.md`.
+
 5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
 prüfbares SQLite-Fundament auf main-Ausgangsstand
 `b9eb349363889efe90e84460258ee19f0892b003` (übernommene Review-Korrekturen #100).

@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
+import signal
 import sys
 import threading
 import time
@@ -345,18 +347,163 @@ def _render_html(csp_nonce: str) -> str:
     return HTML_TEMPLATE.replace("__CSP_NONCE__", csp_nonce)
 
 
+class ServerDrainTimeout(TimeoutError):
+    """Active HTTP work did not finish; application storage remains open."""
+
+
+class _StopServing(Exception):
+    """Leave the accept loop only after a completed dispatch boundary."""
+
+
+def _draining_response(*, head: bool = False) -> bytes:
+    body = b'{"error":"TankAI wird beendet. Bitte spaeter erneut versuchen.","error_code":"server_draining"}'
+    headers = (b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json; charset=utf-8\r\n"
+               b"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nRetry-After: 1\r\n"
+               b"Connection: close\r\nContent-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n")
+    return headers + (b"" if head else body)
+
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
-    def __init__(self, server_address, RequestHandlerClass, app: AppContext | None = None):
+    def __init__(self, server_address, RequestHandlerClass, app: AppContext | None = None,
+                 *, drain_timeout: float = 130, request_timeout: float = 30):
+        self.drain_timeout = self._bounded_timeout(drain_timeout)
+        self.request_timeout = self._bounded_timeout(request_timeout)
+        if self.request_timeout == 0:
+            raise ValueError("positive socket timeout required")
+        self._request_state = threading.Condition()
+        self._request_thread = threading.local()
+        self._active_requests = 0
+        self._draining = False
+        self._stop_serving = threading.Event()
+        self._close_lock = threading.RLock()
+        self._application_closed = False
+        self.app = None
         super().__init__(server_address, RequestHandlerClass)
-        self.app = app or AppContext.from_env(str(server_address[0]))
+        try:
+            self.app = app or AppContext.from_env(str(server_address[0]))
+        except BaseException:
+            self.server_close()
+            raise
+
+    @staticmethod
+    def _bounded_timeout(value: float) -> float:
+        if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 600:
+            raise ValueError("explicit finite timeout between 0 and 600 seconds required")
+        return float(value)
+
+    @property
+    def draining(self) -> bool:
+        with self._request_state:
+            return self._draining
+
+    def begin_draining(self) -> None:
+        with self._request_state:
+            self._draining = True
+
+    def request_shutdown(self) -> None:
+        self.begin_draining()
+        self._stop_serving.set()
+
+    def service_actions(self) -> None:
+        super().service_actions()
+        if self._stop_serving.is_set():
+            raise _StopServing
+
+    def serve_forever(self, poll_interval: float = 0.5) -> None:
+        try:
+            super().serve_forever(poll_interval=poll_interval)
+        except _StopServing:
+            pass
+
+    def get_request(self):
+        request, address = super().get_request()
+        request.settimeout(self.request_timeout)
+        return request, address
+
+    def _reject_new_request(self, request) -> None:
+        try:
+            # Read the request headers before replying. Immediately closing a
+            # socket with unread headers can discard the 503 through TCP reset.
+            # An absolute deadline also bounds clients which trickle bytes.
+            deadline, incoming = time.monotonic() + 1, bytearray()
+            while b"\r\n\r\n" not in incoming and len(incoming) < 16_384:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return
+                request.settimeout(remaining)
+                data = request.recv(min(4096, 16_384 - len(incoming)))
+                if not data:
+                    return
+                incoming.extend(data)
+            request.settimeout(1)
+            request.sendall(_draining_response(head=incoming.startswith(b"HEAD ")))
+        except OSError:
+            pass
+        finally:
+            self.shutdown_request(request)
+
+    def process_request(self, request, client_address) -> None:
+        with self._request_state:
+            rejected = self._draining
+            if not rejected:
+                # Register before ThreadingMixIn starts the worker, so a close
+                # cannot overlook a worker which has not entered its handler.
+                self._active_requests += 1
+        if rejected:
+            self._reject_new_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            with self._request_state:
+                self._active_requests -= 1
+                self._request_state.notify_all()
+            raise
+
+    def process_request_thread(self, request, client_address) -> None:
+        self._request_thread.active = True
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._request_thread.active = False
+            with self._request_state:
+                self._active_requests -= 1
+                self._request_state.notify_all()
+
+    def drain(self, *, timeout: float | None = None) -> dict:
+        """Stop admission and wait for this server's HTTP workers; no backup claim."""
+        if getattr(self._request_thread, "active", False):
+            raise RuntimeError("an HTTP worker cannot drain itself")
+        duration = self._bounded_timeout(self.drain_timeout if timeout is None else timeout)
+        self.begin_draining()
+        with self._request_state:
+            if not self._request_state.wait_for(lambda: self._active_requests == 0, timeout=duration):
+                raise ServerDrainTimeout("active HTTP work remains; storage was not closed")
+        return {"quiesced": True, "active_http_requests": 0, "scope": "this-server-only"}
 
     def server_close(self) -> None:
-        try:
-            self.app.close()
-        finally:
+        if getattr(self._request_thread, "active", False):
+            raise RuntimeError("an HTTP worker cannot close its own server")
+        with self._close_lock:
+            self.begin_draining()
             super().server_close()
+            self.drain()
+            if self.app is not None and not self._application_closed:
+                self.app.close()
+                self._application_closed = True
+
+
+def _shutdown_handler(server: ThreadedHTTPServer, requested: threading.Event):
+    def handle(signum, frame):
+        if requested.is_set():
+            return
+        requested.set()
+        # Do not raise asynchronously inside request/thread registration.
+        # service_actions leaves the accept loop at its next safe boundary.
+        server.request_shutdown()
+    return handle
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -366,6 +513,13 @@ class Handler(BaseHTTPRequestHandler):
     def handle_one_request(self) -> None:
         self._tankai_request_id = secrets.token_hex(12)
         super().handle_one_request()
+
+    def _reject_if_draining(self) -> bool:
+        if not self.server.draining:
+            return False
+        self.close_connection = True
+        self.connection.sendall(_draining_response(head=self.command == "HEAD"))
+        return True
 
     @property
     def app(self) -> AppContext:
@@ -830,6 +984,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.app.job_queue
 
     def do_GET(self) -> None:
+        if self._reject_if_draining():
+            return
         path = urlsplit(self.path).path
         brand_asset = _BRAND_ASSETS.get(path)
         if brand_asset is not None:
@@ -1020,6 +1176,8 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "Nicht gefunden"}, 404)
 
     def do_POST(self) -> None:
+        if self._reject_if_draining():
+            return
         path = urlsplit(self.path).path
         if path.startswith("/api/v1/"):
             self._do_agent_post(path)
@@ -2081,8 +2239,14 @@ class Handler(BaseHTTPRequestHandler):
         if pilot is not None and parallel:
             self._json({"error": "Der Besitzerpilot erlaubt nur einen Auftrag gleichzeitig"}, 400)
             return
+        if self._reject_if_draining():
+            return
         try:
             with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                # A previously accepted HTTP request may have waited behind a
+                # workspace lease. It must not start another job after the stop.
+                if self._reject_if_draining():
+                    return
                 tank = runtime.tank
                 # The legacy web path must never bypass monetary admission.
                 # A mixed simulation/live pair can still spend on its real
@@ -2253,15 +2417,30 @@ def main() -> None:
     if app.auth_mode == "session" and app.auth.user_count() == 0:
         print("[web] WARNUNG: Keine Benutzer vorhanden. Zuerst auth_cli create-user ausführen.")
     server = ThreadedHTTPServer((host, port), Handler, app=app)
-    print(f"TankAI Web-UI → http://{host}:{port}  (Auth: {app.auth_mode}, Registrierung: {'an' if app.allow_registration else 'aus'})")
-    print("Ctrl+C zum Beenden")
+    requested = threading.Event()
+    previous_signals = {}
     try:
+        if threading.current_thread() is threading.main_thread():
+            handler = _shutdown_handler(server, requested)
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                previous_signals[signum] = signal.getsignal(signum)
+                signal.signal(signum, handler)
+        print(f"TankAI Web-UI → http://{host}:{port}  (Auth: {app.auth_mode}, Registrierung: {'an' if app.allow_registration else 'aus'})")
+        print("Ctrl+C zum Beenden")
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopped.")
+        pass
     finally:
-        server.shutdown()
-        server.server_close()
+        requested.set()
+        server.begin_draining()
+        try:
+            # This main-thread serve_forever already returned or unwound.
+            # shutdown() here could deadlock if startup failed before it ran.
+            server.server_close()
+        finally:
+            for signum, previous in previous_signals.items():
+                signal.signal(signum, previous)
+    print("\nStopped.")
 
 
 if __name__ == "__main__":
