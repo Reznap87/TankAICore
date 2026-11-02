@@ -139,3 +139,19 @@ Hauptdatei anzutasten. Der verschlüsselte Restore prüft deshalb nach close sow
 die exakte Hauptdatei als auch die vollständige Sidecar-Abwesenheit. Synthetische
 Negativtests decken alle drei Namen ab. Dies ist Code-/CI-Evidenz; tatsächliches
 Writer-Fencing, Freshness und produktive Recovery bleiben getrennte Gates.
+
+
+### Quellbindung bis zum Erfolgs-Receipt
+
+Die Identität der verschlüsselten Quelldatei bleibt jetzt über Entschlüsselung,
+SQLite-Validierung und – beim Restore – die vollständige Prüfung der neuen
+Zieldatei hinweg gebunden. Unmittelbar vor einem erfolgreichen Verify- oder
+Restore-Receipt muss der Betreiberpfad noch dieselbe gewöhnliche, exklusiv
+benannte Datei bezeichnen. Auch ein bytegleicher Austausch nach dem authentifizierten
+Lesen wird deshalb abgewiesen. Synthetische Negativtests decken Verify und Restore
+ab; ein bereits angelegtes Restore-Ziel bleibt bei später Ablehnung als
+Diagnoseartefakt erhalten.
+
+Die Bindung ersetzt keine unveränderliche Offsite-Ablage, unabhängige
+Freshness-/Anti-Rollback-Evidenz oder Schutz eines nicht vertrauenswürdigen
+Quellverzeichnisses.

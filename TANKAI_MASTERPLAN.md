@@ -127,6 +127,12 @@ Persistenzbeleg. Neue Geldbuch-Restore-Dateien werden zusätzlich descriptorgebu
 aus der exklusiv erzeugten Datei zurückgelesen und müssen vor der Initialisierung
 bytegenau dem entschlüsselten Snapshot entsprechen. Eine andere gültige
 Momentaufnahme derselben Policy erhält damit keinen falschen Restore-Erfolgsbeleg.
+Die Identität der verschlüsselten Quelldatei bleibt außerdem bis unmittelbar
+vor dem Verify- oder Restore-Erfolgs-Receipt gebunden. Ein bytegleicher Austausch
+nach dem authentifizierten Lesen, aber noch während der Snapshot- oder Zielprüfung,
+wird damit abgewiesen. Zwei synthetische Negativtests prüfen Verify und Restore.
+Dies ersetzt weder vertrauenswürdige Quellverzeichnisse noch unabhängige
+Freshness-/Anti-Rollback-Evidenz.
 Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Ein zusätzlicher künstlicher Kalt-Restore-Probelauf erfasst jetzt Konten,

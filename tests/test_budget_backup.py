@@ -293,6 +293,36 @@ def test_sidecar_created_during_restore_close_blocks_success(
     assert sidecar.read_bytes() == b"synthetic untrusted SQLite companion"
 
 
+@pytest.mark.parametrize("operation", ["verify", "restore"])
+def test_source_replacement_after_decode_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch, operation,
+):
+    path, key, receipt, _ = saved
+    preserved = tmp_path / "decoded-source.enc"
+    target = tmp_path / "source-bound-restore.sqlite"
+    original_decode = backup._decode
+    replaced = False
+
+    def replace_after_decode(*args, **kwargs):
+        nonlocal replaced
+        result = original_decode(*args, **kwargs)
+        if not replaced:
+            replaced = True
+            path.rename(preserved)
+            path.write_bytes(preserved.read_bytes())
+        return result
+
+    monkeypatch.setattr(backup, "_decode", replace_after_decode)
+    with pytest.raises(backup.BudgetBackupError, match="changed before receipt"):
+        if operation == "verify":
+            backup.verify_backup(path, key, **options(budget, receipt))
+        else:
+            backup.restore_backup(path, target, key, **options(budget, receipt))
+
+    assert replaced
+    assert path.read_bytes() == preserved.read_bytes()
+
+
 def test_persisted_ciphertext_is_checked_after_writing(tmp_path, budget, monkeypatch):
     original = backup._read_regular
     def tamper(path):

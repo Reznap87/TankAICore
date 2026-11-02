@@ -73,6 +73,17 @@ def _require_created_identity(path: Path, expected_identity) -> None:
         raise BudgetBackupError("persisted encrypted backup was replaced before verification")
 
 
+def _require_read_identity(path: Path, expected_identity) -> None:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("encrypted backup changed before receipt") from None
+    if (not stat.S_ISREG(current.st_mode)
+            or _file_identity(current) != expected_identity
+            or (os.name != "nt" and current.st_nlink != 1)):
+        raise BudgetBackupError("encrypted backup changed before receipt")
+
+
 def _read_regular(path: Path) -> bytes:
     path = Path(path)
     before = path.lstat()
@@ -104,13 +115,16 @@ def _receipt(data: bytes, snapshot: bytes, policy: PilotPolicy) -> dict:
 
 
 def _decode(source: Path, key: bytes, expected_sha256: str,
-            expected_policy: PilotPolicy) -> tuple[bytes, dict]:
+            expected_policy: PilotPolicy) -> tuple[bytes, dict, tuple]:
     cipher = _cipher(key)
     context = _policy_context(expected_policy)
     # No implicit trust in a digest packaged alongside an untrusted file.
     if type(expected_sha256) is not str or re.fullmatch(r"[a-f0-9]{64}", expected_sha256) is None:
         raise BudgetBackupError("an independently trusted encrypted-file digest is required")
+    source = Path(source)
+    source_identity = _file_identity(source.lstat())
     data = _read_regular(source)
+    _require_read_identity(source, source_identity)
     if (not len(MAGIC) + 12 + 16 + 100 <= len(data) <= MAX_ENCRYPTED_BYTES
             or not data.startswith(MAGIC) or hashlib.sha256(data).hexdigest() != expected_sha256):
         raise BudgetBackupError("invalid pinned encrypted monetary backup")
@@ -123,7 +137,8 @@ def _decode(source: Path, key: bytes, expected_sha256: str,
             or not snapshot.startswith(b"SQLite format 3\x00")):
         raise BudgetBackupError("invalid monetary snapshot payload")
     MonetaryBudget._check_snapshot(snapshot, expected_policy)
-    return snapshot, _receipt(data, snapshot, expected_policy)
+    _require_read_identity(source, source_identity)
+    return snapshot, _receipt(data, snapshot, expected_policy), source_identity
 
 
 def create_backup(ledger: MonetaryBudget, destination: Path, key: bytes) -> dict:
@@ -154,7 +169,7 @@ def create_backup(ledger: MonetaryBudget, destination: Path, key: bytes) -> dict
         _sync_directory(destination.parent)
         digest = hashlib.sha256(data).hexdigest()
         _require_created_identity(destination, persisted_identity)
-        recovered, receipt = _decode(destination, key, digest, policy)
+        recovered, receipt, _ = _decode(destination, key, digest, policy)
         _require_created_identity(destination, persisted_identity)
         if recovered != snapshot:
             raise BudgetBackupError("persisted ciphertext does not match captured snapshot")
@@ -169,7 +184,8 @@ def verify_backup(source: Path, key: bytes, *, expected_sha256: str,
                   expected_policy: PilotPolicy) -> dict:
     """Authenticate and validate without creating a recovered destination."""
     try:
-        _, receipt = _decode(source, key, expected_sha256, expected_policy)
+        _, receipt, source_identity = _decode(source, key, expected_sha256, expected_policy)
+        _require_read_identity(source, source_identity)
         return {"ok":True, "operation":"verify", **receipt}
     except (OSError, sqlite3.Error, BudgetStateError):
         raise BudgetBackupError("encrypted monetary verification failed closed") from None
@@ -179,7 +195,7 @@ def restore_backup(source: Path, destination: Path, key: bytes, *, expected_sha2
                    expected_policy: PilotPolicy, clock=None) -> dict:
     """Validate before restore_new; never replace, renew or unlock a ledger."""
     try:
-        snapshot, receipt = _decode(source, key, expected_sha256, expected_policy)
+        snapshot, receipt, source_identity = _decode(source, key, expected_sha256, expected_policy)
         destination = Path(destination).absolute()
         with MonetaryBudget.restore_new(destination, data=snapshot,
                 expected_sha256=receipt["snapshot_sha256"],
@@ -199,6 +215,7 @@ def restore_backup(source: Path, destination: Path, key: bytes, *, expected_sha2
         # the next open without changing the verified main-file bytes.
         if _has_sidecars(destination):
             raise BudgetStateError("restored budget database gained a sidecar during close")
+        _require_read_identity(source, source_identity)
         return {"ok":True, "operation":"restore", **receipt, "restored_state_verified":True}
     except (OSError, sqlite3.Error, BudgetStateError):
         raise BudgetBackupError("encrypted monetary restore failed closed") from None
