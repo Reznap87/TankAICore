@@ -15,6 +15,18 @@ Installation, Linux-CI, reale Tarif-/Zählerfreigabe und öffentliche dauerhafte
 Workspace-/Budget-Speicherung bleiben gesondert nachzuweisen. Details:
 `docs/REQUIRED_WEB_BUDGET.md`. Kein automatischer Merge oder Deploy.
 
+Ergänzung vom 2. November 2026: Der geschlossene Besitzerpilot erhält eine
+authentifizierte Startprüfung unter `GET /api/pilot/preflight`. Sie verbindet
+aktuelle Besitzer-/Workspace-Berechtigung, Quellenfreigabe, geschützte
+Modellziele/Tarife und die vorhandenen Geld-/Auftragsgrenzen. Der Statusaufruf
+erstellt weder Auftrag noch Reservierung und startet keinen Modellaufruf;
+offene Aufträge und unklare Kosten bleiben erhalten. Die Chat-Einstellungen
+zeigen die Prüfung und Sperrgründe. Eine bestandene lokale Prüfung ersetzt
+weder konkrete Requestbepreisung noch Host-/Restore-/Deploynachweise oder
+Live-Freigabe. `production_ready` bleibt false. Umsetzung auf PR #101;
+dessen Merge und Issue #25 bleiben getrennt offen. Details:
+`docs/OWNER_PILOT_PREFLIGHT.md`.
+
 0. Verifizierter Projektstand und Ausführungsvertrag am 24. Oktober 2026
 
 5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat

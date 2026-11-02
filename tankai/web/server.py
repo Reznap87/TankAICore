@@ -902,6 +902,36 @@ class Handler(BaseHTTPRequestHandler):
             if context:
                 self._json(self._me_payload(context))
             return
+        if path == "/api/pilot/preflight":
+            context = self._auth_context()
+            if not context:
+                return
+            if self.app.auth_mode != "session":
+                self._json({"error": "Die Pilotprüfung benötigt eine aktuelle Anmeldung"}, 403)
+                return
+            pilot = self.app.owner_pilot
+            if pilot is None:
+                if context.role != "owner":
+                    self._json({"error": "Die Pilotprüfung benötigt Besitzerzugang"}, 403)
+                    return
+                self._json({"configured": False, "admission_checks_passed": False,
+                            "blockers": ["owner_pilot_not_configured"],
+                            "dispatch_authorized": False, "production_ready": False})
+                return
+            try:
+                pilot.authorize_identity(context, self.app.auth)
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    result = pilot.preflight(context, self.app.auth, runtime.tank)
+                self._json(result)
+            except OwnerPilotForbidden:
+                self._json({"error": "Die Pilotprüfung ist für diesen Zugang nicht freigegeben"}, 403)
+            except (BudgetStateError, DispatchDenied, PricingError, WorkspaceRuntimeUnavailable):
+                self._json({"configured": True, "admission_checks_passed": False,
+                            "blockers": ["pilot_state_unavailable"],
+                            "dispatch_authorized": False, "production_ready": False}, 503)
+            except Exception:
+                self._internal_error("pilot_preflight")
+            return
         if path == "/api/workspaces":
             context = self._auth_context()
             if not context:
