@@ -47,6 +47,17 @@ a diagnostic file; a retry must fail rather than replace it. Windows directory
 metadata durability and actual-host power-loss behavior remain operator/filesystem
 responsibilities.
 
+The exact exclusive file identity and pinned bytes are rechecked after ledger
+initialization, immediately before returning the new ledger. Under the ledger's
+write reservation, its bounded connected SQLite image must also equal the pinned
+snapshot. This second comparison includes committed WAL pages: merely matching
+the main file and policy could otherwise accept a different valid state that
+closed a captured active job during initialization. Legitimate WAL companions
+created by SQLite are allowed; they cannot hide a changed recovery state.
+Rejection closes the newly opened connection and preserves the diagnostic file.
+The trusted-parent and old-writer fencing requirements below still apply; this
+does not exclude arbitrary administrators or establish external freshness.
+
 Held/unknown attempts keep their full exposure and replay denial. Active jobs
 remain active and block another owner HTTP job after fresh application, database
 and process starts. Confirmed charges, spent attempts/job quotas, daily/total
@@ -84,6 +95,9 @@ round-trip identity, pending/unknown/settled outcomes, replay protection, halt a
 clock/job/budget limits, invalid pins/policy/schema, size bounds, write failure,
 destination races and preservation of existing files/sidecars. A fresh Python
 process verifies that restored uncertainty still blocks a new job.
+Two initialization-boundary regressions use DELETE and WAL modes to change the
+restored job into another valid same-policy state and require rejection before
+return, with the opened connection closed and the source ledger unchanged.
 POSIX regressions additionally require directory metadata to be synced before
 backup or restore success can be acknowledged.
 

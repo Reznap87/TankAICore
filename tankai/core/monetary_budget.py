@@ -751,9 +751,27 @@ class MonetaryBudget:
             if _has_sidecars(destination):
                 raise BudgetStateError("budget destination changed during restore")
             restored = cls(destination, clock=clock)
-            if restored.policy != expected_policy:
+            try:
+                if restored.policy != expected_policy:
+                    raise BudgetStateError("restored policy does not match approved pilot")
+                # Constructor/schema checks only establish a valid ledger, not
+                # the independently pinned recovery state. Keep the original
+                # exclusive identity and bytes through the return boundary.
+                _require_created_snapshot(destination, data, identity)
+                # SQLite may legitimately create WAL companions while opening
+                # a WAL-format image. Check the connected view as well, so a
+                # committed change in that WAL cannot hide behind unchanged
+                # main-file bytes.
+                with restored._transaction() as connection:
+                    page_size = connection.execute("PRAGMA page_size").fetchone()[0]
+                    page_count = connection.execute("PRAGMA page_count").fetchone()[0]
+                    if page_count * page_size > MAX_LEDGER_BYTES:
+                        raise BudgetStateError("restored budget snapshot exceeds capacity")
+                    if connection.serialize() != data:
+                        raise BudgetStateError("restored budget state changed during initialization")
+            except BaseException:
                 restored.close()
-                raise BudgetStateError("restored policy does not match approved pilot")
+                raise
             return restored
         except (OSError, ValueError, TypeError, sqlite3.Error):
             # A failed new-file write may leave a diagnostic file. Never delete

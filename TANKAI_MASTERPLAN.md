@@ -95,6 +95,15 @@ Der rohe Snapshot-Baustein allein ist kein produktiver Gesamtrestore, keine Vers
 gegen das absichtliche Zurückspielen alter Abbilder. Koordinierte Arbeitsraum-/
 Kontodaten, externer Aktualitätsnachweis und Host-Abnahme bleiben offen.
 Vertrag: `docs/BUDGET_SNAPSHOTS.md`.
+Ergänzung vom 2. November 2026: Auch der direkte Snapshot-Restore prüft nach
+Öffnen des Geldbuchs erneut die exklusiv erzeugte Datei und das vollständige,
+begrenzte SQLite-Abbild unter Schreibreservierung. Ein anderer gültiger Stand
+derselben Budgetpolitik darf weder über Hauptdatei noch über WAL einen im
+Snapshot aktiven Auftrag freigeben. Zwei Regressionen verändern den Stand im
+Initialisierungsfenster; eine Ablehnung schließt die neue Verbindung und lässt
+Original sowie Diagnose-Datei erhalten. 214 gezielte Tests liefen lokal erfolgreich,
+10 plattformabhängige Fälle wurden unter Windows übersprungen. Dies ist kein
+Produktions-Restore, kein externer Aktualitätsbeleg und keine Pilotfreigabe.
 Ein optionaler Betreiber-Wrapper verschlüsselt jetzt die gespeicherte
 Geldbuch-Sicherung mit AES-256-GCM und prüft die zurückgelesene Datei. Schlüssel,
 Dateipin und vollständige Budgetpolitik müssen unabhängig freigegeben sein;
