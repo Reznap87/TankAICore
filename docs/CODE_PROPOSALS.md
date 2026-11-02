@@ -543,3 +543,11 @@ It does not serialize an already-invalid Pydantic instance before validation, so
 strict outcome rejection remains warning-free and cannot be normalized by JSON
 serialization. This is a code and synthetic-CI guarantee, not evidence from a
 production worker.
+
+
+The command exit code is also type-strict: only an actual integer or None is
+valid. Python booleans are not accepted as integer exit codes, so an adapter
+cannot turn False into the successful code 0 during boundary validation. A
+synthetic executor regression proves rejection before any receipt or commit.
+Failed and timed-out commands still retain genuine integer or missing exit-code
+evidence. This remains code/CI evidence rather than a production-worker claim.

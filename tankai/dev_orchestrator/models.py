@@ -311,7 +311,7 @@ class TestExecution(OrchestratorModel):
     __test__: ClassVar[bool] = False
     command: str = Field(min_length=1, max_length=4000)
     passed: bool = Field(strict=True)
-    exit_code: int | None = None
+    exit_code: Annotated[int, Field(strict=True)] | None = None
     summary: str = Field(default="", max_length=10_000)
     executed_at: datetime = Field(default_factory=utcnow)
 

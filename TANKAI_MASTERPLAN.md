@@ -4578,3 +4578,15 @@ serialisiert kein bereits typwidriges Pydantic-Objekt vor der Prüfung; dadurch
 bleibt die strikte Ablehnung ohne Serialisierungswarnung erhalten und kann nicht
 durch JSON-Normalisierung verändert werden. Der Nachweis bleibt synthetische
 Code-/CI-Evidenz und sagt nichts über einen produktiven Workerzustand aus.
+
+
+## Entwurfsnachweis: strikt ganzzahliger Exitcode
+
+Befehlsbelege akzeptieren als Exitcode nur noch einen echten Integer oder None.
+Insbesondere kann ein Adapter den Python-Boolean False nicht mehr über
+Integer-Normalisierung als erfolgreichen Exitcode 0 einschleusen. Ein
+synthetischer Executor-Test erzeugt genau diesen typwidrigen Beleg über
+model_copy(update=...) und verlangt dessen Ablehnung vor Persistenz oder Commit.
+Echte ganzzahlige Fehlercodes und fehlende Timeout-Exitcodes bleiben
+darstellbar. Dies ist Code-/CI-Evidenz, kein produktiver Worker- oder
+unabhängiger Modellreview.
