@@ -4572,3 +4572,9 @@ Erfolgsvertrag `passed=true` plus Exitcode 0 bleibt erhalten; Fehler- und
 Timeout-Belege werden nicht eingeschränkt. Dies ist Code-/CI-Evidenz, kein
 Produktionslauf oder unabhängiger Modellreview.
 
+
+Die Executor-Grenze validiert dabei die rohen Receipt-Felder direkt. Sie
+serialisiert kein bereits typwidriges Pydantic-Objekt vor der Prüfung; dadurch
+bleibt die strikte Ablehnung ohne Serialisierungswarnung erhalten und kann nicht
+durch JSON-Normalisierung verändert werden. Der Nachweis bleibt synthetische
+Code-/CI-Evidenz und sagt nichts über einen produktiven Workerzustand aus.

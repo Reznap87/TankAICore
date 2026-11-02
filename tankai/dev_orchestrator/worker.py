@@ -744,7 +744,15 @@ class WorkerPipelineRunner:
                 )
             self._guard(f"{phase.value}:command:{index}:after")
             result.command = render_command(command)
-            result = TestExecution.model_validate(result.model_dump(mode="json"))
+            result = TestExecution.model_validate(
+                {
+                    "command": result.command,
+                    "passed": result.passed,
+                    "exit_code": result.exit_code,
+                    "summary": result.summary,
+                    "executed_at": result.executed_at,
+                }
+            )
             executions.append(result)
             if not result.passed:
                 break

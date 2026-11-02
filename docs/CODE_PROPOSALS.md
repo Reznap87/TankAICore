@@ -536,3 +536,10 @@ Container-Executor-Grenze weist damit auch intern per nicht validierendem
 journalisiert oder committed werden. Erfolgreiche Belege benötigen weiterhin
 zusätzlich Exitcode 0; Fehler- und Timeout-Belege bleiben unverändert darstellbar.
 
+
+
+The executor boundary validates the adapter object's raw receipt fields directly.
+It does not serialize an already-invalid Pydantic instance before validation, so
+strict outcome rejection remains warning-free and cannot be normalized by JSON
+serialization. This is a code and synthetic-CI guarantee, not evidence from a
+production worker.
