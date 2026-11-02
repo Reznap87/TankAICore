@@ -39,6 +39,18 @@ Writer-Sperren oder einen Restore auf dem Produktionshost. PR #102 wurde
 geprüft; seine Konto-/CSV-Recovery bleibt eine getrennte Abhängigkeit.
 Details: `docs/WEB_SHUTDOWN.md`.
 
+Weiterer lokaler Pilot-Schritt vom 2. November 2026: Ein gemeinsamer,
+AES-256-GCM-verschlüsselter Checkpoint erfasst Konten, Budget, Quellenfreigaben
+und Workspace-Dateien eines neu angelegten verwalteten Pilotordners. Die
+teilnehmende Web-Anwendung hält eine exklusive Betriebssystem-Dateisperre bis
+nach HTTP-Drain und vollständigem Workspace-Abschluss; der Export benötigt
+dieselbe Sperre und gleichzeitige SQLite-Schreibreservierungen. Ein Restore
+erzeugt nur einen neuen `staged-restore`-Prüfstand mit gesperrtem Web-Start,
+widerrufenen alten Zugängen und unveränderten unbekannten Kosten. Unbekannte
+Bestände und ausgelagerte Speicher blockieren den Export. Bestehende Ordner
+werden nicht umgestellt. Host-Cutover, Aktualitätsnachweis, Linux-/Container-CI
+und Produktionsfreigabe bleiben offen. Details: `docs/APPLICATION_CHECKPOINT.md`.
+
 5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
 prüfbares SQLite-Fundament auf main-Ausgangsstand
 `b9eb349363889efe90e84460258ee19f0892b003` (übernommene Review-Korrekturen #100).

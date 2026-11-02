@@ -252,6 +252,7 @@ class AppContext:
     provider_limiter: ProviderCallRateLimiter
     auth_state: AuthState | None = None
     owner_pilot: OwnerPilot | None = None
+    root_lease: object | None = None
 
     def __post_init__(self) -> None:
         if self.owner_pilot is not None and (
@@ -261,6 +262,22 @@ class AppContext:
 
     @classmethod
     def from_env(cls, server_host: str, *, owner_pilot: OwnerPilot | None = None) -> "AppContext":
+        from tankai.web.application_root import acquire_web_root
+        # Keep the original path spelling until link/reparse checks have run.
+        root = Path(_env("TANKAI_DATA_ROOT", ".tankai/data"))
+        lease = acquire_web_root(root, auth_db=Path(_env("TANKAI_AUTH_DB", str(root / "auth.db"))),
+                                 owner_pilot=owner_pilot, auth_mode=_env("TANKAI_AUTH_MODE", "session").lower())
+        try:
+            app = cls._from_env_unlocked(server_host, owner_pilot=owner_pilot)
+            app.root_lease = lease
+            return app
+        except BaseException:
+            if lease is not None:
+                lease.close()
+            raise
+
+    @classmethod
+    def _from_env_unlocked(cls, server_host: str, *, owner_pilot: OwnerPilot | None = None) -> "AppContext":
         mode = _env("TANKAI_AUTH_MODE", "session").lower()
         if mode not in {"session", "disabled"}:
             raise RuntimeError("TANKAI_AUTH_MODE muss session oder disabled sein")
@@ -331,6 +348,11 @@ class AppContext:
 
     def close(self) -> None:
         self.runtimes.close()
+        if self.root_lease is not None:
+            if not self.runtimes.quiesced:
+                raise RuntimeError("Application root still has active workspace leases")
+            self.root_lease.close()
+            self.root_lease = None
 
 
 # Keep the UI in separate source files; inline its assets into the existing

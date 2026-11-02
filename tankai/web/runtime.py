@@ -302,6 +302,11 @@ class WorkspaceRuntimeManager:
                         pass
             raise
 
+    @property
+    def quiesced(self) -> bool:
+        with self._lock:
+            return self._closed and not self._runtimes
+
     def close(self) -> None:
         with self._lock:
             self._closed = True
