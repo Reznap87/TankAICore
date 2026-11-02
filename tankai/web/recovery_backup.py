@@ -211,19 +211,48 @@ def _verify_restored_file(path, expected, limit, identity, label):
     return restored
 
 
+
+def _restored_directory_identity(path):
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise csv_backup.FileBackupError(
+            "Wiederherstellungsverzeichnis wurde vor Abschluss entfernt"
+        ) from None
+    if not stat.S_ISDIR(current.st_mode):
+        raise csv_backup.FileBackupError(
+            "Wiederherstellungsverzeichnis wurde vor Abschluss ersetzt"
+        )
+    return current.st_dev, current.st_ino
+
+
+def _require_restored_directory(path, expected_identity):
+    if _restored_directory_identity(path) != expected_identity:
+        raise csv_backup.FileBackupError(
+            "Wiederherstellungsverzeichnis wurde vor Abschluss ersetzt"
+        )
+
+
+def _sync_restored_directory(path, expected_identity):
+    _require_restored_directory(path, expected_identity)
+    csv_backup._sync_directory(path)
+    _require_restored_directory(path, expected_identity)
+
 def restore_backup(source, destination, key):
     data = csv_backup._read_regular(Path(source), MAX_ENCRYPTED_BYTES)
     _, auth_data, csv_data, metadata = _decrypt(data, key)
     restored_auth, access = _revoke_snapshot_access(auth_data)
     directory = Path(destination)
     directory.mkdir(mode=0o700)
+    directory_identity = _restored_directory_identity(directory)
     csv_backup._sync_directory(directory.parent)
+    _require_restored_directory(directory, directory_identity)
     pending = directory / RESTORE_PENDING_FILE
     pending_identity = csv_backup._write_new(pending, b"account-csv-recovery-v1\n")
     auth_path, csv_path = directory / "auth.db", directory / "csv-jobs.db"
     auth_identity = csv_backup._write_new(auth_path, restored_auth)
     csv_identity = csv_backup._write_new(csv_path, csv_data)
-    csv_backup._sync_directory(directory)
+    _sync_restored_directory(directory, directory_identity)
     _verify_restored_file(auth_path, restored_auth, MAX_AUTH_BYTES, auth_identity,
                           "Die wiederhergestellte Kontendatenbank")
     _verify_restored_file(csv_path, csv_data, csv_backup.MAX_SNAPSHOT_BYTES, csv_identity,
@@ -234,7 +263,7 @@ def restore_backup(source, destination, key):
     receipt_path = directory / RECEIPT_FILE
     receipt_data = (json.dumps(result) + "\n").encode()
     receipt_identity = csv_backup._write_new(receipt_path, receipt_data)
-    csv_backup._sync_directory(directory)
+    _sync_restored_directory(directory, directory_identity)
     _verify_restored_file(receipt_path, receipt_data, len(receipt_data), receipt_identity,
                           "Das Recovery-Receipt")
     # The receipt write is a separate durability boundary. Recheck both databases
@@ -252,7 +281,7 @@ def restore_backup(source, destination, key):
             or (os.name != "nt" and current_pending.st_nlink != 1)):
         raise csv_backup.FileBackupError("Recovery-Pending-Marker wurde vor Abschluss ersetzt")
     pending.unlink()
-    csv_backup._sync_directory(directory)
+    _sync_restored_directory(directory, directory_identity)
     if os.path.lexists(pending):
         raise csv_backup.FileBackupError(
             "Recovery-Pending-Marker wurde nach Abschluss erneut angelegt"

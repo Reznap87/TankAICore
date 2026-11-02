@@ -157,3 +157,16 @@ Erfolgs-Receipt. Ein erneut angelegter Pending-Marker wird ebenfalls abgewiesen.
 Der Regressionstest nutzt ausschließlich synthetische Daten und ersetzt keine
 Produktions-Recovery-, Writer-Fencing- oder Anti-Rollback-Prüfung.
 
+
+
+### Bindung des Wiederherstellungsverzeichnisses
+
+Das exklusiv neu erzeugte Zielverzeichnis bleibt bis zum Erfolgs-Receipt an seine
+Geräte- und Inode-Identität gebunden. Vor und nach jeder
+Verzeichnis-Synchronisation muss der Zielpfad weiterhin genau dieses gewöhnliche
+Verzeichnis bezeichnen. Ein Austausch gegen einen Symlink auf das ursprüngliche
+Verzeichnis wird daher auch dann abgewiesen, wenn Datenbanken und Receipt
+unverändert dieselben Dateien bleiben. Ein POSIX-Negativtest führt diesen
+Austausch im letzten Durability-Fenster aus. Dies ist synthetische CI-Evidenz;
+Windows-Verzeichnisdurability und produktive Operator-/ACL-Prüfung bleiben
+separate Grenzen.

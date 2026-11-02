@@ -4497,3 +4497,15 @@ diesem letzten Fenster durch eine bytegleiche andere Datei und verlangt
 fail-closed Ablehnung. Dies ist Code-/CI-Evidenz, kein produktiver Restore-,
 Writer-Fencing- oder Anti-Rollback-Nachweis.
 
+
+
+## Entwurfsnachweis: Identität des Recovery-Zielverzeichnisses
+
+Der koordinierte Restore bindet zusätzlich das exklusiv neu erzeugte
+Zielverzeichnis bis zum Erfolgs-Receipt an Gerät und Inode. Vor und nach jeder
+Verzeichnis-fsync-Grenze muss der Zielpfad weiterhin genau dieses gewöhnliche
+Verzeichnis bezeichnen. Ein POSIX-Test ersetzt den Pfad im letzten
+Durability-Fenster durch einen Symlink auf dasselbe Verzeichnis; trotz
+unveränderter Datenbank- und Receipt-Dateien wird der Erfolg fail-closed
+abgewiesen. Dies ist Code-/CI-Evidenz, kein produktiver Restore-,
+Windows-Durability-, ACL- oder Deployment-Nachweis.
