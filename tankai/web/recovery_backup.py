@@ -158,26 +158,25 @@ def _encrypted_source_identity(info):
             info.st_ctime_ns if os.name != "nt" else 0)
 
 
-def _encrypted_source_directory_identity(path):
+def _directory_identity(path, label):
     try:
         current = Path(path).lstat()
     except OSError:
-        raise csv_backup.FileBackupError(
-            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss entfernt"
-        ) from None
+        raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss entfernt") from None
     if not stat.S_ISDIR(current.st_mode):
-        raise csv_backup.FileBackupError(
-            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss ersetzt"
-        )
+        raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss ersetzt")
     return current.st_dev, current.st_ino
+
+
+def _require_directory(path, expected_identity, label):
+    if _directory_identity(path, label) != expected_identity:
+        raise csv_backup.FileBackupError(f"{label} wurde vor Abschluss ersetzt")
 
 
 def _require_encrypted_source(path, expected_identity, expected_directory_identity):
     directory = Path(path).parent
-    if _encrypted_source_directory_identity(directory) != expected_directory_identity:
-        raise csv_backup.FileBackupError(
-            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss ersetzt"
-        )
+    directory_label = "Quellverzeichnis des Wiederherstellungspakets"
+    _require_directory(directory, expected_directory_identity, directory_label)
     try:
         current = Path(path).lstat()
     except OSError:
@@ -190,15 +189,14 @@ def _require_encrypted_source(path, expected_identity, expected_directory_identi
         raise csv_backup.FileBackupError(
             "Wiederherstellungspaket wurde vor Abschluss ersetzt"
         )
-    if _encrypted_source_directory_identity(directory) != expected_directory_identity:
-        raise csv_backup.FileBackupError(
-            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss ersetzt"
-        )
+    _require_directory(directory, expected_directory_identity, directory_label)
 
 
 def _read_encrypted_source(source):
     path = Path(source)
-    directory_identity = _encrypted_source_directory_identity(path.parent)
+    directory_identity = _directory_identity(
+        path.parent, "Quellverzeichnis des Wiederherstellungspakets"
+    )
     try:
         before = path.lstat()
     except OSError:
@@ -215,8 +213,13 @@ def create_backup(root, destination, key):
     nonce = secrets.token_bytes(12)
     data = MAGIC + nonce + cipher.encrypt(nonce, payload, AAD)
     destination = Path(destination)
+    directory = destination.parent
+    directory_label = "Zielverzeichnis der gespeicherten Sicherung"
+    directory_identity = _directory_identity(directory, directory_label)
     destination_identity = csv_backup._write_new(destination, data)
-    csv_backup._sync_directory(destination.parent)
+    _require_directory(directory, directory_identity, directory_label)
+    csv_backup._sync_directory(directory)
+    _require_directory(directory, directory_identity, directory_label)
     saved = _verify_restored_file(
         destination, data, MAX_ENCRYPTED_BYTES, destination_identity,
         "Die gespeicherte Sicherung",
@@ -224,6 +227,7 @@ def create_backup(root, destination, key):
     verified, auth_data, csv_data, metadata = _decrypt(saved, key)
     if verified != payload:
         raise csv_backup.FileBackupError("Die gespeicherte Sicherung stimmt nicht mit der Momentaufnahme überein")
+    _require_directory(directory, directory_identity, directory_label)
     return {"ok": True, "operation": "backup", **_receipt(saved, auth_data, csv_data, metadata),
             "persistedCiphertextVerified": True, "coordinatedWriteBarrier": True}
 

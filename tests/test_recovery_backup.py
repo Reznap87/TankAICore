@@ -65,6 +65,42 @@ def test_identical_replacement_of_saved_backup_is_rejected(
     assert destination.exists()
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX backup-directory identity contract')
+def test_backup_destination_parent_symlink_swap_blocks_success(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    destination_directory = tmp_path / 'backup-directory'
+    moved_directory = tmp_path / 'moved-backup-directory'
+    destination_directory.mkdir()
+    destination = destination_directory / 'pair.enc'
+    original = recovery._decrypt
+    replaced = False
+
+    def replace_parent_after_persisted_backup_validation(data, supplied_key):
+        nonlocal replaced
+        result = original(data, supplied_key)
+        if not replaced:
+            replaced = True
+            destination_directory.rename(moved_directory)
+            destination_directory.symlink_to(moved_directory, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(
+        recovery, '_decrypt', replace_parent_after_persisted_backup_validation,
+    )
+    with pytest.raises(
+        recovery.csv_backup.FileBackupError,
+        match='Zielverzeichnis.*ersetzt',
+    ):
+        recovery.create_backup(root, destination, key)
+
+    assert replaced
+    assert destination_directory.is_symlink()
+    assert destination.read_bytes() == (moved_directory / 'pair.enc').read_bytes()
+
+
 def test_pair_recovers_password_hashes_roles_choices_and_deliveries(source, tmp_path):
     root, auth, files, session, draft, done, agent_token = source
     assert auth.consume_provider_call_event(user_id=session.context.user_id, provider='fixture', limit=1, window_seconds=3600) is None

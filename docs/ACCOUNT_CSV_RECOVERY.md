@@ -72,7 +72,11 @@ CSV-only/foreign formats are rejected. Only ciphertext is persisted during
 backup; the saved file remains bound to the exclusively created file identity
 while its exact bytes are read back and validated before success is acknowledged.
 A missing, replaced, hard-linked or modified output therefore cannot produce a
-successful backup receipt.
+successful backup receipt. Its immediate destination directory is also bound to
+the same device and inode from before the exclusive create through the success
+receipt and must remain an ordinary directory. A POSIX symlink replacement that
+still resolves to the unchanged saved file therefore fails closed. Earlier
+ancestor directories and Windows directory identity remain operator duties.
 
 `verify` authenticates the envelope and validates both databases and their
 relationship without writing a recovered root. `restore` completes all validation
@@ -205,3 +209,14 @@ dasselbe, unveränderte Verzeichnis. Beide Operationen werden trotzdem sicher
 abgewiesen; beim Restore bleibt der Pending-Marker erhalten. Frühere
 Pfadvorfahren, Windows-Verzeichnisidentität, ACLs, Freshness und Anti-Rollback
 bleiben ausdrücklich separate Grenzen.
+
+### Bindung des Backup-Zielverzeichnisses
+
+Auch das unmittelbare Elternverzeichnis einer neu erzeugten verschlüsselten
+Sicherung bleibt von vor der exklusiven Dateierzeugung bis zum Erfolgs-Receipt
+an Gerät und Inode gebunden und muss ein gewöhnliches Verzeichnis bleiben. Ein
+POSIX-Negativtest ersetzt diesen Pfad nach der validierten Entschlüsselung der
+gespeicherten Bytes durch einen Symlink auf dasselbe unveränderte Verzeichnis;
+der Backup-Erfolg wird trotzdem fail-closed abgewiesen. Frühere Pfadvorfahren,
+Windows-Verzeichnisidentität, ACLs und produktive Operatorprüfung bleiben
+separate Grenzen.

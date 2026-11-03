@@ -4536,3 +4536,15 @@ Entschlüsselung durch einen Symlink auf dasselbe unveränderte Verzeichnis und
 verlangt für beide Operationen die fail-closed-Ablehnung; beim Restore bleibt
 der Pending-Marker bestehen. Frühere Pfadvorfahren, Windows-Verzeichnisidentität,
 ACLs, Freshness und Anti-Rollback bleiben separate Grenzen.
+
+
+## Entwurfsnachweis: Bindung des Backup-Zielverzeichnisses
+
+Das unmittelbare Elternverzeichnis einer neu erzeugten verschlüsselten
+Sicherung bleibt von vor der exklusiven Dateierzeugung bis zum Erfolgs-Receipt
+an Gerät und Inode gebunden und muss ein gewöhnliches Verzeichnis bleiben. Ein
+synthetischer POSIX-Negativtest ersetzt den Pfad nach der validierten
+Entschlüsselung der gespeicherten Bytes durch einen Symlink auf dasselbe
+unveränderte Verzeichnis und verlangt die fail-closed-Ablehnung des
+Backup-Erfolgs. Frühere Pfadvorfahren, Windows-Verzeichnisidentität, ACLs und
+produktive Operatorprüfung bleiben separate Grenzen.
