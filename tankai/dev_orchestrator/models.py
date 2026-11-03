@@ -326,6 +326,8 @@ class TestExecution(OrchestratorModel):
     def _require_zero_exit_code_for_success(self):
         if self.passed and self.exit_code != 0:
             raise ValueError("Erfolgreiche Befehlsbelege benötigen Exitcode 0")
+        if not self.passed and self.exit_code == 0:
+            raise ValueError("Befehlsbelege mit Exitcode 0 müssen erfolgreich sein")
         return self
 
 

@@ -572,3 +572,10 @@ are persisted or hashed. Two offsets that identify the same instant therefore
 produce the same serialized receipt timestamp. This makes code and synthetic-CI
 evidence deterministic; it does not establish that an executor clock is trusted
 or accurately synchronized in production.
+
+Command outcome and exit code are bidirectionally coherent at the same model and
+adapter boundary. A successful receipt requires exit code 0, and exit code 0 in
+turn requires `passed=true`. Failed commands may still carry a genuine nonzero
+integer, while timeout and executor-exception evidence may omit the exit code.
+A synthetic malformed adapter receipt proves rejection before persistence or
+commit. This is code and synthetic-CI evidence, not a production-runtime claim.

@@ -4622,3 +4622,14 @@ erzeugen dadurch denselben serialisierten Receipt-Zeitstempel. Ein synthetischer
 Regressionstest belegt die Normalisierung einschließlich JSON-Darstellung. Dies
 verbessert die deterministische Code-/CI-Evidenz, begründet aber weder eine
 vertrauenswürdige noch eine produktiv synchronisierte Executor-Uhr.
+
+
+## Entwurfsnachweis: widerspruchsfreier Befehlsausgang
+
+Ergebnisstatus und Exitcode eines Befehlsbelegs sind nun in beide Richtungen
+gebunden: Erfolg verlangt Exitcode 0, und Exitcode 0 verlangt `passed=true`.
+Echte Fehlerbelege mit einem von null verschiedenen Integer sowie Timeout- und
+Executor-Ausnahmebelege ohne Exitcode bleiben darstellbar. Ein synthetischer
+Adaptertest schleust über Pydantics nicht validierenden `model_copy(update=...)`-
+Pfad `passed=false` bei Exitcode 0 ein und verlangt die Ablehnung vor Persistenz
+oder Commit. Dies ist Code-/CI-Evidenz, kein produktiver Worker-Nachweis.
