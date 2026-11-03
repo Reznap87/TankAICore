@@ -122,6 +122,48 @@ def test_verify_rejects_identical_encrypted_source_replacement(
         recovery.verify_backup(encrypted, key)
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX encrypted-source directory identity contract')
+@pytest.mark.parametrize('operation', ['verify', 'restore'])
+def test_encrypted_source_parent_symlink_swap_blocks_success(
+    source, tmp_path, monkeypatch, operation,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    source_directory = tmp_path / 'package-directory'
+    moved_directory = tmp_path / 'moved-package-directory'
+    source_directory.mkdir()
+    encrypted = source_directory / 'pair.enc'
+    destination = tmp_path / 'restored-from-swapped-parent'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery._decrypt
+    replaced = False
+
+    def replace_parent_after_authenticated_read(data, supplied_key):
+        nonlocal replaced
+        result = original(data, supplied_key)
+        if not replaced:
+            replaced = True
+            source_directory.rename(moved_directory)
+            source_directory.symlink_to(moved_directory, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(recovery, '_decrypt', replace_parent_after_authenticated_read)
+    with pytest.raises(
+        recovery.csv_backup.FileBackupError,
+        match='Quellverzeichnis.*ersetzt',
+    ):
+        if operation == 'verify':
+            recovery.verify_backup(encrypted, key)
+        else:
+            recovery.restore_backup(encrypted, destination, key)
+
+    assert replaced
+    assert source_directory.is_symlink()
+    assert encrypted.read_bytes() == (moved_directory / 'pair.enc').read_bytes()
+    if operation == 'restore':
+        assert (destination / recovery.RESTORE_PENDING_FILE).exists()
+
+
 def test_restore_rejects_identical_encrypted_source_replacement_before_completion(
     source, tmp_path, monkeypatch,
 ):

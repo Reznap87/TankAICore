@@ -87,8 +87,11 @@ the encrypted package additionally remains bound to the same device, inode,
 link count, size and modification metadata until the success receipt. A
 byte-identical pathname replacement after authenticated decryption therefore
 fails closed; during restore, the pre-completion check leaves the pending marker
-in place. Windows hard-link and ACL policy remains an operator/filesystem
-responsibility.
+in place. Its immediate source directory is likewise bound to the same device
+and inode and must remain an ordinary directory through the success receipt. A
+POSIX symlink replacement that still resolves to the unchanged package therefore
+fails closed. Earlier ancestor directories, Windows directory identity,
+hard-link and ACL policy remain an operator/filesystem responsibility.
 
 ## Fresh login and failure handling
 
@@ -191,3 +194,14 @@ des Pending-Markers; eine zweite Prüfung unmittelbar vor Rückgabe schützt das
 letzte Abschlussfenster. Zwei synthetische Negativtests belegen Verify und
 Restore. Dies ist kein Nachweis für vertrauenswürdige Quellverzeichnisse,
 Windows-Hardlink-Policy, Freshness oder Anti-Rollback.
+
+### Bindung des Quellverzeichnisses
+
+Bei `verify` und `restore` bleibt zusätzlich das unmittelbare Elternverzeichnis
+des verschlüsselten Pakets bis zum Erfolgs-Receipt an Gerät und Inode gebunden
+und muss ein gewöhnliches Verzeichnis bleiben. Ein POSIX-Negativtest ersetzt
+diesen Pfad nach der authentifizierten Entschlüsselung durch einen Symlink auf
+dasselbe, unveränderte Verzeichnis. Beide Operationen werden trotzdem sicher
+abgewiesen; beim Restore bleibt der Pending-Marker erhalten. Frühere
+Pfadvorfahren, Windows-Verzeichnisidentität, ACLs, Freshness und Anti-Rollback
+bleiben ausdrücklich separate Grenzen.

@@ -158,7 +158,26 @@ def _encrypted_source_identity(info):
             info.st_ctime_ns if os.name != "nt" else 0)
 
 
-def _require_encrypted_source(path, expected_identity):
+def _encrypted_source_directory_identity(path):
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise csv_backup.FileBackupError(
+            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss entfernt"
+        ) from None
+    if not stat.S_ISDIR(current.st_mode):
+        raise csv_backup.FileBackupError(
+            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss ersetzt"
+        )
+    return current.st_dev, current.st_ino
+
+
+def _require_encrypted_source(path, expected_identity, expected_directory_identity):
+    directory = Path(path).parent
+    if _encrypted_source_directory_identity(directory) != expected_directory_identity:
+        raise csv_backup.FileBackupError(
+            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss ersetzt"
+        )
     try:
         current = Path(path).lstat()
     except OSError:
@@ -171,18 +190,23 @@ def _require_encrypted_source(path, expected_identity):
         raise csv_backup.FileBackupError(
             "Wiederherstellungspaket wurde vor Abschluss ersetzt"
         )
+    if _encrypted_source_directory_identity(directory) != expected_directory_identity:
+        raise csv_backup.FileBackupError(
+            "Quellverzeichnis des Wiederherstellungspakets wurde vor Abschluss ersetzt"
+        )
 
 
 def _read_encrypted_source(source):
     path = Path(source)
+    directory_identity = _encrypted_source_directory_identity(path.parent)
     try:
         before = path.lstat()
     except OSError:
         raise csv_backup.FileBackupError("Eingabedatei ist ungültig oder zu groß") from None
     expected_identity = _encrypted_source_identity(before)
     data = csv_backup._read_regular(path, MAX_ENCRYPTED_BYTES)
-    _require_encrypted_source(path, expected_identity)
-    return path, data, expected_identity
+    _require_encrypted_source(path, expected_identity, directory_identity)
+    return path, data, expected_identity, directory_identity
 
 
 def create_backup(root, destination, key):
@@ -205,11 +229,11 @@ def create_backup(root, destination, key):
 
 
 def verify_backup(source, key):
-    source_path, data, source_identity = _read_encrypted_source(source)
+    source_path, data, source_identity, source_directory_identity = _read_encrypted_source(source)
     _, auth_data, csv_data, metadata = _decrypt(data, key)
     result = {"ok": True, "operation": "verify",
               **_receipt(data, auth_data, csv_data, metadata)}
-    _require_encrypted_source(source_path, source_identity)
+    _require_encrypted_source(source_path, source_identity, source_directory_identity)
     return result
 
 
@@ -274,7 +298,7 @@ def _sync_restored_directory(path, expected_identity):
     _require_restored_directory(path, expected_identity)
 
 def restore_backup(source, destination, key):
-    source_path, data, source_identity = _read_encrypted_source(source)
+    source_path, data, source_identity, source_directory_identity = _read_encrypted_source(source)
     _, auth_data, csv_data, metadata = _decrypt(data, key)
     restored_auth, access = _revoke_snapshot_access(auth_data)
     directory = Path(destination)
@@ -309,7 +333,7 @@ def restore_backup(source, destination, key):
                           "Die wiederhergestellte Dateiauftragsdatenbank")
     # Keep the success receipt bound to the authenticated encrypted package,
     # rather than merely to whichever pathname entry exists after decryption.
-    _require_encrypted_source(source_path, source_identity)
+    _require_encrypted_source(source_path, source_identity, source_directory_identity)
     try:
         current_pending = pending.lstat()
     except OSError:
@@ -333,7 +357,7 @@ def restore_backup(source, destination, key):
     _verify_restored_file(receipt_path, receipt_data, len(receipt_data), receipt_identity,
                           "Das Recovery-Receipt")
     _require_restored_directory(directory, directory_identity)
-    _require_encrypted_source(source_path, source_identity)
+    _require_encrypted_source(source_path, source_identity, source_directory_identity)
     return result
 
 

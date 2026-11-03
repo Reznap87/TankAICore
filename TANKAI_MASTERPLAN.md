@@ -4524,3 +4524,15 @@ abgewiesen; beim Restore bleibt der Pending-Marker bei der maßgeblichen
 Vorabschlussprüfung erhalten. Zwei synthetische Negativtests decken Verify und
 Restore ab. Dies ist Code-/CI-Evidenz, kein produktiver Recovery-,
 Quellverzeichnis-, Freshness-, Anti-Rollback- oder Windows-Hardlink-Nachweis.
+
+
+## Entwurfsnachweis: Bindung des Paket-Quellverzeichnisses
+
+Verify und Restore binden nun auch das unmittelbare Elternverzeichnis des
+verschlüsselten Wiederherstellungspakets bis zum Erfolgs-Receipt an Gerät und
+Inode. Es muss währenddessen ein gewöhnliches Verzeichnis bleiben. Ein
+synthetischer POSIX-Negativtest ersetzt den Pfad nach authentifizierter
+Entschlüsselung durch einen Symlink auf dasselbe unveränderte Verzeichnis und
+verlangt für beide Operationen die fail-closed-Ablehnung; beim Restore bleibt
+der Pending-Marker bestehen. Frühere Pfadvorfahren, Windows-Verzeichnisidentität,
+ACLs, Freshness und Anti-Rollback bleiben separate Grenzen.
