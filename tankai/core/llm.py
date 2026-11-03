@@ -514,11 +514,23 @@ def _request_with_admission(adapter: BaseLLM, parameters: dict, admission: Bound
         if getattr(client, "_client", None) is not transport:
             raise DispatchDenied("SDK did not accept the bounded transport")
         send = client.messages.create if anthropic else client.chat.completions.create
+        def send_complete_text(frozen: dict) -> str:
+            response = send(**frozen)
+            if anthropic:
+                truncated = getattr(response, "stop_reason", None) in (
+                    "max_tokens", "model_context_window_exceeded")
+            else:
+                choices = getattr(response, "choices", None)
+                truncated = (isinstance(choices, (list, tuple)) and bool(choices)
+                             and getattr(choices[0], "finish_reason", None) == "length")
+            if truncated:
+                raise DispatchDenied("provider response was truncated; complete result required")
+            return bounded_text(parse(response))
         return admission.execute(
             provider=adapter.provider_name, model=adapter.model,
             endpoint=str(client.base_url), parameters=parameters,
             sdk_max_retries=client.max_retries, timeout_seconds=timeout,
-            send_once=lambda frozen: bounded_text(parse(send(**frozen))),
+            send_once=send_complete_text,
         )
 
 

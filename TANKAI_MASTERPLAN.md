@@ -90,6 +90,15 @@ HTTP-Chunking bleibt erlaubt und wird anhand der gelieferten Body-Bytes gezählt
 Geldreservierung und Auftragsstopp bleiben
 auch nach einem Antwortlimit-Fehler über Anwendungsneustarts erhalten. Diese
 Byte-Grenzen ersetzen keinen Nachweis tatsächlich berechneter Anbietertokens.
+Ergänzung vom 3. November 2026: Der geschützte Versand weist vom Anbieter als
+abgeschnitten gekennzeichnete Antworten zurück (OpenAI `length`, Anthropic
+`max_tokens` und `model_context_window_exceeded`). Auch plausibel wirkender
+Teiltext darf dadurch nicht als vollständiges Ergebnis in den Core gelangen.
+Geldreservierung und Auftragsstopp bleiben erhalten; keine automatische Fortsetzung,
+Wiederholung oder Erhöhung des Tokenlimits. Drei lokale SDK-Regressionen prüfen
+diese Fälle ohne Anbieterzugriff. Dies beweist keine semantische Vollständigkeit
+anderer Antworten und aktiviert keinen Pilot. Vertrag:
+`docs/MONETARY_RESERVATIONS.md`.
 Die explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,
 Besitzerrolle, Mandant und freigegebene Arbeitsräume. Nach unsicheren Ausgängen
 oder Prozessabbruch bleibt der dauerhafte Auftragsplatz belegt; neue HTTP-Jobs
@@ -171,6 +180,18 @@ Persistenzbeleg. Neue Geldbuch-Restore-Dateien werden zusätzlich descriptorgebu
 aus der exklusiv erzeugten Datei zurückgelesen und müssen vor der Initialisierung
 bytegenau dem entschlüsselten Snapshot entsprechen. Eine andere gültige
 Momentaufnahme derselben Policy erhält damit keinen falschen Restore-Erfolgsbeleg.
+Die Identität der verschlüsselten Quelldatei bleibt außerdem bis unmittelbar
+vor dem Verify- oder Restore-Erfolgs-Receipt gebunden. Ein bytegleicher Austausch
+nach dem authentifizierten Lesen, aber noch während der Snapshot- oder Zielprüfung,
+wird damit abgewiesen. Zwei synthetische Negativtests prüfen Verify und Restore.
+Dies ersetzt weder vertrauenswürdige Quellverzeichnisse noch unabhängige
+Freshness-/Anti-Rollback-Evidenz.
+Der verschlüsselte Restore bindet nun auch das gewöhnliche übergeordnete
+Zielverzeichnis bis unmittelbar vor den Erfolgs-Receipt an Gerät und Inode.
+Ein nach dem SQLite-Close eingesetzter Symlink auf dasselbe ursprüngliche
+Verzeichnis wird trotz unveränderter Zieldatei und Bytes fail-closed abgewiesen.
+Ein synthetischer POSIX-Negativtest belegt diese Pfadgrenze; Windows-ACLs und
+produktive Verzeichnisvertrauenswürdigkeit bleiben Betreiberpflicht.
 Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Ein zusätzlicher künstlicher Kalt-Restore-Probelauf erfasst jetzt Konten,

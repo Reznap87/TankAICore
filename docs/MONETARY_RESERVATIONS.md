@@ -122,6 +122,19 @@ upstream charges, a total elapsed-time limit or upstream cancellation.
 Limits apply only to protected dispatch; default web imports do not require
 optional SDK/HTTP libraries. No compression fallback or extra send is attempted.
 
+Protected dispatch also rejects explicit provider truncation: OpenAI
+`finish_reason=length`, and Anthropic `stop_reason=max_tokens` or
+`model_context_window_exceeded`. A plausible-looking partial answer must not be
+returned to the Core as a completed result. Rejection happens inside the reserved
+send boundary, retains the full hold and stops further sends in that dispatcher;
+there is no automatic continuation, retry or token-limit increase. This check
+does not establish semantic completeness for other stop reasons or change the
+unprotected adapter path.
+
+Provider contracts checked 2026-11-03:
+[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+and [Anthropic stop reasons](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons).
+
 Normal responses, malformed responses, errors and cancellations retain the full
 hold; token usage never refunds it automatically. A send/parsing/settlement
 failure blocks subsequent sends through the same dispatcher, including queued
