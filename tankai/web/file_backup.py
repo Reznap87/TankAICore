@@ -28,6 +28,12 @@ class FileBackupError(ValueError):
     pass
 
 
+def _read_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    # Windows lstat and descriptor stat expose different legacy ctime meanings.
+    return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns if os.name != "nt" else 0)
+
+
 def _cipher(key: bytes):
     if not isinstance(key, bytes) or len(key) != 32:
         raise FileBackupError("Ein binärer 256-Bit-Sicherungsschlüssel ist erforderlich")
@@ -49,16 +55,9 @@ def _read_regular(path: Path, limit: int, *, key_file=False) -> bytes:
              | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     descriptor = os.open(path, flags)
 
-    def identity(info):
-        # Windows lstat and descriptor stat expose different legacy ctime
-        # meanings. File ID/size/mtime remain checked there; POSIX also checks
-        # ctime. AES-GCM authenticates the bytes after this stable read.
-        return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
-                info.st_ctime_ns if os.name != "nt" else 0)
-
     with os.fdopen(descriptor, "rb") as handle:
         opened = os.fstat(handle.fileno())
-        if not stat.S_ISREG(opened.st_mode) or identity(opened) != identity(before):
+        if not stat.S_ISREG(opened.st_mode) or _read_identity(opened) != _read_identity(before):
             raise FileBackupError("Eingabedatei wurde vor dem Lesen geändert")
         if key_file and os.name != "nt" and opened.st_mode & 0o077:
             raise FileBackupError("Die Schlüsseldatei darf nur dem Besitzer zugänglich sein")
@@ -68,8 +67,9 @@ def _read_regular(path: Path, limit: int, *, key_file=False) -> bytes:
             current = path.lstat()
         except OSError:
             raise FileBackupError("Eingabedatei wurde während des Lesens geändert") from None
-        if (len(data) != opened.st_size or identity(after) != identity(opened)
-                or not stat.S_ISREG(current.st_mode) or identity(current) != identity(opened)):
+        if (len(data) != opened.st_size or _read_identity(after) != _read_identity(opened)
+                or not stat.S_ISREG(current.st_mode)
+                or _read_identity(current) != _read_identity(opened)):
             raise FileBackupError("Eingabedatei wurde während des Lesens geändert")
         return data
 
@@ -319,6 +319,36 @@ def _sync_bound_directory(path: Path, expected: tuple[int, int], subject: str) -
     _require_directory(path, expected, subject)
 
 
+def _require_encrypted_source(
+        path: Path, expected_file: tuple[int, int, int, int, int, int],
+        expected_directory: tuple[int, int]) -> None:
+    directory = path.parent
+    subject = "Das Quellverzeichnis der Sicherung"
+    _require_directory(directory, expected_directory, subject)
+    try:
+        current = path.lstat()
+    except OSError:
+        raise FileBackupError("Die verschlüsselte Sicherung wurde vor Abschluss entfernt") from None
+    if (not stat.S_ISREG(current.st_mode) or _read_identity(current) != expected_file
+            or (os.name != "nt" and current.st_nlink != 1)):
+        raise FileBackupError("Die verschlüsselte Sicherung wurde vor Abschluss ersetzt")
+    _require_directory(directory, expected_directory, subject)
+
+
+def _read_encrypted_source(source: Path) -> tuple[
+        Path, bytes, tuple[int, int, int, int, int, int], tuple[int, int]]:
+    path = Path(source)
+    directory_identity = _directory_identity(
+        path.parent, "Das Quellverzeichnis der Sicherung")
+    try:
+        file_identity = _read_identity(path.lstat())
+    except OSError:
+        raise FileBackupError("Eingabedatei ist ungültig oder zu groß") from None
+    data = _read_regular(path, MAX_ENCRYPTED_BYTES)
+    _require_encrypted_source(path, file_identity, directory_identity)
+    return path, data, file_identity, directory_identity
+
+
 def _receipt(data, payload, metadata):
     return {"format": "tankai-csv-backup-v1", "cipher": "AES-256-GCM", **metadata,
             "encryptedBytes": len(data), "encryptedSha256": hashlib.sha256(data).hexdigest(),
@@ -348,14 +378,17 @@ def create_backup(source: Path, destination: Path, key: bytes) -> dict:
 
 
 def verify_backup(source: Path, key: bytes) -> dict:
-    data = _read_regular(source, MAX_ENCRYPTED_BYTES)
+    source_path, data, source_identity, source_directory_identity = _read_encrypted_source(source)
     payload, metadata = _decrypt(data, key)
-    return {"ok": True, "operation": "verify", **_receipt(data, payload, metadata)}
+    result = {"ok": True, "operation": "verify", **_receipt(data, payload, metadata)}
+    _require_encrypted_source(source_path, source_identity, source_directory_identity)
+    return result
 
 
 def restore_backup(source: Path, destination_directory: Path, key: bytes) -> dict:
-    data = _read_regular(source, MAX_ENCRYPTED_BYTES)
+    source_path, data, source_identity, source_directory_identity = _read_encrypted_source(source)
     payload, metadata = _decrypt(data, key)
+    _require_encrypted_source(source_path, source_identity, source_directory_identity)
     directory = Path(destination_directory)
     # A new directory also rules out existing WAL/SHM/journal sidecars at the destination.
     directory.mkdir(mode=0o700)
@@ -372,6 +405,7 @@ def restore_backup(source: Path, destination_directory: Path, key: bytes) -> dic
     if saved != payload:
         raise FileBackupError("Die zurückgespielte Datenbank stimmt nicht mit der Sicherung überein")
     _require_directory(directory, directory_identity, directory_subject)
+    _require_encrypted_source(source_path, source_identity, source_directory_identity)
     return {"ok": True, "operation": "restore", **_receipt(data, saved, metadata),
             "restoredDatabaseVerified": True}
 

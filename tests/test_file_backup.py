@@ -330,6 +330,64 @@ def test_restore_directory_symlink_swap_blocks_success(original, tmp_path, monke
     assert (directory / 'csv-jobs.db').read_bytes() == (moved / 'csv-jobs.db').read_bytes()
 
 
+@pytest.mark.parametrize('operation', ['verify', 'restore'])
+def test_encrypted_source_replacement_after_decrypt_blocks_receipt(
+        original, tmp_path, monkeypatch, operation):
+    _, source, *_ = original
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'replaceable-source.enc'
+    moved = tmp_path / 'authenticated-source.enc'
+    backup.create_backup(source, encrypted, key)
+    original_decrypt = backup._decrypt
+
+    def replace_after_decrypt(data, supplied_key):
+        result = original_decrypt(data, supplied_key)
+        encrypted.rename(moved)
+        encrypted.write_bytes(moved.read_bytes())
+        return result
+
+    monkeypatch.setattr(backup, '_decrypt', replace_after_decrypt)
+    with pytest.raises(backup.FileBackupError, match='verschlüsselte Sicherung.*ersetzt'):
+        if operation == 'verify':
+            backup.verify_backup(encrypted, key)
+        else:
+            backup.restore_backup(encrypted, tmp_path / 'must-not-exist', key)
+    assert encrypted.read_bytes() == moved.read_bytes()
+    if operation == 'restore':
+        assert not (tmp_path / 'must-not-exist').exists()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX encrypted-source directory identity contract')
+@pytest.mark.parametrize('operation', ['verify', 'restore'])
+def test_encrypted_source_parent_symlink_swap_blocks_receipt(
+        original, tmp_path, monkeypatch, operation):
+    _, source, *_ = original
+    key = secrets.token_bytes(32)
+    directory = tmp_path / 'source-directory'
+    moved = tmp_path / 'moved-source-directory'
+    directory.mkdir()
+    encrypted = directory / 'backup.enc'
+    backup.create_backup(source, encrypted, key)
+    original_decrypt = backup._decrypt
+
+    def replace_parent_after_decrypt(data, supplied_key):
+        result = original_decrypt(data, supplied_key)
+        directory.rename(moved)
+        directory.symlink_to(moved, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(backup, '_decrypt', replace_parent_after_decrypt)
+    with pytest.raises(backup.FileBackupError, match='Quellverzeichnis.*ersetzt'):
+        if operation == 'verify':
+            backup.verify_backup(encrypted, key)
+        else:
+            backup.restore_backup(encrypted, tmp_path / 'must-not-exist', key)
+    assert directory.is_symlink()
+    assert encrypted.read_bytes() == (moved / 'backup.enc').read_bytes()
+    if operation == 'restore':
+        assert not (tmp_path / 'must-not-exist').exists()
+
+
 def test_backup_path_replacement_during_read_is_rejected(original, tmp_path, monkeypatch):
     _, source, *_ = original
     key = secrets.token_bytes(32)

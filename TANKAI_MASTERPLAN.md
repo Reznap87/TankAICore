@@ -7,6 +7,17 @@ Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Übe
 
 0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
 
+Entwurfsnachweis PR #102, 4. November 2026: Beim eigenständigen verschlüsselten
+CSV-Backup bleiben `verify` und `restore` jetzt bis zum Erfolgs-Receipt an dieselbe
+Quell-Dateiidentität und dasselbe unmittelbare Elternverzeichnis gebunden. Ein
+bytegleicher Dateiaustausch nach erfolgreicher AES-GCM-Prüfung sowie ein
+POSIX-Symlink-Austausch des Elternpfads auf das unveränderte Verzeichnis werden
+fail-closed abgewiesen. Restore prüft diese Bindung zusätzlich vor Erzeugung des
+Zielverzeichnisses. Vier synthetische Fälle belegen beide Operationen und beide
+Austauschklassen; frühere Pfadvorfahren, Windows-Verzeichnisidentität, Freshness
+und Anti-Rollback bleiben getrennte Grenzen. Keine Produktions-, Secret-, Provider-
+oder Deploymentänderung.
+
 Entwurfsnachweis PR #102, 3. November 2026: Die eigenständige verschlüsselte
 CSV-Sicherung bindet nun neben der exklusiv erzeugten Datei auch ihr unmittelbares
 Zielverzeichnis bis zum Erfolgs-Receipt an Gerät und Inode. Der eigenständige

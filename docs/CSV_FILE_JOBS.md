@@ -151,6 +151,11 @@ belong to the original path.
 Windows link and ACL policy remains an operator/filesystem responsibility.
 
 `verify` authenticates and validates the saved file without creating an output.
+For `verify` and `restore`, both the encrypted file identity and its immediate
+parent directory identity remain bound through the success receipt. A byte-identical
+file replacement or a parent-path swap to a symlink on the unchanged directory
+fails closed after authenticated decryption. Earlier ancestors and Windows
+directory identity remain operator duties.
 `restore` performs those checks **before** creating its destination. It requires
 a new directory and writes only `csv-jobs.db` there. An existing directory, file
 or journal sidecar is never replaced. The new file is flushed and reread while remaining bound to the identity returned
