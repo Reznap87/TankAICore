@@ -4677,3 +4677,22 @@ bereits geprüften Hauptdateibytes anzutasten. Drei synthetische Negativtests
 erzeugen die jeweiligen Sidecars während close und verlangen fail-closed
 Ablehnung. Dies ist Code-/CI-Evidenz, kein produktiver Restore-, Writer-Fencing-
 oder Anti-Rollback-Nachweis.
+
+## Entwicklungsstand: getrennter nativer Container-Pilot
+
+Ein eigener Pilot-Worker ergänzt den Offline-Supervisor um persistente Start-,
+Aufnahme- und Restore-Absichten. Die SQLite-Revision wird vor jedem nativen
+Effekt atomar geprüft und gespeichert. Unklare Ergebnisse bleiben gesperrt;
+es gibt weder automatische Wiederholung noch eine Aktivierungsroute.
+
+Aufnahmen binden den nativen Handle an Image-Digest, Generation und den vor/nach
+der Aufnahme geprüften Root-Receipt. Der Restore adressiert ausschließlich
+eine zweite, noch unbenutzte Inspect-Instanz und verändert die Quelle nicht.
+Die getrennte Konfiguration enthält keine öffentliche Domain und keine
+Secretwerte. Produktionsworker, Routing und Provider bleiben unberührt.
+
+Verträge und Grenzen stehen in `docs/CLOUDFLARE_NATIVE_PILOT.md`. Lokale
+Integrationsprüfungen verwenden echten Durable-Object-SQLite-Speicher mit
+ausdrücklich simulierten nativen Container-Effekten. Eine tatsächliche native
+Cloudflare-Aufnahme/Wiederherstellung und spätere Aktivierung sind weiterhin
+gesondert nachzuweisen; `production_ready=false` bleibt bestehen.

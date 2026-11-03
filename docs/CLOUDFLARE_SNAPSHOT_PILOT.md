@@ -2,8 +2,10 @@
 
 Dieser separate Pilot bereitet das geordnete Anhalten für die native Cloudflare
 Container API vor. Er ändert weder `src/cloudflare.ts`, `wrangler.jsonc` noch den
-produktiven `Dockerfile`. Es gibt noch keinen nativen Snapshot-Controller und
-keinen Cloudflare-Restore-Nachweis. Keine neue Domain, Ressource oder Secrets
+produktiven `Dockerfile`. Er liefert allein keinen nativen
+Cloudflare-Restore-Nachweis. Der inzwischen ergänzte
+[native Controller](CLOUDFLARE_NATIVE_PILOT.md) ist separat beschrieben und lokal
+mit simulierten nativen Effekten geprüft. Keine neue Domain, Ressource oder Secrets
 sind für die lokalen Tests nötig.
 
 ## Warum ein Supervisor?
@@ -88,8 +90,9 @@ Container- oder semantischer Datenbank-Validator und kein Freshness-/Anti-Rollba
 Nachweis. Eine Wiederherstellung darf insbesondere unbekannte monetäre Holds
 nicht freigeben; dafür gelten weiterhin die bestehenden Checkpoint-Verträge.
 
-Noch erforderlich sind ein getrennter Durable-Object-Controller mit persistenter
-Zustandsmaschine und Zugriffsschutz, native Aufnahme/Wiederherstellung im
+Der getrennte Durable-Object-Controller mit persistenter Zustandsmaschine und
+Zugriffsschutz ist als Entwicklungsstand ergänzt. Noch erforderlich sind seine
+autorisierte Pilotbereitstellung, native Aufnahme/Wiederherstellung im
 berechtigten Cloudflare-Pilotkonto, Bindung von Image und Root-Receipt, Behandlung
 unterbrochener API-Aufrufe, Snapshot-Aufbewahrung sowie ausdrücklich freigegebene
 Aktivierung und Cutover. Ein `inspect`-Receipt allein erfüllt diese Gates nicht.

@@ -6,3 +6,6 @@ __pycache__/
 .tankai/
 worktrees/
 *.log
+pilot-configuration.d.ts
+pilot-runtime.d.ts
+dist-pilot/

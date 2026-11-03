@@ -6,6 +6,9 @@
   "scripts": {
     "cf:types": "wrangler types",
     "cf:check": "wrangler types && tsc --noEmit && wrangler deploy --dry-run --outdir dist",
+    "pilot:types": "wrangler types pilot-runtime.d.ts --config wrangler.pilot.jsonc --include-env false && wrangler types pilot-configuration.d.ts --config wrangler.pilot.jsonc --env-interface PilotEnv --include-runtime false",
+    "pilot:check": "npm run pilot:types && tsc --project tsconfig.pilot.json && wrangler deploy --config wrangler.pilot.jsonc --dry-run --outdir dist-pilot",
+    "pilot:test": "node scripts/test-pilot-controller.mjs",
     "cf:deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
