@@ -37,6 +37,7 @@
     document.title = 'TankAI – Dein Chat';
   }
   function resetWorkspace() {
+    byId('file-jobs-link').hidden = true;
     historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren();
     byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = '';
     byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft';
@@ -53,6 +54,7 @@
     byId('loginView').hidden = true; byId('appView').hidden = false;
     byId('profile-name').textContent = data.user?.display_name || data.user?.email || 'Dein Konto';
     byId('profile-workspace').textContent = data.workspace?.name || 'Dein Workspace';
+    byId('file-jobs-link').hidden = !data.file_jobs_enabled;
     const select = byId('workspace'); select.replaceChildren();
     (data.workspaces || []).forEach(w => { const option = element('option', '', w.name + ' (' + w.role + ')'); option.value = w.id; option.selected = w.id === data.workspace?.id; select.append(option); });
     setBusy(false); syncSidebar();
@@ -83,7 +85,7 @@
     catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('loginStatus').textContent = String(error.message || error); }
   }
   async function login(event) {
-    event.preventDefault(); const btn = byId('loginBtn'); btn.disabled = true; const requestEpoch = epoch;
+    event.preventDefault(); const btn = byId('loginBtn'); btn.disabled = true; const requestEpoch = ++epoch;
     const email = byId('email').value.trim(); const password = byId('password').value;
     byId('loginStatus').textContent = 'Anmeldung wird geprüft …';
     try { const data = await jsonFetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (requestEpoch !== epoch) return; byId('password').value = ''; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); byId('loginStatus').textContent = ''; }

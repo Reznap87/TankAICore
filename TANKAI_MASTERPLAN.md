@@ -7,6 +7,57 @@ Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Übe
 
 0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
 
+Entwurfsnachweis PR #102, 4. November 2026: Beim eigenständigen verschlüsselten
+CSV-Backup bleiben `verify` und `restore` jetzt bis zum Erfolgs-Receipt an dieselbe
+Quell-Dateiidentität und dasselbe unmittelbare Elternverzeichnis gebunden. Ein
+bytegleicher Dateiaustausch nach erfolgreicher AES-GCM-Prüfung sowie ein
+POSIX-Symlink-Austausch des Elternpfads auf das unveränderte Verzeichnis werden
+fail-closed abgewiesen. Restore prüft diese Bindung zusätzlich vor Erzeugung des
+Zielverzeichnisses. Vier synthetische Fälle belegen beide Operationen und beide
+Austauschklassen; frühere Pfadvorfahren, Windows-Verzeichnisidentität, Freshness
+und Anti-Rollback bleiben getrennte Grenzen. Keine Produktions-, Secret-, Provider-
+oder Deploymentänderung.
+
+Entwurfsnachweis PR #102, 3. November 2026: Die eigenständige verschlüsselte
+CSV-Sicherung bindet nun neben der exklusiv erzeugten Datei auch ihr unmittelbares
+Zielverzeichnis bis zum Erfolgs-Receipt an Gerät und Inode. Der eigenständige
+CSV-Restore hält denselben Vertrag für sein neu erzeugtes Zielverzeichnis bis nach
+dem abschließenden Datenbank-Read. Ein POSIX-Pfadaustausch gegen einen Symlink auf
+das unveränderte Verzeichnis wird in beiden Abläufen fail-closed abgewiesen.
+Synthetische Regressionstests belegen diese beiden Austauschfenster; frühere
+Pfadvorfahren, Windows-Verzeichnisidentität und produktive Operator-/ACL-Prüfung
+bleiben getrennte Grenzen. Keine Produktions-, Secret-, Provider- oder
+Deploymentänderung.
+
+Entwurfsnachweis PR #102, 27. Oktober 2026: Die koordinierte lokale Konto-/CSV-
+Sicherung weist auf POSIX auch Hardlink-Aliasse der beiden SQLite-Quelldatenbanken
+zurück. Gerätekennung, Inode und Linkzahl müssen bis zum Ende jeder Online-
+Momentaufnahme stabil bleiben. Die lesenden Snapshot-Verbindungen werden bereits
+unter der jeweiligen Schreibbarriere geöffnet, an genau diese Identitäten
+gebunden und für die Kopie wiederverwendet; ein nach Sperrübernahme ausgetauschter
+Pfad kann deshalb nicht auf eine unreservierte Datenbank umleiten. Damit bleiben
+auch pfadgebundene WAL-/SHM-Sidecars bei der reservierten Quelle. Synthetische
+Tests decken Aliasse und den Austausch nach Sperrübernahme ab. Auch das neu
+erzeugte verschlüsselte
+Paket bleibt bis zum bytegenauen Rücklesen an seine exklusiv angelegte
+Dateiidentität gebunden; eine Ersetzung verhindert den Erfolgsbeleg. Derselbe
+Identitätsvertrag gilt nun auch für die eigenständige CSV-Sicherung: Selbst eine
+bytegleiche Ersetzung der exklusiv erzeugten Ausgabedatei erhält keinen
+Persistenzbeleg. Auch der eigenständige CSV-Restore bleibt beim Rücklesen an die
+exklusiv erzeugte Datenbankidentität gebunden; eine bytegleiche Ersetzung
+verhindert den Restore-Erfolgsbeleg. Das abschließende Recovery-Receipt wird
+außerdem bytegenau aus der gespeicherten Datei zurückgelesen, bevor der Pending-
+Marker entfernt wird; ein beschädigtes Receipt lässt den Restore gesperrt. Der
+Restore bindet beide Datenbanken und das Receipt zusätzlich an ihre exklusiv
+angelegte Dateiidentität. Diese Identität wird vor und nach jedem bytegenauen
+Lesen kontrolliert; die Datenbanken werden nach dem Receipt erneut geprüft. Eine
+fehlende, ersetzte, per Hardlink aliasierte oder nachträglich geänderte Datei
+verhindert damit den Abschluss und erhält die Sperrmarkierung. Der
+Marker selbst bleibt dabei an die exklusiv angelegte Dateiidentität gebunden;
+ein fehlender, ersetzter oder per Hardlink aliasierter Marker blockiert den
+Abschluss, ohne eine fremde Datei zu entfernen. Der PR bleibt Entwurf; dies ist weder ein
+Produktions-Backup-Beleg noch eine Deployment-, Secret- oder Provideränderung.
+
 5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als
 gewöhnliche SQLite-Tabellen und weist Trigger auf diesen Tabellen zurück. Views mit
 passenden Spalten oder nachgelagerte Trigger können damit keine Kontodatenbank ersetzen
@@ -4455,3 +4506,67 @@ executableContentRun: false und factsVerified: false bleiben verbindlich.
 Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht blockierter Gate:
 begrenzte DFFITS-Einflussdiagnostik mit expliziter Schwellenregel oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
+
+## Entwurfsnachweis: koordinierter Restore nach Pending-Durability
+
+Der koordinierte Konten-/CSV-Restore bindet seinen Erfolgs-Receipt jetzt auch
+nach Entfernung des Pending-Markers und dem abschließenden Verzeichnis-`fsync`
+an alle drei exklusiv erzeugten Artefakte. Kontendatenbank,
+Dateiauftragsdatenbank und Recovery-Receipt werden danach erneut anhand von
+Dateiidentität und exakten Bytes geprüft; ein erneut angelegter Pending-Marker
+wird abgewiesen. Ein synthetischer Negativtest ersetzt die Kontendatenbank in
+diesem letzten Fenster durch eine bytegleiche andere Datei und verlangt
+fail-closed Ablehnung. Dies ist Code-/CI-Evidenz, kein produktiver Restore-,
+Writer-Fencing- oder Anti-Rollback-Nachweis.
+
+
+
+## Entwurfsnachweis: Identität des Recovery-Zielverzeichnisses
+
+Der koordinierte Restore bindet zusätzlich das exklusiv neu erzeugte
+Zielverzeichnis bis zum Erfolgs-Receipt an Gerät und Inode. Vor und nach jeder
+Verzeichnis-fsync-Grenze muss der Zielpfad weiterhin genau dieses gewöhnliche
+Verzeichnis bezeichnen. Ein POSIX-Test ersetzt den Pfad im letzten
+Durability-Fenster durch einen Symlink auf dasselbe Verzeichnis; trotz
+unveränderter Datenbank- und Receipt-Dateien wird der Erfolg fail-closed
+abgewiesen. Die Verzeichnisidentität wird zusätzlich nach der letzten
+Artefaktprüfung unmittelbar vor Rückgabe des Erfolgs-Receipts erneut geprüft.
+Ein zweiter POSIX-Test verschiebt den Pfad erst nach dem finalen Receipt-Read
+und bestätigt dieselbe fail-closed Ablehnung. Dies ist Code-/CI-Evidenz, kein
+produktiver Restore-, Windows-Durability-, ACL- oder Deployment-Nachweis.
+
+## Entwurfsnachweis: Identität des verschlüsselten Recovery-Pakets
+
+Die koordinierten `verify`- und `restore`-Erfolgsbelege bleiben jetzt über das
+authentifizierte Lesen hinaus an dieselbe Dateiidentität des verschlüsselten
+Recovery-Pakets gebunden. Gerät, Inode, Linkzahl, Größe und
+Änderungsmetadaten müssen bis zum Abschluss unverändert bleiben. Ein
+bytegleicher Austausch nach erfolgreicher AES-GCM-Prüfung wird fail-closed
+abgewiesen; beim Restore bleibt der Pending-Marker bei der maßgeblichen
+Vorabschlussprüfung erhalten. Zwei synthetische Negativtests decken Verify und
+Restore ab. Dies ist Code-/CI-Evidenz, kein produktiver Recovery-,
+Quellverzeichnis-, Freshness-, Anti-Rollback- oder Windows-Hardlink-Nachweis.
+
+
+## Entwurfsnachweis: Bindung des Paket-Quellverzeichnisses
+
+Verify und Restore binden nun auch das unmittelbare Elternverzeichnis des
+verschlüsselten Wiederherstellungspakets bis zum Erfolgs-Receipt an Gerät und
+Inode. Es muss währenddessen ein gewöhnliches Verzeichnis bleiben. Ein
+synthetischer POSIX-Negativtest ersetzt den Pfad nach authentifizierter
+Entschlüsselung durch einen Symlink auf dasselbe unveränderte Verzeichnis und
+verlangt für beide Operationen die fail-closed-Ablehnung; beim Restore bleibt
+der Pending-Marker bestehen. Frühere Pfadvorfahren, Windows-Verzeichnisidentität,
+ACLs, Freshness und Anti-Rollback bleiben separate Grenzen.
+
+
+## Entwurfsnachweis: Bindung des Backup-Zielverzeichnisses
+
+Das unmittelbare Elternverzeichnis einer neu erzeugten verschlüsselten
+Sicherung bleibt von vor der exklusiven Dateierzeugung bis zum Erfolgs-Receipt
+an Gerät und Inode gebunden und muss ein gewöhnliches Verzeichnis bleiben. Ein
+synthetischer POSIX-Negativtest ersetzt den Pfad nach der validierten
+Entschlüsselung der gespeicherten Bytes durch einen Symlink auf dasselbe
+unveränderte Verzeichnis und verlangt die fail-closed-Ablehnung des
+Backup-Erfolgs. Frühere Pfadvorfahren, Windows-Verzeichnisidentität, ACLs und
+produktive Operatorprüfung bleiben separate Grenzen.

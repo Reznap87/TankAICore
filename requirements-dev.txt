@@ -1,2 +1,3 @@
 -r requirements.txt
+-r requirements-backup.txt
 pytest>=8,<10

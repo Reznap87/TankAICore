@@ -50,7 +50,10 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
-from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
+from tankai.web.auth_state import (
+    AuthState, AuthStateUnavailable, RESTORE_PENDING_FILE, RECOVERY_RECEIPT_FILE, bootstrap_owner,
+)
+from tankai.web.file_jobs import FileJobError, FileJobStore
 
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
@@ -244,6 +247,7 @@ class AppContext:
     login_limiter: LoginRateLimiter
     provider_limiter: ProviderCallRateLimiter
     auth_state: AuthState | None = None
+    file_jobs: FileJobStore | None = None
 
     @classmethod
     def from_env(cls, server_host: str) -> "AppContext":
@@ -251,10 +255,24 @@ class AppContext:
         if mode not in {"session", "disabled"}:
             raise RuntimeError("TANKAI_AUTH_MODE muss session oder disabled sein")
         is_loopback = server_host in {"127.0.0.1", "localhost", "::1"}
+        file_jobs_enabled = _env_bool("TANKAI_FILE_JOBS_ENABLED", False)
+        if file_jobs_enabled and (not is_loopback or mode != "session"):
+            raise RuntimeError("CSV-Dateiaufträge benötigen einen privaten Loopback-Server mit Anmeldung")
         if mode == "disabled" and not is_loopback:
             raise RuntimeError("Deaktivierte Authentifizierung ist nur auf Loopback erlaubt")
         data_root = Path(_env("TANKAI_DATA_ROOT", ".tankai/data")).resolve()
+        if (data_root / RESTORE_PENDING_FILE).exists():
+            raise RuntimeError("Die Wiederherstellung des Datenbestands ist noch nicht abgeschlossen")
+        recovered_root = (data_root / RECOVERY_RECEIPT_FILE).exists()
+        if recovered_root and (
+                _env("TANKAI_AUTH_STATE_URL") or _env("TANKAI_AUTH_STATE_TOKEN")):
+            raise RuntimeError("Die wiederhergestellten Konten müssen zuerst mit der externen Kontensicherung abgeglichen werden")
         auth_db = Path(_env("TANKAI_AUTH_DB", str(data_root / "auth.db"))).resolve()
+        if recovered_root and (
+                auth_db != (data_root / "auth.db").resolve()
+                or any(path.is_symlink() or not path.is_file()
+                       for path in (data_root / "auth.db", data_root / "csv-jobs.db"))):
+            raise RuntimeError("Wiederhergestellte Konten und Dateiaufträge müssen gemeinsam aus dem neuen Datenordner geladen werden")
         cookie_secure = _env_bool("TANKAI_COOKIE_SECURE", not is_loopback)
         auth_state = AuthState.from_env()
         if auth_state is not None:
@@ -289,6 +307,7 @@ class AppContext:
             auth_mode=mode,
             auth_state=auth_state,
             auth=auth,
+            file_jobs=FileJobStore(data_root / "csv-jobs.db") if file_jobs_enabled else None,
             runtimes=WorkspaceRuntimeManager(data_root),
             job_queue=job_queue,
             cookie_secure=cookie_secure,
@@ -321,6 +340,11 @@ HTML_TEMPLATE = (
     (_WEB_ROOT / "chat.html").read_text(encoding="utf-8")
     .replace("__CHAT_STYLES__", (_WEB_ROOT / "chat.css").read_text(encoding="utf-8"))
     .replace("__CHAT_SCRIPT__", (_WEB_ROOT / "chat.js").read_text(encoding="utf-8"))
+)
+FILE_JOBS_TEMPLATE = (
+    (_WEB_ROOT / "file_jobs.html").read_text(encoding="utf-8")
+    .replace("__FILE_JOB_STYLES__", (_WEB_ROOT / "file_jobs.css").read_text(encoding="utf-8"))
+    .replace("__FILE_JOB_SCRIPT__", (_WEB_ROOT / "file_jobs.js").read_text(encoding="utf-8"))
 )
 
 
@@ -641,6 +665,7 @@ class Handler(BaseHTTPRequestHandler):
             "workspaces": workspaces,
             "csrf_token": context.csrf_token,
             "session_expires_at": context.expires_at.isoformat(),
+            **({"file_jobs_enabled": True} if self.app.file_jobs is not None else {}),
         }
 
     @staticmethod
@@ -814,6 +839,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
+        if path == "/files" or path.startswith("/api/file-jobs"):
+            context = self._auth_context()
+            if context is not None:
+                self._file_job_get(path, context)
+            return
         brand_asset = _BRAND_ASSETS.get(path)
         if brand_asset is not None:
             content_type, body = brand_asset
@@ -985,6 +1015,9 @@ class Handler(BaseHTTPRequestHandler):
         if not context:
             return
         if not self._require_csrf(context):
+            return
+        if path.startswith("/api/file-jobs"):
+            self._file_job_post(path, context)
             return
         if path == "/api/auth/logout":
             if self.app.auth_mode != "disabled":
@@ -1989,6 +2022,81 @@ class Handler(BaseHTTPRequestHandler):
             return
         remaining = max(1, int((session.context.expires_at.timestamp() - time.time())))
         self._json(self._me_payload(session.context), 201, set_cookie=self._session_cookie(session.token, remaining))
+
+    def _file_job_get(self, path: str, context: AuthContext) -> None:
+        store = self.app.file_jobs
+        if store is None:
+            self._json({"error": "Private Dateiaufträge sind nicht eingeschaltet"}, 404)
+            return
+        expected_workspace = self.headers.get("X-TankAI-Workspace")
+        if expected_workspace is None:
+            expected_workspace = parse_qs(urlsplit(self.path).query).get("workspace", [None])[0]
+        if expected_workspace is not None and expected_workspace != context.workspace_id:
+            self._json({"error": "Der Arbeitsraum wurde gewechselt. Bitte die Seite neu laden"}, 409)
+            return
+        try:
+            if path == "/files":
+                nonce = secrets.token_urlsafe(18)
+                body = FILE_JOBS_TEMPLATE.replace("__CSP_NONCE__", nonce).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self._security_headers(content_nonce=nonce)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if path == "/api/file-jobs":
+                self._json({"jobs": store.list(context)})
+                return
+            match = re.fullmatch(r"/api/file-jobs/([0-9a-f-]{36})(?:/(csv|report))?", path)
+            if not match:
+                raise FileJobError("Nicht gefunden", 404)
+            if not match.group(2):
+                self._json(store.get(context, match.group(1)))
+                return
+            content, content_type, filename = store.download(context, *match.groups())
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self._security_headers()
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+        except FileJobError as exc:
+            self._json({"error": str(exc)}, exc.status)
+        except Exception:
+            self._internal_error("file_job_get")
+
+    def _file_job_post(self, path: str, context: AuthContext) -> None:
+        store = self.app.file_jobs
+        if store is None:
+            self._json({"error": "Private Dateiaufträge sind nicht eingeschaltet"}, 404)
+            return
+        if self.headers.get("X-TankAI-Workspace") != context.workspace_id:
+            self._json({"error": "Der Arbeitsraum wurde gewechselt. Bitte die Seite neu laden"}, 409)
+            return
+        data = self._read_json(max_bytes=12_100_000 if path == "/api/file-jobs" else 4_000)
+        if data is None:
+            return
+        try:
+            if path == "/api/file-jobs":
+                self._json(store.create(context, data), 201)
+                return
+            match = re.fullmatch(r"/api/file-jobs/([0-9a-f-]{36})/(preview|complete|delete)", path)
+            if not match:
+                raise FileJobError("Nicht gefunden", 404)
+            job_id, action = match.groups()
+            if action == "delete":
+                if data:
+                    raise FileJobError("Löschen erwartet ein leeres Objekt")
+                store.delete(context, job_id)
+                self._json({"ok": True})
+            else:
+                self._json(store.update(context, job_id, data, complete=action == "complete"))
+        except FileJobError as exc:
+            self._json({"error": str(exc)}, exc.status)
+        except Exception:
+            self._internal_error("file_job_post")
 
     def _run(self, context: AuthContext) -> None:
         data = self._read_json()

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TankAI – Dateiaufträge</title><link rel="icon" href="/favicon.ico">
+<style nonce="__CSP_NONCE__">__FILE_JOB_STYLES__</style></head>
+<body><header><a href="/">← Zum Chat</a><span>TankAI · privater Arbeitsraum</span><span id="workspace"></span></header>
+<main><div class="intro"><p class="eyebrow">DEINE DATEI. DEINE ENTSCHEIDUNG.</p><h1>Aus einer CSV wird ein<br>prüfbares Ergebnis.</h1>
+<p>Du wählst die Änderungen. TankAI zeigt die Vorschau und erstellt die Datei mit passendem Prüfbericht.</p></div>
+<p id="status" role="status" aria-live="polite">Dein Arbeitsraum wird geladen …</p>
+<div class="layout"><aside class="panel"><h2>Deine Dateiaufträge</h2><p class="muted">Nach dem Schließen hier fortsetzen.</p><div id="jobs"></div></aside>
+<section class="panel"><form id="upload"><h2>Neue Datei prüfen</h2><p class="muted">UTF-8-CSV · bis 2 MB · 5000 Datenzeilen · 40 Spalten</p>
+<label for="source">CSV-Datei</label><input id="source" type="file" accept=".csv,text/csv" required>
+<label for="note">Deine Auftragsnotiz <span class="muted">(optional)</span></label><textarea id="note" rows="2" maxlength="1000" placeholder="Zum Beispiel: Kundennummern unverändert lassen."></textarea>
+<p class="muted">Die Notiz wird gespeichert. Ausgeführt werden ausschließlich die unten gewählten Bereinigungen.</p>
+<label for="delimiter">Trennzeichen</label><select id="delimiter"><option value="auto">Automatisch erkennen</option value=",">Komma</option><option value=";">Semikolon</option><option value="&#9;">Tabulator</option></select>
+<button id="upload-button" type="submit">Datei prüfen und Auftrag speichern</button></form>
+<article id="detail" hidden><div class="heading"><h2 id="name"></h2><button class="secondary" id="remove" type="button">Auftrag löschen</button></div><p id="saved-note"></p><p id="state" class="muted"></p>
+<div id="findings" class="findings"></div><fieldset id="options"><legend>Welche Änderungen erlaubst du?</legend>
+<label><input id="trim" type="checkbox"> Äußere Leerzeichen entfernen</label>
+<label><input id="removeBlank" type="checkbox"> Leere Zeilen entfernen</label>
+<label><input id="removeDuplicates" type="checkbox"> Exakt doppelte Zeilen entfernen</label>
+<label><input id="protectFormulas" type="checkbox" checked> Formelähnliche Zellen beim Export schützen</label>
+<p class="muted">Der Formelschutz setzt ein Apostroph vor Werte mit =, +, − oder @ sowie führenden Steuerzeichen. Das betrifft auch negative Zahlen. Die Vorschau zeigt die Zellwerte vor diesem Exportschutz.</p></fieldset>
+<p id="pending" class="muted" hidden>Die Auswahl hat sich geändert. Bitte zuerst die Vorschau aktualisieren.</p>
+<button type="button" id="preview">Auswahl speichern und Vorschau aktualisieren</button>
+<div id="errors" role="alert"></div><h3>Vorschau</h3><p class="muted">Bis 20 Zeilen, 8 Spalten und 200 Zeichen je Feld. Es werden keine Zahlen oder Datumswerte umgewandelt.</p>
+<div class="table-wrap"><table><thead id="columns"></thead><tbody id="rows"></tbody></table></div>
+<p id="changes"></p><button id="complete" type="button">Diese Vorschau übernehmen und Ergebnis erstellen</button>
+<div id="downloads" hidden><a id="csv-download" class="button">Ergebnis-CSV herunterladen</a><a id="report-download" class="button secondary">Prüfbericht herunterladen</a><p id="checksum" class="muted"></p></div>
+</article></section></div>
+<footer><strong>Dateiverarbeitung ohne KI-Aufruf.</strong> Die Dateien bleiben in diesem privaten TankAI-Server gespeichert, bis du den Auftrag löschst. Es erfolgt keine Übertragung an einen Modellanbieter. Der Prüfbericht bestätigt Änderungen und Dateiprüfsumme; die fachliche Richtigkeit deiner Daten musst du selbst beurteilen. Führende Nullen bleiben im CSV erhalten. Tabellenprogramme können sie beim Öffnen umdeuten; importiere Kennungen dort als Text.</footer>
+</main><script nonce="__CSP_NONCE__">__FILE_JOB_SCRIPT__</script></body></html>
