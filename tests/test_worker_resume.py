@@ -15,6 +15,23 @@ from tankai.dev_orchestrator import (
 )
 
 
+def test_execution_receipt_normalizes_aware_timestamp_to_utc():
+    source_time = datetime(
+        2026, 11, 3, 13, 15, 0,
+        tzinfo=timezone(timedelta(hours=5, minutes=30)),
+    )
+
+    receipt = TestExecution(
+        command="synthetic command",
+        passed=True,
+        exit_code=0,
+        executed_at=source_time,
+    )
+
+    assert receipt.executed_at == datetime(2026, 11, 3, 7, 45, tzinfo=timezone.utc)
+    assert receipt.model_dump(mode="json")["executed_at"] == "2026-11-03T07:45:00Z"
+
+
 @pytest.mark.parametrize("exit_code", [None, 1, -1])
 def test_success_execution_receipts_require_zero_exit_code(exit_code):
     with pytest.raises(ValueError, match="Exitcode 0"):

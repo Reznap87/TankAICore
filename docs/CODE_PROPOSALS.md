@@ -566,3 +566,9 @@ future adapter timestamps outside that window are rejected before persistence
 or commit. This binds the claimed execution time to the command invocation, but
 does not provide trusted hardware time, remote attestation or production clock
 synchronization evidence.
+
+Accepted timezone-aware execution times are canonicalized to UTC before they
+are persisted or hashed. Two offsets that identify the same instant therefore
+produce the same serialized receipt timestamp. This makes code and synthetic-CI
+evidence deterministic; it does not establish that an executor clock is trusted
+or accurately synchronized in production.

@@ -320,7 +320,7 @@ class TestExecution(OrchestratorModel):
     def _require_timezone_aware_execution_time(cls, value: datetime) -> datetime:
         if value.utcoffset() is None:
             raise ValueError("Befehlsbelege benötigen einen Zeitzonenbezug")
-        return value
+        return value.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def _require_zero_exit_code_for_success(self):

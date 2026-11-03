@@ -4612,3 +4612,13 @@ Zeitabweichungen; Belege aus ferner Vergangenheit oder Zukunft werden vor
 Persistenz und Commit abgewiesen. Zwei synthetische Adaptertests decken beide
 Richtungen ab. Dies ist Code-/CI-Evidenz, keine vertrauenswürdige Hardwarezeit,
 Remote-Attestierung oder produktive Zeitsynchronisationsprüfung.
+
+
+## Entwurfsnachweis: kanonischer UTC-Ausführungszeitpunkt
+
+Gültige zeitzonengebundene Ausführungszeitpunkte werden vor Persistenz und
+Hashbildung auf UTC kanonisiert. Verschiedene Offsets für denselben Zeitpunkt
+erzeugen dadurch denselben serialisierten Receipt-Zeitstempel. Ein synthetischer
+Regressionstest belegt die Normalisierung einschließlich JSON-Darstellung. Dies
+verbessert die deterministische Code-/CI-Evidenz, begründet aber weder eine
+vertrauenswürdige noch eine produktiv synchronisierte Executor-Uhr.
