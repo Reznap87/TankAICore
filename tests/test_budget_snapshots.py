@@ -228,12 +228,18 @@ def test_symlink_destination_never_overwrites_its_target(tmp_path, budget):
 
 
 def test_hardlink_created_during_restore_prevents_ledger_return(tmp_path, budget, monkeypatch):
+    image = budget.export_snapshot()
     destination = tmp_path / "recovered.sqlite"
     alias = tmp_path / "recovered-alias.sqlite"
     original_fsync = os.fsync
 
     def link_after_sync(fd):
         original_fsync(fd)
+        # Snapshot scratch files and directory fsync can run before/after the
+        # destination's write. Inject once at the actual destination, rather
+        # than mistaking a missing file or existing alias for missing OS support.
+        if not destination.exists() or alias.exists():
+            return
         try:
             os.link(destination, alias)
         except (OSError, NotImplementedError):
@@ -241,7 +247,7 @@ def test_hardlink_created_during_restore_prevents_ledger_return(tmp_path, budget
 
     monkeypatch.setattr(os, "fsync", link_after_sync)
     with pytest.raises(BudgetStateError):
-        restore(tmp_path, budget.export_snapshot(), budget.policy)
+        restore(tmp_path, image, budget.policy)
     assert destination.exists() and alias.exists()
 
 

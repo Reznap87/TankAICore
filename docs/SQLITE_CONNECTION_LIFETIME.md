@@ -42,6 +42,16 @@ oder abschließende Leerzeichen des Passworts zu trimmen. Sieben Tests prüfen d
 Zeilenenden, erhaltene Leerzeichen sowie Kontoanlage und Passwortwechsel samt
 Widerruf alter Sessions mit ausschließlich synthetischen Zugangsdaten.
 
+Die erste vollständige Linux-Prüfung deckte außerdem einen Export-/Checkout-
+Fehler auf: Git exportierte das Shell-Startskript unter Windows mit CRLF,
+obwohl sein Repository-Blob LF enthielt. Das direkt in den Linux-Modellcontainer
+eingebundene Skript brach dadurch vor seiner Prüfsummenprüfung ab. Eine
+`.gitattributes`-Regel fixiert Shellskripte auf LF; ein Byte-Test prüft diese
+Eigenschaft plattformunabhängig. Es wird dabei kein Modell heruntergeladen.
+Der Hardlink-Restore-Test injiziert seine Race-Bedingung jetzt einmalig nach
+Anlage der tatsächlichen Zieldatei; fehlende oder bereits existierende
+Testpfade werden nicht mehr als fehlende Hardlink-Unterstützung übersprungen.
+
 Linux-/Container-, Worker- und Web-Regressionen sind weiterhin am konkreten
 Commit zu prüfen. Dieser lokale Ressourcenabschluss ist keine globale Writer-
 Sperre, kein produktiver Restore und keine Freigabe für einen Deploy.
