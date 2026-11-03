@@ -29,6 +29,19 @@ Kontexteintritt und tatsächliches Umbenennen/Entfernen einer Fence-Datenbank
 bei weiterhin existierendem Store-Objekt. Der vollständige Windows-Self-Test
 bestand nach der Korrektur einschließlich Development-Queue und Lease-Fencing.
 
+Die Auth-Snapshot-Negativtests schließen jetzt auch ihre selbst manipulierten
+SQLite-Verbindungen vor dem Lesen der Hauptdatei. Sonst konnten die absichtlich
+erzeugten Views/Trigger noch ausschließlich im WAL stehen und der Test versandte
+versehentlich eine ältere, kompatible Hauptdatei.
+
+Beim anschließenden lokalen Produktionscontainer-Smoke-Test wurde außerdem eine
+Windows-zu-Linux-Stdin-Abweichung reproduziert: `--password-stdin` entfernte nur
+LF und behielt CR als unerlaubtes Randzeichen des künstlichen Passworts.
+Die CLI entfernt jetzt genau einen Zeilenabschluss (LF oder CRLF), ohne führende
+oder abschließende Leerzeichen des Passworts zu trimmen. Sieben Tests prüfen die
+Zeilenenden, erhaltene Leerzeichen sowie Kontoanlage und Passwortwechsel samt
+Widerruf alter Sessions mit ausschließlich synthetischen Zugangsdaten.
+
 Linux-/Container-, Worker- und Web-Regressionen sind weiterhin am konkreten
 Commit zu prüfen. Dieser lokale Ressourcenabschluss ist keine globale Writer-
 Sperre, kein produktiver Restore und keine Freigabe für einen Deploy.
