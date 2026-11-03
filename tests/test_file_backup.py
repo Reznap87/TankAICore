@@ -279,6 +279,57 @@ def test_identical_replacement_of_restored_database_is_rejected(original, tmp_pa
     assert (restored / 'csv-jobs.db').read_bytes() == created.read_bytes()
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX backup-directory identity contract')
+def test_backup_parent_symlink_swap_blocks_success(original, tmp_path, monkeypatch):
+    _, source, *_ = original
+    directory = tmp_path / 'backup-directory'
+    moved = tmp_path / 'moved-backup-directory'
+    directory.mkdir()
+    destination = directory / 'backup.enc'
+    original_sync = backup._sync_directory
+    replaced = False
+
+    def replace_during_sync(path):
+        nonlocal replaced
+        if path == directory and not replaced:
+            replaced = True
+            directory.rename(moved)
+            directory.symlink_to(moved, target_is_directory=True)
+        original_sync(path)
+
+    monkeypatch.setattr(backup, '_sync_directory', replace_during_sync)
+    with pytest.raises(backup.FileBackupError, match='Zielverzeichnis.*ersetzt'):
+        backup.create_backup(source, destination, secrets.token_bytes(32))
+    assert directory.is_symlink()
+    assert destination.read_bytes() == (moved / 'backup.enc').read_bytes()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX restore-directory identity contract')
+def test_restore_directory_symlink_swap_blocks_success(original, tmp_path, monkeypatch):
+    _, source, *_ = original
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'backup.enc'
+    backup.create_backup(source, encrypted, key)
+    directory = tmp_path / 'restore-directory'
+    moved = tmp_path / 'moved-restore-directory'
+    original_sync = backup._sync_directory
+    replaced = False
+
+    def replace_during_sync(path):
+        nonlocal replaced
+        if path == directory and directory.is_dir() and not directory.is_symlink() and not replaced:
+            replaced = True
+            directory.rename(moved)
+            directory.symlink_to(moved, target_is_directory=True)
+        original_sync(path)
+
+    monkeypatch.setattr(backup, '_sync_directory', replace_during_sync)
+    with pytest.raises(backup.FileBackupError, match='Wiederherstellungsverzeichnis.*ersetzt'):
+        backup.restore_backup(encrypted, directory, key)
+    assert directory.is_symlink()
+    assert (directory / 'csv-jobs.db').read_bytes() == (moved / 'csv-jobs.db').read_bytes()
+
+
 def test_backup_path_replacement_during_read_is_rejected(original, tmp_path, monkeypatch):
     _, source, *_ = original
     key = secrets.token_bytes(32)

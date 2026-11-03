@@ -7,6 +7,17 @@ Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Übe
 
 0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
 
+Entwurfsnachweis PR #102, 3. November 2026: Die eigenständige verschlüsselte
+CSV-Sicherung bindet nun neben der exklusiv erzeugten Datei auch ihr unmittelbares
+Zielverzeichnis bis zum Erfolgs-Receipt an Gerät und Inode. Der eigenständige
+CSV-Restore hält denselben Vertrag für sein neu erzeugtes Zielverzeichnis bis nach
+dem abschließenden Datenbank-Read. Ein POSIX-Pfadaustausch gegen einen Symlink auf
+das unveränderte Verzeichnis wird in beiden Abläufen fail-closed abgewiesen.
+Synthetische Regressionstests belegen diese beiden Austauschfenster; frühere
+Pfadvorfahren, Windows-Verzeichnisidentität und produktive Operator-/ACL-Prüfung
+bleiben getrennte Grenzen. Keine Produktions-, Secret-, Provider- oder
+Deploymentänderung.
+
 Entwurfsnachweis PR #102, 27. Oktober 2026: Die koordinierte lokale Konto-/CSV-
 Sicherung weist auf POSIX auch Hardlink-Aliasse der beiden SQLite-Quelldatenbanken
 zurück. Gerätekennung, Inode und Linkzahl müssen bis zum Ende jeder Online-

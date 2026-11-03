@@ -131,8 +131,11 @@ process memory. The actual saved file remains bound to the identity returned by
 its exclusive creation while it is read back, authenticated and compared with
 the snapshot. A missing, replaced, hard-linked or modified output cannot receive
 a successful persistence receipt. On POSIX, the containing directory
-is also flushed before the success receipt, so creating the encrypted file is a
-metadata durability boundary rather than only a file-content flush. Snapshot
+is bound to its device/inode identity from before exclusive file creation through
+the success receipt and flushed before that receipt. Replacing its pathname with
+a symlink to the unchanged directory therefore fails closed. This makes creating
+the encrypted file a metadata durability boundary rather than only a file-content
+flush. Snapshot
 size is limited to 64 MiB including SQLite overhead, with a 15-second snapshot
 deadline. Read size bounds also apply to encrypted input and key files.
 Every input read binds the path metadata before opening to the opened descriptor
@@ -154,7 +157,11 @@ or journal sidecar is never replaced. The new file is flushed and reread while r
 by its exclusive creation; a missing, replaced, hard-linked or modified restored
 database cannot receive a success receipt, even if replacement bytes are identical.
 Success includes its verified snapshot hash. On POSIX, both the new directory entry and
-the restored database entry are flushed before success. A failed write returns
+the restored database entry are flushed before success. The new restore directory
+also remains bound to its device/inode identity through the final database read;
+a pathname swap to a symlink on the same unchanged directory cannot obtain a
+success receipt. Earlier ancestors and Windows directory identity remain operator
+duties. A failed write returns
 an error and may leave an incomplete new restore directory; inspect it and choose
 a different new destination for a retry. On supported POSIX systems, files start
 at mode 0600 and the new restore directory at mode 0700. Windows ACLs and

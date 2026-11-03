@@ -297,6 +297,28 @@ def _sync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _directory_identity(path: Path, subject: str) -> tuple[int, int]:
+    """Bind a receipt to one ordinary immediate directory entry."""
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise FileBackupError(f"{subject} wurde vor Abschluss entfernt") from None
+    if not stat.S_ISDIR(current.st_mode):
+        raise FileBackupError(f"{subject} wurde vor Abschluss ersetzt")
+    return current.st_dev, current.st_ino
+
+
+def _require_directory(path: Path, expected: tuple[int, int], subject: str) -> None:
+    if _directory_identity(path, subject) != expected:
+        raise FileBackupError(f"{subject} wurde vor Abschluss ersetzt")
+
+
+def _sync_bound_directory(path: Path, expected: tuple[int, int], subject: str) -> None:
+    _require_directory(path, expected, subject)
+    _sync_directory(path)
+    _require_directory(path, expected, subject)
+
+
 def _receipt(data, payload, metadata):
     return {"format": "tankai-csv-backup-v1", "cipher": "AES-256-GCM", **metadata,
             "encryptedBytes": len(data), "encryptedSha256": hashlib.sha256(data).hexdigest(),
@@ -309,14 +331,18 @@ def create_backup(source: Path, destination: Path, key: bytes) -> dict:
     nonce = secrets.token_bytes(12)
     data = MAGIC + nonce + cipher.encrypt(nonce, payload, AAD)
     destination = Path(destination)
+    directory = destination.parent
+    directory_subject = "Das Zielverzeichnis der Sicherung"
+    directory_identity = _directory_identity(directory, directory_subject)
     destination_identity = _write_new(destination, data)
-    _sync_directory(destination.parent)
+    _sync_bound_directory(directory, directory_identity, directory_subject)
     # Verify the exact created ciphertext file rather than trusting a replacement
     # that happens to contain the same authenticated bytes.
     saved = _read_created_regular(destination, MAX_ENCRYPTED_BYTES, destination_identity)
     verified, checked_metadata = _decrypt(saved, key)
     if verified != payload or checked_metadata != metadata:
         raise FileBackupError("Die gespeicherte Sicherung stimmt nicht mit der Momentaufnahme überein")
+    _require_directory(directory, directory_identity, directory_subject)
     return {"ok": True, "operation": "backup", **_receipt(saved, verified, metadata),
             "persistedCiphertextVerified": True}
 
@@ -333,15 +359,19 @@ def restore_backup(source: Path, destination_directory: Path, key: bytes) -> dic
     directory = Path(destination_directory)
     # A new directory also rules out existing WAL/SHM/journal sidecars at the destination.
     directory.mkdir(mode=0o700)
+    directory_subject = "Das Wiederherstellungsverzeichnis"
+    directory_identity = _directory_identity(directory, directory_subject)
     _sync_directory(directory.parent)
+    _require_directory(directory, directory_identity, directory_subject)
     destination = directory / "csv-jobs.db"
     destination_identity = _write_new(destination, payload)
-    _sync_directory(directory)
+    _sync_bound_directory(directory, directory_identity, directory_subject)
     saved = _read_created_regular(
         destination, MAX_SNAPSHOT_BYTES, destination_identity,
         subject="Die zurückgespielte Datenbank")
     if saved != payload:
         raise FileBackupError("Die zurückgespielte Datenbank stimmt nicht mit der Sicherung überein")
+    _require_directory(directory, directory_identity, directory_subject)
     return {"ok": True, "operation": "restore", **_receipt(data, saved, metadata),
             "restoredDatabaseVerified": True}
 
