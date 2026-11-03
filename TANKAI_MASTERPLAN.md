@@ -51,6 +51,16 @@ Bestände und ausgelagerte Speicher blockieren den Export. Bestehende Ordner
 werden nicht umgestellt. Host-Cutover, Aktualitätsnachweis, Linux-/Container-CI
 und Produktionsfreigabe bleiben offen. Details: `docs/APPLICATION_CHECKPOINT.md`.
 
+Weiterer lokaler Pilot-Schritt vom 3. November 2026: Die kurzlebigen SQLite-
+Verbindungen in Kontenspeicher, Development-Queue und Lease-Fences werden nach
+jeder Operation ausdrücklich geschlossen, auch bei PRAGMA- und Transaktions-
+fehlern. 13 zunächst fehlschlagende Regressionen belegen den vorher fehlenden
+Ressourcenabschluss. Nach der Korrektur besteht der vollständige Windows-
+Self-Test einschließlich der zuvor gesperrten Fence-Dateien. Budget-/Lease-
+Semantik und Datenbestände werden nicht erneuert. Linux-/Containerprüfungen
+und Host-Abnahme bleiben an ihren jeweiligen Quellstand gebunden. Details:
+`docs/SQLITE_CONNECTION_LIFETIME.md`.
+
 5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
 prüfbares SQLite-Fundament auf main-Ausgangsstand
 `b9eb349363889efe90e84460258ee19f0892b003` (übernommene Review-Korrekturen #100).
