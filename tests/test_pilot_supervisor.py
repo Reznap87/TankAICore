@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -282,3 +283,46 @@ def test_control_client_round_trip(tmp_path):
     finally:
         supervisor.close()
         endpoint.close()
+
+
+@POSIX
+def test_root_replacement_between_child_exit_and_seal_is_rejected(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    child = SimpleNamespace(returncode=None)
+    child.poll = lambda: child.returncode
+    child.terminate = lambda: None
+    def exited(*, timeout):
+        child.returncode = 0
+        root.rename(tmp_path / "old")
+        shutil.copytree(tmp_path / "old", root)  # Even same root ID and bytes are insufficient.
+        return 0
+    child.wait = exited
+    monkeypatch.setattr(pilot.subprocess, "Popen", lambda *args, **kwargs: child)
+    monkeypatch.setattr(pilot.Supervisor, "_wait_ready", lambda self: None)
+    supervisor = pilot.Supervisor(root, "fresh")
+    try:
+        supervisor.start()
+        with pytest.raises(pilot.PilotError, match="quiescence blocked"):
+            supervisor.quiesce()
+        assert supervisor.phase == "blocked"
+    finally:
+        supervisor.close()
+
+
+@POSIX
+def test_startup_failure_is_never_snapshot_ready_and_cleanup_reaps_child(tmp_path, synthetic_child, monkeypatch):
+    original_ready = pilot.Supervisor._wait_ready
+    def fail(self):
+        original_ready(self)
+        raise pilot.PilotError("synthetic readiness failure")
+    monkeypatch.setattr(pilot.Supervisor, "_wait_ready", fail)
+    supervisor = pilot.Supervisor(tmp_path / "root", "fresh")
+    try:
+        with pytest.raises(pilot.PilotError, match="startup blocked"):
+            supervisor.start()
+        assert supervisor.status()["snapshot_ready"] is False
+        with pytest.raises(pilot.PilotError):
+            supervisor.quiesce()
+    finally:
+        supervisor.close()
+    assert supervisor.child.poll() is not None

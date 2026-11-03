@@ -20,7 +20,7 @@ import time
 from urllib.request import ProxyHandler, build_opener
 
 from tankai.web.application_root import (
-    RootLease, initialize_root, read_regular, regular,
+    RootLease, identity, initialize_root, read_regular, regular,
     root_metadata, safe_path, write_new,
 )
 
@@ -89,11 +89,15 @@ class Supervisor:
         self.child: subprocess.Popen | None = None
         self.lease: RootLease | None = None
         self.sealed_digest: str | None = None
+        self.root_id: str | None = None
+        self.root_identity: tuple | None = None
 
     def start(self):
         try:
             if self.mode == "fresh":
-                initialize_root(self.root)  # Exclusive creation; never adopt an old root.
+                metadata = initialize_root(self.root)  # Never adopt an old root.
+                self.root_id = metadata["root_id"]
+                self.root_identity = identity(self.root.lstat())
                 self.child = subprocess.Popen(
                     [sys.executable, "-m", "tankai.web.server"],
                     env=child_environment(self.root), stdin=subprocess.DEVNULL,
@@ -130,7 +134,12 @@ class Supervisor:
 
     def _seal(self, phase: str):
         self.lease = RootLease(self.root)
-        root_metadata(self.root)
+        metadata = root_metadata(self.root)
+        if ((self.root_id is not None and metadata["root_id"] != self.root_id)
+                or (self.root_identity is not None and self.lease.root_identity != self.root_identity)):
+            raise PilotError("pilot root replaced")
+        self.root_id = metadata["root_id"]
+        self.root_identity = self.lease.root_identity
         self.sealed_digest = fingerprint(self.root, self.lease)
         self.phase = phase
 
@@ -161,6 +170,8 @@ class Supervisor:
                           or fingerprint(self.root, self.lease) != self.sealed_digest):
                 raise PilotError("sealed pilot root changed")
             root_id = root_metadata(self.root)["root_id"]
+            if root_id != self.root_id or identity(self.root.lstat()) != self.root_identity:
+                raise PilotError("pilot root replaced")
         except Exception:
             self.phase = "blocked"
             raise PilotError("pilot status blocked") from None
