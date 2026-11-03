@@ -61,6 +61,19 @@ jobs:
           --image "tankai-core-ci:${GITHUB_SHA}"
           --image-id-file "${RUNNER_TEMP}/tankai-core-production.iid"
           --scope "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-cloudflare"
+      - name: Build separate offline snapshot pilot
+        run: docker build --file Dockerfile.pilot --tag "tankai-pilot-ci:${GITHUB_SHA}" .
+      - name: Rehearse pilot quiescence and filesystem-only restore
+        run: >-
+          python .github/scripts/pilot_container_smoke.py
+          --image "tankai-pilot-ci:${GITHUB_SHA}"
+          --scope "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-pilot"
+      - name: Clean snapshot pilot resources
+        if: always()
+        run: >-
+          python .github/scripts/pilot_container_smoke.py
+          --cleanup
+          --scope "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-pilot"
       - name: Clean production web smoke resources
         if: always()
         run: >-
