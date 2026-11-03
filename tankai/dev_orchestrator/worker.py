@@ -13,6 +13,7 @@ import json
 import shlex
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable
 
 from .container_runtime import ContainerRuntimeError, DockerCommandExecutor
@@ -744,6 +745,10 @@ class WorkerPipelineRunner:
                 )
             self._guard(f"{phase.value}:command:{index}:after")
             result.command = render_command(command)
+            if not isinstance(result.executed_at, datetime):
+                raise ValueError(
+                    "Executor-Befehlsbelege benötigen einen datetime-Zeitstempel"
+                )
             result = TestExecution.model_validate(
                 {
                     "command": result.command,

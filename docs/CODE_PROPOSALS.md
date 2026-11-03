@@ -551,3 +551,11 @@ cannot turn False into the successful code 0 during boundary validation. A
 synthetic executor regression proves rejection before any receipt or commit.
 Failed and timed-out commands still retain genuine integer or missing exit-code
 evidence. This remains code/CI evidence rather than a production-worker claim.
+
+The execution timestamp is bound at the same adapter boundary. Executor objects
+must provide a real `datetime`, and the receipt model requires a timezone-aware
+value. A naive timestamp or a string smuggled through Pydantic's non-validating
+`model_copy(update=...)` path is rejected before any execution receipt or commit
+is persisted. ISO-8601 strings remain accepted when authoritative JSON state is
+loaded, but they must resolve to a timezone-aware datetime. This is a code and
+synthetic-CI guarantee, not production-runtime evidence.

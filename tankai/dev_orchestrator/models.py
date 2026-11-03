@@ -315,6 +315,13 @@ class TestExecution(OrchestratorModel):
     summary: str = Field(default="", max_length=10_000)
     executed_at: datetime = Field(default_factory=utcnow)
 
+    @field_validator("executed_at")
+    @classmethod
+    def _require_timezone_aware_execution_time(cls, value: datetime) -> datetime:
+        if value.utcoffset() is None:
+            raise ValueError("Befehlsbelege benötigen einen Zeitzonenbezug")
+        return value
+
     @model_validator(mode="after")
     def _require_zero_exit_code_for_success(self):
         if self.passed and self.exit_code != 0:

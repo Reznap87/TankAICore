@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 import subprocess
 import sys
@@ -92,6 +92,33 @@ def test_executor_receipt_rejects_boolean_exit_code(
         lambda *args, **kwargs: invalid.model_copy(deep=True),
     )
     with pytest.raises(WorkerExecutionError, match="valid integer") as error:
+        WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    run = orchestrator.state().worker_runs[error.value.run_id]
+    assert run.state == WorkerRunState.FAILED
+    assert run.implementation_executions == []
+    assert run.implementation_commit is None
+
+
+@pytest.mark.parametrize("executed_at", [datetime.now(), "2026-11-03T01:00:00+00:00"])
+def test_executor_receipt_rejects_unbound_execution_time(
+    source_contract, monkeypatch, executed_at,
+):
+    _, orchestrator, manager, _, _ = source_contract
+    package = request(source_contract)
+    job = prepare(source_contract, package, response_for(package))
+    valid = TestExecution(command="adapter command", passed=True, exit_code=0)
+    invalid = valid.model_copy(update={"executed_at": executed_at})
+
+    monkeypatch.setattr(
+        manager,
+        "run_command",
+        lambda *args, **kwargs: invalid.model_copy(deep=True),
+    )
+    with pytest.raises(
+        WorkerExecutionError,
+        match="Zeitzonenbezug|datetime-Zeitstempel",
+    ) as error:
         WorkerPipelineRunner(orchestrator, manager).run(job)
 
     run = orchestrator.state().worker_runs[error.value.run_id]
