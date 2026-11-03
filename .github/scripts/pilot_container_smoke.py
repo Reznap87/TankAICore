@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -24,6 +25,14 @@ def docker(*args, timeout=30, check=True):
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
+
+
+def committed_image_id(output):
+    # Docker 29 can emit CLI notices on stdout before the immutable image ID.
+    matches = [line.strip() for line in output.splitlines()
+               if re.fullmatch(r"sha256:[0-9a-f]{64}", line.strip())]
+    require(len(matches) == 1, "Docker commit did not return one immutable image ID")
+    return matches[0]
 
 
 def cleanup(scope):
@@ -99,7 +108,8 @@ def smoke(image, scope):
     no_http(source)
     # Exercise a filesystem-only copy, including a stale Unix socket. This is
     # deliberately Docker commit, NOT evidence that the native API is available.
-    snapshot = docker("commit", "--pause=true", "--change", 'CMD ["inspect"]', source, timeout=120).stdout.strip()
+    # Commit pauses by default; the deprecated --pause flag itself emits a notice.
+    snapshot = committed_image_id(docker("commit", "--change", 'CMD ["inspect"]', source, timeout=120).stdout)
     restored = launch(snapshot, scope)
     inspected = ready(restored, "inspect")
     require(not inspected["child_running"] and not inspected["snapshot_ready"], "inspection activated work")
@@ -141,5 +151,6 @@ if __name__ == "__main__":
         main()
     except Exception as error:
         # Fixed messages from this script only; never dump Docker's environment/logs.
-        print("pilot container smoke: FAIL: " + type(error).__name__, file=sys.stderr)
+        detail = str(error) if type(error) is RuntimeError else type(error).__name__
+        print("pilot container smoke: FAIL: " + detail, file=sys.stderr)
         raise SystemExit(1)
