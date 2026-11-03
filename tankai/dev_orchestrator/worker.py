@@ -13,7 +13,7 @@ import json
 import shlex
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from .container_runtime import ContainerRuntimeError, DockerCommandExecutor
@@ -35,6 +35,7 @@ from .models import (
     WorkerPipelineJob,
     WorkerRunRecord,
     WorkerRunState,
+    utcnow,
 )
 from .orchestrator import (
     DevelopmentOrchestrator,
@@ -50,6 +51,9 @@ class WorkerExecutionError(RuntimeError):
     def __init__(self, message: str, *, run_id: str | None = None) -> None:
         super().__init__(message)
         self.run_id = run_id
+
+
+EXECUTION_RECEIPT_CLOCK_SKEW = timedelta(seconds=5)
 
 
 def render_command(command: CommandSpec) -> str:
@@ -706,6 +710,7 @@ class WorkerPipelineRunner:
         executions: list[TestExecution] = []
         for index, command in enumerate(commands, start=1):
             self._guard(f"{phase.value}:command:{index}:before")
+            invocation_started_at = utcnow()
             cancellation_check = (
                 None
                 if self.execution_guard is None
@@ -743,6 +748,7 @@ class WorkerPipelineRunner:
                     isolation,
                     **execute_kwargs,
                 )
+            invocation_finished_at = utcnow()
             self._guard(f"{phase.value}:command:{index}:after")
             result.command = render_command(command)
             if not isinstance(result.executed_at, datetime):
@@ -758,6 +764,15 @@ class WorkerPipelineRunner:
                     "executed_at": result.executed_at,
                 }
             )
+            executed_at = result.executed_at.astimezone(timezone.utc)
+            if not (
+                invocation_started_at - EXECUTION_RECEIPT_CLOCK_SKEW
+                <= executed_at
+                <= invocation_finished_at + EXECUTION_RECEIPT_CLOCK_SKEW
+            ):
+                raise ValueError(
+                    "Executor-Befehlsbeleg liegt außerhalb des beobachteten Aufruffensters"
+                )
             executions.append(result)
             if not result.passed:
                 break

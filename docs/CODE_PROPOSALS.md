@@ -559,3 +559,10 @@ value. A naive timestamp or a string smuggled through Pydantic's non-validating
 is persisted. ISO-8601 strings remain accepted when authoritative JSON state is
 loaded, but they must resolve to a timezone-aware datetime. This is a code and
 synthetic-CI guarantee, not production-runtime evidence.
+
+The boundary also compares that timestamp with the host-observed invocation
+start and finish. Five seconds of explicit clock skew are allowed; older or
+future adapter timestamps outside that window are rejected before persistence
+or commit. This binds the claimed execution time to the command invocation, but
+does not provide trusted hardware time, remote attestation or production clock
+synchronization evidence.

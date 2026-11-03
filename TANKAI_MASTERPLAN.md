@@ -4601,3 +4601,14 @@ Pfad eingeschleuste Zeitstempeltexte werden vor Persistenz oder Commit
 abgewiesen. Beim Laden autoritativer JSON-Zustände bleiben ISO-8601-Texte
 zulässig, müssen aber zu einem zeitzonengebundenen Zeitpunkt aufgelöst werden.
 Dies ist Code-/CI-Evidenz und keine Aussage über einen produktiven Workerzustand.
+
+
+## Entwurfsnachweis: Ausführungszeitpunkt im beobachteten Aufruffenster
+
+Der zeitzonengebundene Executor-Zeitpunkt muss zusätzlich innerhalb des lokal
+beobachteten Aufrufbeginns und -endes liegen. Eine ausdrücklich begrenzte
+Uhrtoleranz von fünf Sekunden verhindert Fehlablehnungen durch geringe
+Zeitabweichungen; Belege aus ferner Vergangenheit oder Zukunft werden vor
+Persistenz und Commit abgewiesen. Zwei synthetische Adaptertests decken beide
+Richtungen ab. Dies ist Code-/CI-Evidenz, keine vertrauenswürdige Hardwarezeit,
+Remote-Attestierung oder produktive Zeitsynchronisationsprüfung.

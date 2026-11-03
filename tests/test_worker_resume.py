@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import subprocess
 import sys
@@ -119,6 +119,32 @@ def test_executor_receipt_rejects_unbound_execution_time(
         WorkerExecutionError,
         match="Zeitzonenbezug|datetime-Zeitstempel",
     ) as error:
+        WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    run = orchestrator.state().worker_runs[error.value.run_id]
+    assert run.state == WorkerRunState.FAILED
+    assert run.implementation_executions == []
+    assert run.implementation_commit is None
+
+
+@pytest.mark.parametrize("offset", [timedelta(days=-1), timedelta(days=1)])
+def test_executor_receipt_rejects_time_outside_observed_invocation(
+    source_contract, monkeypatch, offset,
+):
+    _, orchestrator, manager, _, _ = source_contract
+    package = request(source_contract)
+    job = prepare(source_contract, package, response_for(package))
+    valid = TestExecution(command="adapter command", passed=True, exit_code=0)
+    invalid = valid.model_copy(
+        update={"executed_at": datetime.now(timezone.utc) + offset}
+    )
+
+    monkeypatch.setattr(
+        manager,
+        "run_command",
+        lambda *args, **kwargs: invalid.model_copy(deep=True),
+    )
+    with pytest.raises(WorkerExecutionError, match="Aufruffenster") as error:
         WorkerPipelineRunner(orchestrator, manager).run(job)
 
     run = orchestrator.state().worker_runs[error.value.run_id]
