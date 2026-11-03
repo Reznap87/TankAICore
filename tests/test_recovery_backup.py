@@ -447,6 +447,44 @@ def test_destination_directory_symlink_swap_blocks_success(source, tmp_path, mon
     assert (destination / recovery.RECEIPT_FILE).is_file()
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX final directory identity contract')
+def test_destination_directory_swap_after_final_artifact_check_blocks_success(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'pair.enc'
+    recovery.create_backup(root, encrypted, key)
+    destination = tmp_path / 'restored'
+    moved = tmp_path / 'moved-after-final-check'
+    original = recovery._verify_restored_file
+    replaced = False
+
+    def replace_after_final_receipt(path, expected, limit, identity, label):
+        nonlocal replaced
+        result = original(path, expected, limit, identity, label)
+        pending = destination / recovery.RESTORE_PENDING_FILE
+        if (Path(path).name == recovery.RECEIPT_FILE
+                and not pending.exists() and not replaced):
+            replaced = True
+            destination.rename(moved)
+            destination.symlink_to(moved, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(recovery, '_verify_restored_file', replace_after_final_receipt)
+    with pytest.raises(
+        recovery.csv_backup.FileBackupError,
+        match='Wiederherstellungsverzeichnis.*ersetzt',
+    ):
+        recovery.restore_backup(encrypted, destination, key)
+
+    assert replaced
+    assert destination.is_symlink()
+    assert (destination / 'auth.db').is_file()
+    assert (destination / 'csv-jobs.db').is_file()
+    assert (destination / recovery.RECEIPT_FILE).is_file()
+
+
 @pytest.mark.skipif(recovery.csv_backup.os.name == 'nt',
                     reason='Windows does not expose directory fsync through Python')
 def test_success_is_reported_only_after_recovery_metadata_is_durable(source, tmp_path, monkeypatch):

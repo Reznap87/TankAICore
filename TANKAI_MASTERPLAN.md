@@ -4507,5 +4507,8 @@ Verzeichnis-fsync-Grenze muss der Zielpfad weiterhin genau dieses gewöhnliche
 Verzeichnis bezeichnen. Ein POSIX-Test ersetzt den Pfad im letzten
 Durability-Fenster durch einen Symlink auf dasselbe Verzeichnis; trotz
 unveränderter Datenbank- und Receipt-Dateien wird der Erfolg fail-closed
-abgewiesen. Dies ist Code-/CI-Evidenz, kein produktiver Restore-,
-Windows-Durability-, ACL- oder Deployment-Nachweis.
+abgewiesen. Die Verzeichnisidentität wird zusätzlich nach der letzten
+Artefaktprüfung unmittelbar vor Rückgabe des Erfolgs-Receipts erneut geprüft.
+Ein zweiter POSIX-Test verschiebt den Pfad erst nach dem finalen Receipt-Read
+und bestätigt dieselbe fail-closed Ablehnung. Dies ist Code-/CI-Evidenz, kein
+produktiver Restore-, Windows-Durability-, ACL- oder Deployment-Nachweis.

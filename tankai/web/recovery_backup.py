@@ -294,6 +294,7 @@ def restore_backup(source, destination, key):
                           "Die wiederhergestellte Dateiauftragsdatenbank")
     _verify_restored_file(receipt_path, receipt_data, len(receipt_data), receipt_identity,
                           "Das Recovery-Receipt")
+    _require_restored_directory(directory, directory_identity)
     return result
 
 
