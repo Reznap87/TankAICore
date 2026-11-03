@@ -159,6 +159,18 @@ try {
     assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
     assert.equal(count(await audit('inspection'), 'inspection-start'), 1);
   });
+  await check('failed intent sync prevents start, capture and inspection effects', async () => {
+    await open('sync-start', 'intent-sync-failure');
+    assert.equal((await call('start')).status, 502);
+    assert.equal((await audit()).events.length, 0);
+    await open('sync-capture'); await start();
+    await open('sync-capture', 'intent-sync-failure');
+    assert.equal((await call('capture', { revision: 2 })).status, 502);
+    assert.equal(count(await audit(), 'quiesce'), 0);
+    await open('sync-inspector', 'inspection-sync-failure'); await start(); const saved = await capture();
+    assert.equal((await call('restore', { revision: 4, pin: saved.data.capsule.pin })).status, 502);
+    assert.equal((await audit('inspection')).events.length, 0);
+  });
   for (const scenario of ['restore-finish-write-failure', 'inspection-write-failure']) await check(scenario + ' retains distributed intent across eviction', async () => {
     await open(scenario, scenario); await start(); const saved = await capture();
     const pin = saved.data.capsule.pin, id = randomUUID();

@@ -14,6 +14,7 @@ const proof = (phase: string) => ({ format: "tankai-pilot-supervisor-v1", phase,
 export class TestPilot extends DurableObject<TestEnv> {
   private journal: Journal;
   private adapter: NativePilot | null = null;
+  private confirmedRevision = 0;
   private testNative() { return this.adapter ??= this.nativeFake(); }
   constructor(ctx: DurableObjectState, env: TestEnv) {
     super(ctx, env);
@@ -25,12 +26,18 @@ export class TestPilot extends DurableObject<TestEnv> {
           || (env.TEST_CASE === "inspection-write-failure" && !source))
           && ["staged", "blocked"].includes(next.phase)) throw new Error("synthetic restore receipt outage");
       backing.commit(revision, next);
+    }, flush: async () => {
+      if (env.TEST_CASE === "intent-sync-failure" || (env.TEST_CASE === "inspection-sync-failure"
+          && !ctx.id.equals(env.TEST_PILOT.idFromName("source")))) throw new Error("synthetic sync failure");
+      await backing.flush();
+      this.confirmedRevision = backing.load().revision;
     } };
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS test_events (seq INTEGER PRIMARY KEY, event TEXT, details TEXT)");
   }
   private event(name: string, details: unknown = null) {
     const current = this.journal.load();
     if (!["starting", "capturing", "restoring"].includes(current.phase)) throw new Error("native effect before durable intent");
+    if (current.revision !== this.confirmedRevision) throw new Error("native effect before intent sync completed");
     this.ctx.storage.sql.exec("INSERT INTO test_events(event,details) VALUES(?,?)", name, JSON.stringify(details));
   }
   private image() { return this.env.TEST_CASE === "unpinned-image" ? "registry.cloudflare.com/test:mutable" : this.env.TEST_CASE === "image-change" ? IMAGE.replace(/a{64}$/, "c".repeat(64)) : IMAGE; }

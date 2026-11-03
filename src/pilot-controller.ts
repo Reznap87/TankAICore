@@ -93,7 +93,7 @@ export function state(value: unknown): State {
   return { schema: 1, revision: v.revision, phase: v.phase as Phase, last,
     image: v.image === null ? null : pinnedImage(v.image), capsule: saved, receipt: proof };
 }
-export interface Journal { load(): State; commit(expectedRevision: number, next: State): void; }
+export interface Journal { load(): State; commit(expectedRevision: number, next: State): void; flush(): Promise<void>; }
 export class SqlJournal implements Journal {
   constructor(private readonly storage: DurableObjectStorage) {
     storage.sql.exec("CREATE TABLE IF NOT EXISTS pilot_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)");
@@ -108,6 +108,7 @@ export class SqlJournal implements Journal {
       this.storage.sql.exec("INSERT INTO pilot_state(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", JSON.stringify(state(next)));
     });
   }
+  flush(): Promise<void> { return this.storage.sync(); }
 }
 export interface PilotRuntime {
   image(): string;
@@ -146,12 +147,13 @@ export class PilotCoordinator {
       requirePilot(saved !== null && saved.pin === pin && await capsulePin(saved.payload) === pin, "pilot_capsule_pin_mismatch");
       requirePilot(saved.payload.image === image && this.clock() >= saved.payload.created_at && this.clock() < saved.payload.expires_at, "pilot_capsule_expired_or_foreign");
     }
-    // No awaits between the final compare-and-set and native operation dispatch.
+    // Atomic claim, then an explicit durability barrier before native effects.
     const pending: State = { ...previous, revision: previous.revision + 1,
       phase: ({ start: "starting", capture: "capturing", restore: "restoring" } as const)[action],
       last: { id, action, pin }, image };
     this.journal.commit(previous.revision, pending);
     try {
+      await this.journal.flush();
       let next: State;
       if (action === "start") {
         const proof = receipt(await this.runtime.startFresh(), "running");
@@ -199,6 +201,7 @@ export class PilotInspector {
       last: { id: operation, action: "restore", pin }, capsule: { payload: saved, pin } };
     this.journal.commit(0, pending);
     try {
+      await this.journal.flush();
       const proof = receipt(await this.runtime.startInspection(saved, pin), "inspect");
       requirePilot(proof.root_id === saved.root_id && proof.root_sha256 === saved.root_sha256, "pilot_root_mismatch");
       this.journal.commit(1, { ...pending, revision: 2, phase: "staged", receipt: proof });

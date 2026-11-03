@@ -65,6 +65,10 @@ Snapshot-IDs können nicht über den HTTP-Body eingeschleust werden und werden
 in öffentlichen Statusantworten nicht ausgegeben.
 
 Revisionen werden in einer synchronen SQLite-Transaktion verglichen und erhöht.
+Nach der Absichtstransaktion wird `ctx.storage.sync()` ausdrücklich abgewartet,
+bevor ein nativer Effekt oder ein Inspector-Auftrag ausgeführt wird. Ein Fehler
+dieser Schreibbestätigung verhindert den Effekt. Dies verlässt sich nicht auf
+eine implizite Kopplung nativer Methoden an HTTP-/RPC-Output-Gates.
 Die letzte Operation speichert ID, Aktion und Restore-Pin. Ihre Wiederholung
 liest den vorhandenen Zustand statt einen nativen Effekt erneut auszulösen.
 Eine gleiche ID mit anderer Aktion oder anderem Pin wird abgewiesen; ältere
