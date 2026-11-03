@@ -82,8 +82,13 @@ Windows requires appropriate operator-managed ACLs.
 Every encrypted-package and key-file read uses the shared bounded stable-file
 reader. On POSIX, those inputs must have exactly one directory link; hard-linked
 aliases are rejected and link-count changes during a read fail closed. This keeps
-the verified operator path bound to one file name. Windows hard-link and ACL
-policy remains an operator/filesystem responsibility.
+the verified operator path bound to one file name. For `verify` and `restore`,
+the encrypted package additionally remains bound to the same device, inode,
+link count, size and modification metadata until the success receipt. A
+byte-identical pathname replacement after authenticated decryption therefore
+fails closed; during restore, the pre-completion check leaves the pending marker
+in place. Windows hard-link and ACL policy remains an operator/filesystem
+responsibility.
 
 ## Fresh login and failure handling
 
@@ -174,3 +179,15 @@ nach dem letzten Datei-Read fail-closed abgewiesen. POSIX-Negativtests decken
 beide Abschlussfenster ab. Dies ist synthetische CI-Evidenz;
 Windows-Verzeichnisdurability und produktive Operator-/ACL-Prüfung bleiben
 separate Grenzen.
+
+### Bindung des verschlüsselten Wiederherstellungspakets
+
+`verify` und `restore` binden ihren Erfolgsbeleg jetzt über das authentifizierte
+Lesen hinaus an dieselbe Dateiidentität des verschlüsselten Pakets. Gerät,
+Inode, Linkzahl, Größe und Änderungsmetadaten werden vor dem Receipt erneut
+geprüft. Ein bytegleicher Austausch nach erfolgreicher AES-GCM-Prüfung wird
+dadurch abgewiesen. Beim Restore erfolgt die maßgebliche Prüfung vor Entfernung
+des Pending-Markers; eine zweite Prüfung unmittelbar vor Rückgabe schützt das
+letzte Abschlussfenster. Zwei synthetische Negativtests belegen Verify und
+Restore. Dies ist kein Nachweis für vertrauenswürdige Quellverzeichnisse,
+Windows-Hardlink-Policy, Freshness oder Anti-Rollback.

@@ -4512,3 +4512,15 @@ Artefaktprüfung unmittelbar vor Rückgabe des Erfolgs-Receipts erneut geprüft.
 Ein zweiter POSIX-Test verschiebt den Pfad erst nach dem finalen Receipt-Read
 und bestätigt dieselbe fail-closed Ablehnung. Dies ist Code-/CI-Evidenz, kein
 produktiver Restore-, Windows-Durability-, ACL- oder Deployment-Nachweis.
+
+## Entwurfsnachweis: Identität des verschlüsselten Recovery-Pakets
+
+Die koordinierten `verify`- und `restore`-Erfolgsbelege bleiben jetzt über das
+authentifizierte Lesen hinaus an dieselbe Dateiidentität des verschlüsselten
+Recovery-Pakets gebunden. Gerät, Inode, Linkzahl, Größe und
+Änderungsmetadaten müssen bis zum Abschluss unverändert bleiben. Ein
+bytegleicher Austausch nach erfolgreicher AES-GCM-Prüfung wird fail-closed
+abgewiesen; beim Restore bleibt der Pending-Marker bei der maßgeblichen
+Vorabschlussprüfung erhalten. Zwei synthetische Negativtests decken Verify und
+Restore ab. Dies ist Code-/CI-Evidenz, kein produktiver Recovery-,
+Quellverzeichnis-, Freshness-, Anti-Rollback- oder Windows-Hardlink-Nachweis.

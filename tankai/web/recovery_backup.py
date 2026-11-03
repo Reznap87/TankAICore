@@ -153,6 +153,38 @@ def _receipt(data, auth_data, csv_data, metadata):
             "csvSnapshotSha256": hashlib.sha256(csv_data).hexdigest()}
 
 
+def _encrypted_source_identity(info):
+    return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns if os.name != "nt" else 0)
+
+
+def _require_encrypted_source(path, expected_identity):
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise csv_backup.FileBackupError(
+            "Wiederherstellungspaket wurde vor Abschluss entfernt"
+        ) from None
+    if (not stat.S_ISREG(current.st_mode)
+            or _encrypted_source_identity(current) != expected_identity
+            or (os.name != "nt" and current.st_nlink != 1)):
+        raise csv_backup.FileBackupError(
+            "Wiederherstellungspaket wurde vor Abschluss ersetzt"
+        )
+
+
+def _read_encrypted_source(source):
+    path = Path(source)
+    try:
+        before = path.lstat()
+    except OSError:
+        raise csv_backup.FileBackupError("Eingabedatei ist ungültig oder zu groß") from None
+    expected_identity = _encrypted_source_identity(before)
+    data = csv_backup._read_regular(path, MAX_ENCRYPTED_BYTES)
+    _require_encrypted_source(path, expected_identity)
+    return path, data, expected_identity
+
+
 def create_backup(root, destination, key):
     cipher = csv_backup._cipher(key)
     payload, _ = _snapshot_pair(root)
@@ -173,9 +205,12 @@ def create_backup(root, destination, key):
 
 
 def verify_backup(source, key):
-    data = csv_backup._read_regular(Path(source), MAX_ENCRYPTED_BYTES)
+    source_path, data, source_identity = _read_encrypted_source(source)
     _, auth_data, csv_data, metadata = _decrypt(data, key)
-    return {"ok": True, "operation": "verify", **_receipt(data, auth_data, csv_data, metadata)}
+    result = {"ok": True, "operation": "verify",
+              **_receipt(data, auth_data, csv_data, metadata)}
+    _require_encrypted_source(source_path, source_identity)
+    return result
 
 
 def _revoke_snapshot_access(auth_data):
@@ -239,7 +274,7 @@ def _sync_restored_directory(path, expected_identity):
     _require_restored_directory(path, expected_identity)
 
 def restore_backup(source, destination, key):
-    data = csv_backup._read_regular(Path(source), MAX_ENCRYPTED_BYTES)
+    source_path, data, source_identity = _read_encrypted_source(source)
     _, auth_data, csv_data, metadata = _decrypt(data, key)
     restored_auth, access = _revoke_snapshot_access(auth_data)
     directory = Path(destination)
@@ -272,6 +307,9 @@ def restore_backup(source, destination, key):
                           "Die wiederhergestellte Kontendatenbank")
     _verify_restored_file(csv_path, csv_data, csv_backup.MAX_SNAPSHOT_BYTES, csv_identity,
                           "Die wiederhergestellte Dateiauftragsdatenbank")
+    # Keep the success receipt bound to the authenticated encrypted package,
+    # rather than merely to whichever pathname entry exists after decryption.
+    _require_encrypted_source(source_path, source_identity)
     try:
         current_pending = pending.lstat()
     except OSError:
@@ -295,6 +333,7 @@ def restore_backup(source, destination, key):
     _verify_restored_file(receipt_path, receipt_data, len(receipt_data), receipt_identity,
                           "Das Recovery-Receipt")
     _require_restored_directory(directory, directory_identity)
+    _require_encrypted_source(source_path, source_identity)
     return result
 
 

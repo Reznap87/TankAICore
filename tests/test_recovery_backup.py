@@ -98,6 +98,61 @@ def test_pair_recovers_password_hashes_roles_choices_and_deliveries(source, tmp_
     assert restored_files.list(other.context) == []
 
 
+def test_verify_rejects_identical_encrypted_source_replacement(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'verify-source.enc'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery._decrypt
+
+    def replace_after_authenticated_read(data, supplied_key):
+        result = original(data, supplied_key)
+        preserved = encrypted.read_bytes()
+        encrypted.unlink()
+        encrypted.write_bytes(preserved)
+        return result
+
+    monkeypatch.setattr(recovery, '_decrypt', replace_after_authenticated_read)
+    with pytest.raises(
+        recovery.csv_backup.FileBackupError,
+        match='Wiederherstellungspaket.*ersetzt',
+    ):
+        recovery.verify_backup(encrypted, key)
+
+
+def test_restore_rejects_identical_encrypted_source_replacement_before_completion(
+    source, tmp_path, monkeypatch,
+):
+    root, *_ = source
+    key = secrets.token_bytes(32)
+    encrypted = tmp_path / 'restore-source.enc'
+    destination = tmp_path / 'source-replaced-restore'
+    recovery.create_backup(root, encrypted, key)
+    original = recovery.csv_backup._read_regular
+    replaced = False
+
+    def replace_source_after_receipt_read(path, limit, **kwargs):
+        nonlocal replaced
+        data = original(path, limit, **kwargs)
+        if Path(path).name == recovery.RECEIPT_FILE and not replaced:
+            replaced = True
+            preserved = encrypted.read_bytes()
+            encrypted.unlink()
+            encrypted.write_bytes(preserved)
+        return data
+
+    monkeypatch.setattr(recovery.csv_backup, '_read_regular', replace_source_after_receipt_read)
+    with pytest.raises(
+        recovery.csv_backup.FileBackupError,
+        match='Wiederherstellungspaket.*ersetzt',
+    ):
+        recovery.restore_backup(encrypted, destination, key)
+    assert replaced
+    assert (destination / recovery.RESTORE_PENDING_FILE).exists()
+
+
 def test_restore_rechecks_artifacts_after_pending_marker_durability(
     source, tmp_path, monkeypatch,
 ):
