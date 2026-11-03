@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 56433)
-Total output lines: 4603
-
 TANKAI – VERBINDLICHER MASTERPLAN
 
 Version: 5.7.53
@@ -1092,7 +1089,2090 @@ product.commander.goal_and_alternatives.v1 -> IMPLEMENTED; der vorhandene Planne
 selben Modellaufruf gewünschtes Ergebnis und ausdrücklich verlangtes Vorgehen. Bei geeigneten
 komplexen Aufgaben bindet ein validierter Vertrag zwei bis drei unterschiedliche Optionen,
 Nutzen, Nachteil, entscheidende Unsicherheit, Empfehlung und kleinsten messbaren Versuch. Bei
-direkten Aufgaben bleibt das Ideenlabor leer. Unvoll…26433 tokens truncated… archivierter Projekte, fremde Memory-IDs sowie unpassende
+direkten Aufgaben bleibt das Ideenlabor leer. Unvollständige oder widersprüchliche Workshops
+fallen sichtbar auf `analysis_status=fallback` zurück; sie werden weder teilweise übernommen
+noch als vollständiger Variantenvergleich ausgegeben. Critic und Synthesizer erhalten dieselbe
+Struktur, und das CLI-JSON veröffentlicht sie. Der Aufrufdeckel und die Anzahl der
+Planner-Aufrufe bleiben unverändert.
+
+security.web.per_response_csp_nonce.v1 -> IMPLEMENTED; jede HTML-Antwort erhält einen frischen,
+URL-sicheren Nonce, der exakt mit dem einzigen eingebetteten Skript übereinstimmt. JSON-,
+`304`- und statische Asset-Antworten veröffentlichen keinen Nonce und sperren Skripte mit
+`script-src 'none'`; alle übrigen CSP- und Security-Header-Grenzen bleiben unverändert.
+
+security.web.nonce_bound_inline_styles.v1 -> IMPLEMENTED; derselbe frische Antwort-Nonce bindet
+auch den einzigen eingebetteten Stylesheet-Block. Feste Darstellungsregeln liegen statt in
+`style`-Attributen in benannten CSS-Klassen; `style-src 'unsafe-inline'` entfällt. Nicht-HTML-
+Antworten sperren Styles mit `style-src 'none'`, ohne API-, Cache- oder Auth-Verträge zu ändern.
+
+security.web.cross_origin_response_isolation.v1 -> IMPLEMENTED; HTML-, JSON-, `304`- und
+statische Asset-Antworten setzen einheitlich COOP und CORP auf `same-origin`, fordern einen
+origin-spezifischen Agent-Cluster an und sperren veraltete Cross-Domain-Policy-Dateien. Der
+Produktions-Container-Smoke prüft jeden Header exakt einmal; CSP-, Cache-, Session-, API- und
+Authentifizierungsverträge bleiben unverändert.
+
+security.web.cross_origin_embedder_policy.v1 -> IMPLEMENTED; HTML-, JSON-, `304`-, Asset- und
+Methodenfehlerantworten setzen COEP exakt einmal auf `require-corp`. Zusammen mit COOP
+`same-origin` vervollständigt dies die dokumentseitige Cross-Origin-Isolation; eigene Assets
+senden weiterhin CORP `same-origin`. CSP-, Cache-, Session-, API-, Provider- und
+Deploymentverträge bleiben unverändert.
+
+security.web.logout_origin_cleanup.v1 -> IMPLEMENTED; ein erfolgreicher, CSRF-geschützter
+Logout widerruft weiterhin die serverseitige Session und lässt das `HttpOnly`-Session-Cookie
+sofort ablaufen. Zusätzlich fordert die Antwort mit `Clear-Site-Data` die Löschung von Cache,
+Cookies und Origin-Storage an. Der Header bleibt auf diesen erfolgreichen Pfad begrenzt; der
+Produktions-Container-Smoke prüft auch die anschließende Ablehnung des widerrufenen Tokens.
+
+security.web.hsts_policy.v1 -> IMPLEMENTED; Antworten setzen
+`Strict-Transport-Security` ausschließlich, wenn sichere Session-Cookies aktiviert sind. Der
+Standardwert beträgt ein Jahr und ist auf 0 bis zwei Jahre begrenzt; `includeSubDomains` und
+`preload` bleiben bewusst aus. Lokale HTTP-Entwicklung mit deaktivierten Secure-Cookies erhält
+keinen HSTS-Header. Der Produktions-Container-Smoke prüft den exakten Header auf allen
+Antwortklassen.
+
+security.web.http_method_rejection.v1 -> IMPLEMENTED; nicht unterstützte HTTP-Methoden werden
+einheitlich ohne Eingabespiegelung als `405 Method Not Allowed` mit `Allow: GET, POST`,
+begrenztem JSON und dem vollständigen Sicherheitsheader-Vertrag abgewiesen. `HEAD` bleibt
+abgewiesen und unterdrückt protokollgerecht den Body; der Produktions-Container-Smoke prüft
+denselben Vertrag auf `TRACE`.
+
+security.web.http_parser_error_contract.v1 -> IMPLEMENTED; HTTP-Parserfehler behalten
+ihre Statuscodes 400, 414, 431 und 505, liefern aber neutrales JSON ohne Request-, Versions-
+oder Headerspiegelung und den vollständigen Sicherheitsheader-Vertrag. Fehlerhafte Versionen
+erhalten eine lesbare HTTP/1.0-Antwort; HEAD unterdrückt den Body und die Verbindung wird
+geschlossen. Regressionen und Produktions-Container-Smoke prüfen diesen Vertrag.
+
+security.web.request_correlation_id.v1 -> IMPLEMENTED; jede Webantwort trägt genau eine
+serverseitig erzeugte, zufällige `X-Request-ID`. Clientwerte werden nicht übernommen. Dieselbe
+ID verbindet Antwortheader, Zugriffslog und die neutrale Referenz interner Fehler, ohne
+Ausnahme-, Eingabe- oder Nutzdaten zu veröffentlichen; der Produktions-Container-Smoke prüft
+alle bereits abgedeckten Antwortklassen.
+
+ops.ci.node24_action_runtime -> IMPLEMENTED; alle Workflow-Verwendungen der offiziellen,
+JavaScript-basierten First-Party-Actions sind unveränderlich auf Node.js-24-Releases gepinnt:
+`actions/checkout` v7.0.1, `actions/setup-python` und `actions/setup-node` v7.0.0 sowie
+`actions/upload-artifact` v6.0.0. Python 3.12, Node.js 22, Trigger, Caches, Berechtigungs-,
+Environment-, Secret-, Build-, Preflight-, Backup- und Deployverträge bleiben gleich.
+
+ops.cloudflare_toolchain_dependency_security.v1 -> IMPLEMENTED; Wrangler ist exakt auf
+`4.145.0` festgesetzt. Das Lockfile bindet dadurch Miniflare `5.20260930.0-alpha`, Sharp
+`0.35.4` und Undici `7.29.1`; der vollständige npm-Audit meldet keine bekannten Funde mehr.
+Eine Regression prüft die direkten und transitiven Pins. Die Abhängigkeiten bleiben reine
+Entwicklungs-/CI-Werkzeuge; Worker-, Container-, Provider-, Secret- und Deploymentverträge
+ändern sich nicht.
+
+ops.cloudflare_toolchain_dependency_security.v2 -> IMPLEMENTED; ein Root-Override ersetzt das
+von Miniflare deklarierte Sharp `0.35.4` im tatsächlich installierten Baum reproduzierbar durch
+das gegen `GHSA-wq5f-xc86-pv6w` / `CVE-2026-96889` gepatchte Sharp `0.35.5`. Lockfile,
+Regression und isoliertes `npm ci` binden die aufgelöste Version; vollständiger und
+Produktionsabhängigkeits-Audit melden keine Funde. Wrangler, Miniflare, Undici, Worker-,
+Container-, Secret-, Provider- und Deploymentverträge bleiben unverändert.
+
+development.local_qwen25_coder_runtime -> IMPLEMENTED; ein separater Compose-Override verbindet
+TankAI über den vorhandenen OpenAI-kompatiblen Adapter mit Qwen2.5-Coder-7B-Instruct Q4_K_M.
+Serverimage und Modellrevision sind unveränderlich gebunden, TankAI wartet auf den eingebauten
+`llama.cpp`-Healthcheck, und Port 8080 bleibt im internen Compose-Netzwerk. Dies ist kein
+Host-Readiness-, Provider-, Produktions- oder Deployment-Receipt.
+
+development.local_qwen25_coder_model_integrity -> IMPLEMENTED; ein einmaliger Init-Dienst ohne
+`privileged`-Modus akzeptiert nur HTTPS, lädt das Modell in eine temporäre Datei, prüft
+die gebundene SHA-256-Prüfsumme und installiert es erst danach atomar. Auch ein bereits
+vorhandenes Modell wird vor jedem `llama.cpp`-Start erneut geprüft; Abweichungen blockieren die
+Startkette fail-closed. Derselbe Check umschließt den Serverprozess, sodass auch ein automatischer
+Container-Neustart die Prüfung nicht umgehen kann. Dies ist kein Modelldownload-, Host- oder
+Runtime-Receipt.
+
+ops.development.single_host_runner_bootstrap.readonly_doctor -> IMPLEMENTED; der Doctor prüft
+Linux/WSL2, ein dediziertes nicht-root Konto, Mindestressourcen, das vollständige lokale
+Speicherlayout, verbotene Netzwerk-/Windows-Dateisysteme sowie Linux-, Rootless- und Cgroup-v2-
+Eigenschaften von Docker/Podman und erzeugt dabei nur einen JSON-Receipt.
+
+ops.development.single_host_runner_bootstrap.configuration_readiness -> IMPLEMENTED; ein
+Owner-/Admin-Befehl prüft den gemeinsamen gespeicherten Vertrag aus aktiver Queue-Policy,
+weiterhin gültiger Repository-Bindung, einreichungsberechtigtem Service-Agenten und einem nicht
+abgelaufenen `jobs:read`-/`jobs:submit`-Token mit Repository-Überschneidung. Der JSON-Receipt
+enthält nur aggregierte Zähler, aktiviert keinen Prozess und ersetzt weder Host-Receipt noch
+Submit-Admission.
+
+Diese repositoryseitigen Nachweise schließen das übergeordnete Production-Gate nicht. Sie dürfen
+nicht als Live-Provider-, Deployment- oder laufender Runner-Receipt umgedeutet werden.
+
+0.7 Aktives Gate
+
+Das nächste aktive Gate ist:
+
+ops.production.live_provider_readiness
+
+Begründung: Die produktive Web-/Container-Infrastruktur ist live, die aktuelle
+Containerkonfiguration nutzt aber weiterhin TANKAI_LLM=mock. Der nächste sinnvolle Schritt ist
+deshalb nicht ein weiterer blinder Deploy, sondern die kontrollierte Vorbereitung eines echten
+serverseitigen Providerbetriebs.
+
+Dieses Gate ist zunächst lesend und vorbereitend. Es muss mindestens klären:
+
+welche Live-Provider für Hauptmodell und unabhängigen Critic freigegeben werden sollen,
+
+welche serverseitigen Secret-Namen und Modell-IDs dafür benötigt werden, ohne Secret-Werte in
+Logs oder Receipts zu schreiben,
+
+welche Kosten-, Token-, Laufzeit- und Rate-Limits vor dem ersten Live-Providerlauf gelten,
+
+ob die geforderte Trennung von Hauptmodell und Critic tatsächlich erfüllbar ist,
+
+welcher Suchprovider und welche Evidence-Regeln für produktive Recherche gelten,
+
+welcher minimale kontrollierte Live-Smoke-Test nach der Konfiguration ausgeführt wird,
+
+welcher Rollback den Stand wieder auf den verifizierten Mock-/Hashing-Betrieb oder den vorherigen
+Worker-/Containerstand zurückführt.
+
+Die repositoryseitigen Vorarbeiten dafür sind durch PRs #26 bis #29 abgeschlossen und werden
+nicht wiederholt. Issue #25 bleibt offen, weil folgende Schritte von externer Konfiguration oder
+einer neuen konkreten Autorisierung abhängen:
+
+die ausdrückliche Auswahl der produktiven Hauptmodell-, unabhängigen Critic- und optionalen
+Search-Provider samt Modell-IDs,
+
+die reine Anwesenheitsprüfung der dafür benötigten Production-Secret-Namen,
+
+ein aktueller manueller Readiness-Receipt für den dann gewählten Vertrag,
+
+ein separat autorisierter, kostenbegrenzter Live-Smoke und gegebenenfalls ein neuer Deploy.
+
+Der Rest dieses Gates ist deshalb EXTERN BLOCKIERT. Unabhängige sichere Entwicklungsarbeit bleibt
+zulässig. Für ops.development.single_host_runner_bootstrap sind der read-only Host-Doctor und der
+nicht aktivierende Konfigurations-Receipt repositoryseitig IMPLEMENTIERT. Der konkrete Host und
+seine tatsächliche Workspace-Konfiguration bleiben OFFEN, bis beide Receipts auf einem
+dedizierten nicht-root Linux- oder WSL2-Host mit rootless Docker/Podman vollständig PASS melden.
+Dieser Pfad veröffentlicht keinen Runtime-Socket und aktiviert ohne Operatorentscheidung weder
+Queue noch externe Agenten.
+
+Das Gate selbst autorisiert weder das Setzen neuer Secret-Werte noch einen weiteren
+Production-Deploy noch kostenpflichtige Modellaufrufe.
+
+0.8 Getrennte Autorisierungsgrenzen
+
+Die für Deploy #4 erteilte Freigabe war an exakt
+d7edb12b764310f00804c724ad6d3b4bbc96b54a gebunden und ist durch diesen Deploy verbraucht.
+
+Jeder spätere Production-Deploy benötigt erneut:
+
+den dann aktuellen exakten main-SHA,
+
+erfolgreiche verpflichtende CI für genau diesen SHA,
+
+einen aktuellen Production Preflight,
+
+die erforderlichen Runtime-/Provider-Receipts,
+
+einen klaren Rollback-Pfad,
+
+eine neue ausdrückliche Deploy-Autorisierung für genau diesen Stand.
+
+Ein Merge, erfolgreiche CI, ein bestandener Preflight, ein früherer erfolgreicher Deploy oder eine
+vorhandene Produktionsumgebung ist keine automatische Autorisierung für den nächsten Deploy.
+
+Auch das Setzen oder Austauschen produktiver Provider-Secrets und das Aktivieren kostenpflichtiger
+Live-Provider sind eigene Produktionsmutationen und werden nicht aus diesem Dokument abgeleitet.
+
+0.9 Toolblocker-Vertrag
+
+Wenn GitHub, eine Container-Runtime, Cloudflare, ein Provider oder eine externe Plattform nicht
+erreichbar ist, wird der genaue Blocker mit Zeitpunkt und Fehlermeldung dokumentiert.
+
+Danach werden in dieser Reihenfolge geprüft:
+
+ein repositorygestützter oder lokaler Fallback,
+
+ein deterministischer alternativer Runner,
+
+die Implementierung oder Härtung der fehlenden Automatisierung,
+
+ein unabhängiger sicherer Code-, Test- oder Dokumentationstask.
+
+Ein Toolblocker darf ein einzelnes Gate offenhalten. Er darf den Gesamtplan nicht als beendet
+markieren, solange ein sicherer ausführbarer Task existiert.
+
+0.10 Unmittelbare Ausführungsreihenfolge
+
+Für unabhängige Produktentwicklung gilt zusätzlich die priorisierte Nutzenfolge in 0.11.5;
+P1 ist repositoryseitig abgeschlossen. Die erste P2-Scheibe ist repositoryseitig umgesetzt;
+die Messung des vollständigen P2-Candidate gegen den eingefrorenen Korpus bleibt aktiv. Die
+folgenden Betriebs- und Produktionsgates
+bleiben bestehen und werden dadurch weder übersprungen noch erneut implementiert.
+
+1. Die in PRs #26 bis #29 abgeschlossenen repositoryseitigen Live-Provider-Verträge nicht
+   wiederholen. Issue #25 bleibt für die externen Konfigurations- und Autorisierungsschritte offen.
+   Zusätzlich müssen die in 0.11.7 und 0.11.8 benannten internen Pilot-Vorgates für Geldbudget,
+   Persistenz und Quellenmodus geschlossen werden; vorhandene Aufruflimits ersetzen sie nicht.
+
+2. Erst nach einer ausdrücklichen Provider-/Modellentscheidung die benötigten serverseitigen
+   Provider- und Critic-Secret-Namen auf Anwesenheit prüfen. Die aktuelle Readiness-Prüfung
+   verlangt zusätzlich Brave oder Tavily mit passendem Search-Secret; ein Pilot ohne bezahlte
+   Suche benötigt zuerst den in 0.11.8 beschriebenen geprüften Quellenmodus. Danach einen
+   manuellen Readiness-Receipt erzeugen; keine Secret-Werte ausgeben.
+
+3. Parallel zum extern blockierten Provider-Gate den Single-Host-Development-Runner ausschließlich
+   auf einem dedizierten nicht-root Linux-/WSL-Prozess mit rootless Runtime vorbereiten. Queue,
+   Auth-Datenbank, Repositories, Worktrees und Fence-State bleiben auf lokalem persistentem
+   Dateisystem; der Webprozess erhält keinen Container-Runtime-Socket. Danach den rein lesenden
+   Host-Receipt mit `python -m tankai.dev_orchestrator.host_readiness --data-root /srv/tankai`
+   erzeugen und nur bei `ready=true` fortfahren.
+
+   Der lokale Qwen2.5-Coder-Compose-Pfad darf auf diesem Host erst nach ausreichender RAM-/
+   Speicherprüfung gestartet werden. Sein Init-Dienst muss das gebundene oder ausdrücklich
+   ersetzte Modell vor jedem Serverstart per SHA-256 prüfen; erst danach folgen der
+   `llama.cpp`-Healthcheck und TankAI. Der Serverprozess muss durch denselben Check gestartet
+   werden, damit eine Container-Restart-Policy keinen Bypass erzeugt. Dieser Vertrag ersetzt weder
+   den Host-Doctor noch die getrennten Queue-, Repository- und Service-Agent-Gates.
+
+4. Nach erfolgreichem Runtime-Doctor die gespeicherte Workspace-Konfiguration mit dem
+   Owner-/Admin-Befehl `bootstrap-readiness` prüfen. Nur bei `ready=true` sind aktive Policy,
+   gültige Git-Registrierung und ein nicht abgelaufener, passend gescopter Service-Agenten-Token
+   gemeinsam belegt. Der externe Programmieragent liest danach den in den Capabilities
+   beworbenen v1-Job-Schemavertrag, korrigiert abgewiesene Payloads anhand der begrenzten
+   strukturierten Fehlercodes und kann erst dann einen lokal vorvalidierten, eng begrenzten
+   v1-Job übergeben; der Submit validiert alle Gates erneut.
+   Vor dem Preflight wählt der Agent aus dem versionierten `queue_policy`-Snapshot ein tatsächlich
+   freigegebenes Image und begrenzt Ressourcen und Laufzeit; der Snapshot reserviert nichts.
+   Seine versionierte Antwort unterscheidet mit `idempotency.replayed` eine neue Einreihung von
+   der atomaren Wiedergabe desselben bereits angenommenen Auftrags; beide Fälle bleiben HTTP 202.
+   Bei einer Ablehnung wertet der Agent `retryable` aus. Eine veröffentlichte
+   `retry_after_seconds`-Wartezeit wird eingehalten; bei `null` verwendet er begrenzten Backoff
+   und beobachtet Queue-Zustände. Dauerhafte Fehler werden korrigiert statt unverändert wiederholt.
+   Den weiteren Ablauf liest der Agent über den in `job_monitoring` beworbenen History-Pfad und
+   kann dessen Antwort mit dem dort veröffentlichten `limit` auf die neuesten 1 bis 100
+   öffentlichen Zustandswechsel begrenzen. Fremde Agenten-Jobs und interne Queue-Ereignisdetails
+   bleiben verborgen.
+   Die dort ebenfalls beworbene Jobliste wird bei mehr als 100 eigenen Aufträgen über den
+   begrenzten `next_cursor` vollständig seitenweise gelesen. Bei mehreren freigegebenen
+   Repositories kann sie mit einer ID aus `repository_ids` eingeschränkt werden; derselbe Filter
+   bleibt über alle Cursor-Seiten erhalten. Für gezieltes Polling begrenzt der Agent dieselbe
+   Liste optional mit einem unter `job_monitoring.filters.allowed_states` beworbenen `state`
+   oder alternativ mit `terminal=true|false` auf abgeschlossene beziehungsweise aktive Jobs;
+   nach einem Zustandswechsel und dadurch ungültigem Cursor beginnt er ohne Cursor neu.
+   Capability-, Repository- und beide Schema-Discovery-Antworten werden mit dem unter
+   `discovery.conditional_get` beworbenen Validator bedingt gelesen; eine `304`-Antwort folgt
+   ausschließlich nach erneuter Zugriffsprüfung.
+   Einzelstatus und Verlauf werden danach mit dem beworbenen `ETag` bedingt gepollt; eine leere
+   `304`-Antwort bedeutet ausschließlich, dass sich die öffentliche Darstellung seit dem
+   mitgesendeten Validator nicht geändert hat.
+   Das Polling endet ausschließlich bei `terminal=true`; einen Abbruch versucht der Agent nur
+   bei vorhandenem `jobs:cancel`-Scope und dem im Zustandsvertrag ausgewiesenen Zustand
+   `queued`. Geht die erfolgreiche Abbruchantwort verloren, wiederholt er denselben Aufruf und
+   unterscheidet über `cancellation.replayed`, ob der Zustandswechsel bereits erfolgt war. Der
+   Server validiert alle Grenzen trotzdem bei jedem Versuch erneut.
+
+5. Für einen späteren Live-Provider-Schritt vollständige CI, Runtime-Smoke und Production
+   Preflight für den dann aktuellen exakten main-SHA wiederholen. Einen Deploy nur nach neuer
+   exakter Autorisierung ausführen.
+
+6. Nach einem Live-Provider-Deploy einen begrenzten externen Funktionstest mit Kostenlimit,
+   unabhängiger Fehlerprüfung und vollständigem Receipt ausführen. Erst dieser Nachweis darf einen
+   realen produktiven Modellpfad als VERIFIED markieren.
+
+0.11 Produktlinie und historische Vision
+
+Die verbindliche Zielrichtung bleibt:
+
+TankAI Web -> TankAI Core -> TankAI Model Family -> TankBot/TankStation.
+
+Web bildet Bedienung, Identität, Beobachtung und sichere Auslösung kontrollierter Abläufe ab.
+
+Core bildet den deterministischen Steuerungs-, Zustands-, Capability-, Ownership- und
+Prüfvertrag.
+
+Die Model Family beschreibt die schrittweise kontrollierte Auswahl und Entwicklung eigener
+Router-, Critic-, Core-, Code- und weiterer spezialisierter Modelle.
+
+TankBot und TankStation sind Produktausprägungen auf Basis der belegten Web-, Core- und
+Modellverträge.
+
+Diese Vision bestimmt die Richtung. Sie ist keine Behauptung, dass jede Ebene heute bereits
+implementiert oder produktiv betrieben wird.
+
+0.11.1 Richtungsentscheidung: eigenes kooperierendes KI-System
+Planungsrevision: 2026-10-09.1; durch Nutzerauftrag in dieser Sitzung festgelegt.
+Status: verbindliche Zielrichtung und priorisierte Entwicklungsplanung; kein neuer
+Implementierungs-, Trainings-, Host- oder Produktionsnachweis.
+
+TankAI ist das eigene, zusammenhängende KI-System mit eigener Identität, Commander,
+Projektgedächtnis, Werkzeugverträgen und Ergebnisprüfung. Externe KI-Modelle und selbst
+betriebene Modelle sind austauschbare Fähigkeiten dieses Systems. Ein API-Anschluss ist mit
+dieser Produktidentität vereinbar, überträgt aber weder Eigentum noch Trainingsrechte am
+Anbietermodell. Ein selbst betriebenes offenes Modell wird nicht als selbst entwickeltes
+Grundmodell bezeichnet.
+
+Beide Modellpfade sind Zielumfang: externe APIs UND eigene Modellinferenz. Es gibt keine
+Pflicht, dafür vorab ein großes Grundmodell von null zu trainieren. Bestehende Adapter,
+Commander-/Agentenmodule, Memory-Verträge, Tool Fabric und External Agent Gateway werden
+weiterentwickelt; parallele Auth-, Queue-, Memory- oder Providerarchitekturen sind zu vermeiden.
+Die Modellfamilie aus Abschnitt 10 bleibt der schrittweise Ausbaupfad.
+
+Produktleitbild: TankAI versteht das eigentliche Ziel, schlägt bessere Wege vor, organisiert
+passende Fähigkeiten und führt die Arbeit bis zu einem überprüfbaren Ergebnis.
+Leitsatz: Nicht nur dieselben 100 Meter schneller laufen; prüfen, ob ein anderer Weg oder das
+Vermeiden unnötiger Arbeit das Ziel besser erreicht. Eine Alternative darf ausdrückliche
+Nutzeranforderungen nicht stillschweigend ersetzen. Überlegenheit wird anhand erledigter
+Aufgaben, Qualität, Kosten und Zeit gemessen, nicht aus Agentenzahl oder Modellnamen abgeleitet.
+
+0.11.2 Produktfähigkeiten, die den nächsten Ausbau bestimmen
+
+A. Zielklärung und bessere Lösungswege
+Der Commander unterscheidet gewünschtes Ergebnis, ausdrücklich verlangtes Vorgehen,
+Randbedingungen und Definition of Done. Bei relevantem Nutzen entwickelt er Alternativen und
+erklärt Aufwand, Unsicherheit und Konsequenzen. Notwendige Rückfragen werden gezielt gestellt;
+unabhängige autorisierte Arbeit läuft weiter. Keine unnötigen Alternativen bei trivialen Aufgaben.
+Abnahme: Vergleich gegen dieselben Aufgaben ohne Alternativplanung; Bewertung von Zielerfüllung,
+vermeidbaren Schritten und Einhaltung ausdrücklicher Anforderungen.
+
+B. Entscheidungsfähiges Projektgedächtnis
+Bestehende Speicherklassen um nachvollziehbare Entscheidungsbezüge erweitern: Ziel,
+Entscheidung, Begründung, Quelle, Zeitpunkt, Gültigkeit, offene Annahmen, verworfene Versuche und
+bestätigter nächster Schritt. Widersprüche und veraltete Informationen werden kenntlich gemacht.
+Speicherung bleibt nutzer-/workspacegebunden, einsehbar, korrigierbar und löschbar.
+Abnahme: eine unterbrochene Aufgabe mit gespeicherter Entscheidung korrekt fortsetzen; eine
+überholte Annahme erkennen; fremde Projektinformationen zuverlässig ausgeschlossen halten.
+Vor einer Schemaänderung Migration und Rückwärtskompatibilität separat planen.
+
+C. Ideenlabor
+Für geeignete komplexe Ideen die Perspektiven Erfinder, Kritiker, Praktiker und Prüfer nutzen.
+Ergebnis: wenige begründete Varianten, entscheidende Unsicherheit, empfohlener Weg und kleinster
+aussagekräftiger Versuch. Rollen können ein Modell mehrfach oder mehrere Modelle verwenden.
+Unabhängige Prüfung wird nur bei tatsächlich unabhängigem Modell-/Providerpfad behauptet.
+Abnahme: Varianten enthalten überprüfbare Unterschiede und einen ausführbaren Versuch;
+kein Konsens mehrerer Rollen wird ohne externe Belege als Wahrheit behandelt.
+
+D. Ausführung bis zum belegten Abschluss
+Bestehende Goal-/Run-Zustände, Queue-/Gateway-Verträge und Receipts verwenden. Ein Auftrag
+enthält Abnahmekriterien, erlaubte Werkzeuge, Datenklasse, Budget und Abbruchbedingungen.
+Zwischenstände überstehen Unterbrechungen. Vorgeschlagen, ausgeführt, geprüft und veröffentlicht
+bleiben unterscheidbare Zustände. Fehlende Pflichtschritte verhindern completed.
+Abnahme: ein begrenzter Arbeitsablauf erzeugt ein nutzbares Artefakt, besteht seine Prüfungen und
+lässt sich nach Neustart ohne doppelte externe Wirkung fortsetzen.
+
+E. Fähigkeitsrouting und geprüfte Wiederverwendung
+Routing entscheidet zwischen gültigem gespeicherten Ergebnis, deterministischem Werkzeug,
+kleinem eigenen Modell und externem Spezialmodell. Fähigkeiten werden anhand realer
+Verfügbarkeit, Datenklasse, Qualität, Latenz und Kosten gewählt. Wiederverwendung prüft
+Eigentum, Quellenbezug, Aktualität und Kontext; private Ergebnisse werden nicht global geteilt.
+Fallbacks respektieren dieselben Daten- und Budgetgrenzen. Nicht jede Anfrage startet ein Team.
+Abnahme: Vergleich mit einer festen Baseline einschließlich Cache-Veraltung, Providerausfall,
+Budgeterschöpfung und Verweigerung eines unzulässigen Fallbacks.
+
+F. Kontrollierte Verbesserung aus Korrekturen
+Korrekturen zunächst als nachvollziehbare Kandidaten für Präferenz, Vorlage, Verfahren, Routing
+oder Modellanpassung erfassen. Persönliche Vorlieben bleiben persönlich. Gedächtnisänderung,
+Prompt-/Verfahrensänderung und Training sind getrennte Vorgänge. Private Rohdaten werden nicht
+automatisch zu Trainingsmaterial. Abschnitt 9 mit eingefrorenen Evals, Promotion und Rollback
+bleibt verbindlich.
+Abnahme: ein korrigierter Fehler wird auf unabhängigen Fällen seltener, ohne neue kritische
+Regression; Candidate, Baseline und Entscheidung erhalten einen Receipt.
+
+G. Vereinbarte Eigenständigkeit
+Handlungsspielräume pro Workspace und Aufgabe definieren: erlaubte Werkzeuge, Repositorys,
+Dateibereiche, Datenweitergabe, Modellaufrufe, Kosten und externe Mutationen. Innerhalb des
+vereinbarten Rahmens Routinearbeit ausführen. Außerhalb davon den konkreten Schritt vorbereiten
+und die erforderliche Entscheidung einholen. Ein Arbeitsauftrag erweitert keine Tokenscopes.
+Abnahme: erlaubte Aufgaben laufen weiter; unzulässige Aktion, erschöpftes Budget und
+entzogene Berechtigung werden vor der Wirkung gestoppt und nachvollziehbar ausgewiesen.
+
+0.11.3 GitHub- und Cloudflare-Kompatibilität
+
+Der Nutzer hat in dieser Sitzung klargestellt: mit "CloudChat" war Cloudflare gemeint.
+Daraus entsteht kein zusätzlicher Dienst und keine neue Chat-Plattform.
+
+GitHub bleibt die Source of Truth für Code, Masterplan und überprüfbare Änderungen im
+Repository Reznap87/TankAICore. Jede Umsetzung wird als eng begrenzter Task mit bestehendem
+Modulowner, PR, Tests und Receipt geführt. main-HEAD, PR-HEAD und tatsächlich deployter Commit
+werden getrennt dokumentiert. Pflichtchecks test und cloudflare bleiben erforderlich.
+Neue Entwicklungsaufgaben lesen zuerst den aktuellen Masterplan und offene Owner, damit
+abgeschlossene Arbeiten und laufende PRs nicht dupliziert werden.
+
+Cloudflare bleibt der bestehende Web-/Worker-/Container-Pfad. Der Masterplan dokumentiert
+bereits einen verifizierten Infrastruktur-Deploy; "noch kein Server" beschreibt deshalb den
+noch offenen dedizierten Runner-/Modellhost, nicht das Fehlen jeder Hosting-Infrastruktur.
+Ein neuer Anbieter ist eine ergänzende, begründet auszuwählende Laufzeit, kein automatischer
+Ersatz des Cloudflare-Pfads. Aktuelle Live-Readiness wird weiterhin durch aktuelle Receipts
+bestimmt; dieser Planungsnachtrag führt keinen neuen externen Healthcheck aus.
+
+API-Provider und selbst betriebene Modellendpunkte werden ausschließlich über serverseitige,
+validierte Adapter eingebunden. Authentifizierung, Ownership, Capability-Discovery,
+API-Versionen, Idempotenz, Retry-/Ergebnisverträge und Limits bleiben kompatibel.
+Das External Agent Gateway dient externen Arbeitsaufträgen; ein Inferenzendpoint bleibt ein
+Modelladapter. Beide Rollen dürfen nicht zu einer ungeschützten universellen Ausführung
+zusammenfallen. Keine GPU-Ausführung im normalen Worker und kein Runtime-Socket im Webprozess.
+
+Für jedes Inkrement: Python-/Core-Vertrag prüfen, TypeScript-/Worker-Vertrag prüfen,
+Container-Build und Web-Smoke nach bestehender CI ausführen sowie den betroffenen
+Adapter-/Gateway-Pfad testen. Eine inkompatible API- oder Schemaänderung benötigt eine
+ausdrückliche Versionierungs- und Migrationsentscheidung; ältere freigegebene Clients dürfen
+nicht stillschweigend brechen.
+
+0.11.4 Hostingstrategie für API-KI und eigene Modelle
+
+Drei Betriebsbereiche getrennt dimensionieren:
+1. Cloudflare-Web-/API-Zugang mit TankAI Core und dauerhaftem Zustands-/Dateispeicher.
+2. Isolierter Development-Runner mit persistentem Dateisystem und rootless Runtime nach 0.10.
+3. Eigene Modellinferenz auf geeignetem CPU-/GPU-Host; Training als separater späterer Job.
+
+Der bereits vorhandene lokale Qwen2.5-Coder-/llama.cpp-Compose-Pfad ist der erste belegte
+Integrationsansatz für selbst betriebene Modelle. Er wird vor einer neuen GPU-Architektur
+wiederverwendet und auf einem geeigneten Host geprüft. Repository-Implementierung beweist
+keinen aktiven Modellserver und keine ausreichende Hardware.
+
+Anbieterauswahl erst anhand eines benannten Modells und typischer Aufgaben: RAM/VRAM,
+Kontextlänge, Parallelität, Startzeit, Tokens pro Sekunde, Verfügbarkeit, Datenregion, Lizenz,
+Speicher, Administration, Wiederherstellung und Gesamtkosten messen. CPU-Inferenz für passende
+kleine Modelle bleibt möglich. GPU nach Bedarf bei unregelmäßiger Last prüfen; dauerhaft
+bereite GPU erst bei gemessenem Latenz-/Auslastungsvorteil. Kaltstart und Modellladezeit zählen
+zum Nutzererlebnis und zur Rechnung.
+
+Hetzner/OVHcloud sind Kandidaten für selbst verwaltete Hosts; verwaltete App-Plattformen und
+GPU-Angebote wie Runpod, Modal oder Scaleway sind Vergleichskandidaten. Es gibt keine
+Anbieterentscheidung durch diesen Nachtrag. Preise werden vor Buchung aktuell geprüft.
+Getrennte Budgets für Basisbetrieb, API-Nutzung, GPU-Inferenz und Training führen.
+Serverless beschreibt die Betriebsverantwortung, nicht die Abwesenheit von Servern.
+Ein Speicherort in der EU begrenzt nicht automatisch die Datenwege externer KI-Aufrufe.
+
+0.11.5 Priorisierte Umsetzung und überprüfbare Übergänge
+
+P0 — Bestehendes Produktionsgate fortführen.
+Owner: Issue #25 / ops.production.live_provider_readiness. Abgeschlossene PRs #26 bis #29
+nicht erneut implementieren. Hauptmodell, unabhängigen Critic und optionalen Search-Pfad
+auswählen, Budgets festlegen und vorhandenen Readiness-Vertrag anwenden. Ergebnis bleibt
+EXTERN BLOCKIERT, bis die externen Entscheidungen und Receipts vorliegen.
+Dieser Dokumentationsauftrag aktiviert weder Provider noch Queue noch Deploy.
+
+P1 — Ersten durchgängigen Nutzenfall und Vergleichskorpus festlegen. REPOSITORYSEITIG UMGESETZT.
+Capability: product.cooperative_ai.acceptance_baseline.v1.
+Verantwortungsbereich: bestehender Commander-/Eval-Pfad; vor Vergabe vorhandene Owner prüfen.
+Einen kleinen repräsentativen Korpus vor Candidate-Entwicklung einfrieren: Ideenentwicklung,
+dokumentgestützte Analyse und begrenzte Code-/Prototypaufgabe. Abnahmekriterien, erlaubte
+Werkzeuge, Datenklassen und Kosten-/Zeitobergrenzen pro Fall festlegen.
+Artefakt: versionierter Korpus und Baseline-Receipt mit Fehlern und Messwerten.
+Lokale Simulation darf Vertragsprüfungen liefern, aber keinen echten Qualitätsgewinn belegen.
+Umgesetzt sind drei Fälle, 15 gewichtete Kriterien, feste Limits, Hashbindung und ein
+maschinenlesbarer Mock-Receipt mit 12 verfehlten Kriterien und Score `0.1778`. P2 muss gegen
+denselben Korpus gemessen werden; der Baseline-Hash darf nicht stillschweigend verändert werden.
+
+P2 — Zielklärung und Ideenlabor in bestehendem Commander ausbauen. ERSTER CANDIDATE GEMESSEN.
+Task: product.commander.goal_and_alternatives. Abnahme gemäß 0.11.2 A/C auf dem eingefrorenen
+Korpus; unnötige Modellaufrufe und zusätzliche Latenz mitmessen. Kein zweiter Commander.
+Umgesetzt ist der validierte Planner-Vertrag für Ergebnis, verlangtes Vorgehen, zwei bis drei
+Optionen, Nutzen, Nachteil, entscheidende Unsicherheit, Empfehlung und kleinsten Versuch im
+bereits vorhandenen Planner-Aufruf. Direkte Aufgaben erzeugen keine künstlichen Alternativen;
+unvollständige Workshops werden als Fallback markiert. Der aktuelle providerfreie Mock-Candidate
+durchläuft alle drei eingefrorenen Fälle vollständig, bindet seine Endartefakte per SHA-256 und
+vergleicht dieselben 15 Kriterien gegen die P1-Baseline. Er verbessert den Score nicht:
+`0.1778`, Delta `0.0`, null erfolgreiche Fälle und fünf simulierte Aufrufe je Fall. Der
+Pilot-Aufrufdeckel ist damit im Candidate-Pfad eingehalten, ohne Plan-, Schritt- oder
+Endprüfung zu entfernen. Ein nicht bestandenes Zwischenergebnis wird nicht mehr durch eine
+zusätzliche Mock-Synthese wie eine fertige Antwort dargestellt. Damit ist die Budgetlücke
+geschlossen, aber nicht die Qualitätslücke. Offen bleibt ein Candidate mit
+nutzbaren, unabhängig bewerteten Ergebnissen innerhalb des strengeren Pilotbudgets.
+
+P3 — Projektentscheidungen und Fortsetzung verlässlich verbinden.
+Task: product.memory.decision_continuity. Bestehende Speicher-/Goal-Verträge verwenden;
+Migration nur bei belegtem Bedarf. Abnahme gemäß 0.11.2 B/D einschließlich Neustart,
+Korrektur, Löschung und Isolation. Kein zweites Gedächtnissystem.
+
+P4 — Externe APIs und eigene Inferenz über denselben Steuerungspfad nachweisen.
+Task: product.model_mesh.hybrid_acceptance. Bestehende Adapter und lokalen Qwen-Pfad
+inventarisieren, fehlende Integrationsprüfung ergänzen, gleiche begrenzte Aufgaben über beide
+Pfade ausführen und Fehler-/Budgetverhalten vergleichen. Live-Abnahme hängt von P0 bzw. einem
+nachgewiesen bereiten eigenen Modellhost ab. Kein Hostingkauf allein zur Planerfüllung.
+
+P5 — Vollständigen Arbeitsablauf mit Wiederaufnahme belegen.
+Task: product.cooperative_ai.end_to_end. Beispiel: von einer gesprochenen oder geschriebenen
+Geschäftsidee über belegte Recherche und nachvollziehbare Kalkulation zu einem prüfbaren,
+lokal oder privat vorführbaren Prototyp. Spracheingabe ist ein gesondert zu prüfender Adapter;
+Text bleibt der erste Abnahmeweg. Bestehende Tool-/Gateway-/Queue-Verträge benutzen.
+Artefakt, Ausführung, unabhängige Prüfung, Gesamtkosten und Wiederaufnahme nach Unterbrechung
+nachweisen. Öffentliche Veröffentlichung ist ein separater Schritt.
+
+P6 — Kontrollierte Verbesserung und eigene Modellfamilie ausbauen.
+Task: product.improvement.verified_feedback. Nur freigegebene Signale nutzen; erst Verfahren
+und Routing verbessern, dann eigene Router-/Critic-/Core-Modelle nach Abschnitt 10 bewerten.
+Trainingsbedarf aus gemessenen Schwächen ableiten. Keine automatische Selbstverbesserung oder
+allgemeine Überlegenheit aus einzelnen Beispielen behaupten.
+
+P1 ist unabhängig vom externen Rest von P0 abgeschlossen. P2 ist der aktive unabhängige
+Produkt-Task. P2/P3 dürfen mit Vertrags- und
+Simulationsprüfungen beginnen; echte Nutzen- und Hybridnachweise warten auf geeignete
+Laufzeiten. Sicherheitsreparaturen bleiben priorisierbar. Nach bestandenen Sicherheitsgates
+soll die nächste unabhängige Produktarbeit auf diese Nutzenfolge zurückführen.
+Vor jedem Task bestehende Implementierung, Owner und offene PRs prüfen; die IDs oben sind
+Planungseinträge und kein Nachweis angelegter Issues oder bereits laufender Arbeit.
+
+0.11.6 Messbarer Erfolg und Autorisierungsgrenze
+
+Fortschritt wird pro eingefrorenem Korpus ausgewiesen: tatsächlich abgeschlossene Aufgaben,
+unabhängig bewertete Ergebnisqualität, unbelegte Aussagen, verletzte Anforderungen,
+Wiederaufnahmeerfolg, kritische Isolation-/Berechtigungsfehler, Latenz und Gesamtkosten pro
+erfolgreicher Aufgabe. Schwellenwerte werden vor dem jeweiligen Candidate festgelegt.
+Die relevante Baseline ist ein einfacher geeigneter Einzelmodellpfad unter denselben
+Randbedingungen. Zusätzliche Rollen müssen ihren Nutzen gegenüber dieser Baseline zeigen.
+
+Der heutige Entwicklungsauftrag autorisiert die erste repositoryseitige P2-Vertragsscheibe mit
+Tests und Dokumentation. Er aktiviert weder Modelle noch externe Laufzeiten und ersetzt keinen
+späteren Qualitätsnachweis für den vollständigen P2-Candidate.
+Hostbuchung, neue Abrechnung, Secretänderung, Trainingsjob, Live-Modellaufruf und
+Produktionsdeployment benötigen die dafür vorgesehene konkrete Entscheidung.
+Releasevertrag TankAI-Core-1.10.0-module-ownership und ProjectState Schema 6 bleiben gültig.
+Der Reality Contract 5.7.45 und seine historischen Receipts werden durch diesen
+Planungsnachtrag nicht rückwirkend umgeschrieben.
+
+0.11.7 Verbindliches Start-Testbudget
+Planungsrevision: 2026-10-11.1. Nutzerauftrag: Testbudget festlegen.
+Status: Budgetentscheidung dokumentiert; technische Durchsetzung und Live-Aktivierung bleiben
+vor dem ersten kostenpflichtigen Aufruf nachzuweisen.
+
+Zweck: erster begrenzter TankAI-Livepilot mit externem Hauptmodell und unabhängigem Critic.
+Keine automatische Verlängerung, kein automatisches Nachladen, keine Erhöhung durch Agenten.
+
+Budget:
+- Gesamter Pilot: höchstens 10,00 EUR.
+- Laufzeit: sieben aufeinanderfolgende 24-Stunden-Zeiträume ab dem ersten ausdrücklich
+  freigegebenen Live-Aufruf; Start und Ende als UTC-Zeitpunkte im Pilot-Receipt festhalten.
+- Tagesgrenze: höchstens 2,00 EUR pro 24-Stunden-Zeitraum ab Pilotstart.
+- Auftragsgrenze: höchstens 0,20 EUR für Hauptmodell, sämtliche Spezialisten, Critic,
+  Synthese, Wiederholungen und Fallbacks zusammen.
+- Warnung bei 5,00 EUR kumuliert; bei ausgeschöpftem oder nicht sicher bestimmbaren Restbudget
+  keine weiteren kostenpflichtigen Aufrufe.
+- Nur Owner-Testbetrieb: ein Auftrag gleichzeitig, höchstens 20 Aufträge je 24 Stunden und
+  höchstens 50 im gesamten Pilot. Kosten-/Zeitgrenzen können den Pilot früher beenden.
+
+Die 10,00 EUR sind ein Gesamtbetrag für zurechenbare API-Nutzung einschließlich anfallender
+Steuern sowie konservativ berücksichtigter Währungs-/Zahlungsaufschläge. Abrechnungswährung,
+Steuerbehandlung, aktuelle Modellpreise und konservative EUR-Umrechnung vor dem Start
+festlegen. Falls Kostenbestandteile nicht belastbar begrenzbar sind, bleibt der Livepilot
+gesperrt. Keine feste Zahl garantierter Aufgaben aus dem Budget ableiten.
+
+Bereits bestehende Hosting-/Domainkosten gehören nicht zu diesem zusätzlichen Testbudget.
+Neue Hostingbuchungen, GPU-Miete, Training, kostenpflichtige Such-/Audio-/Bild-/Videodienste und
+externe bezahlte Werkzeuge sind nicht enthalten und werden durch diese Entscheidung nicht
+freigegeben. Der erste Pilot nutzt Texteingabe und freigegebene bereitgestellte Inhalte.
+
+Technische Zielgrenzen:
+- höchstens fünf Modellaufrufe je Auftrag, einschließlich fehlgeschlagener Versuche,
+  Wiederholungen und Fallbacks; unabhängige Ergebnisprüfung innerhalb dieser Obergrenze,
+- höchstens 2.048 Ausgabetokens je Modellaufruf; bei geringerem Restbudget entsprechend weniger,
+- konservativ höchstens 12.000 Eingabetokens je Aufruf inklusive Systemtext, Verlauf,
+  Werkzeugergebnissen und bereitgestellten Inhalten; ohne sichere Tokenzählung/-obergrenze
+  keinen kostenpflichtigen Aufruf starten,
+- höchstens 30 Sekunden Request-Timeout je Modellaufruf und 120 Sekunden Gesamtfrist je
+  Auftrag; ein Timeout kann dennoch abrechenbare Providerarbeit verursacht haben,
+- vorhandene serverseitige Aufruf-/Rate-Limits verwenden und für den Pilot verschärfen.
+  Die öffentlich dokumentierten Konfigurationsnamen sind TANKAI_LLM_MAX_CALLS_PER_RUN,
+  TANKAI_LLM_MAX_TOKENS und TANKAI_LLM_TIMEOUT_SECONDS. Dieser Nachtrag setzt keine
+  Produktionswerte und behauptet keinen bereits vorhandenen Eingabetoken- oder Euro-Guard.
+
+Vor jedem kostenpflichtigen Request dessen maximale Kosten anhand des gültigen Modelltarifs
+einschließlich aller abrechenbaren Tokenarten und Gebühren konservativ bestimmen. Diese Kosten
+atomar gegen Auftrags-, Tages- und Gesamtbudget reservieren. Erst bei ausreichendem Restbudget
+den Request senden. Concurrent Runs, Critic, Retry und Provider-Fallback müssen dieselbe
+persistente Budgetführung nutzen. Nach bestätigter Abrechnung korrigieren; bei Timeout,
+unbekanntem Verbrauch oder unklarem Abrechnungsstatus die Reservierung konservativ beibehalten.
+Neustart, Modellwechsel und Benutzerwechsel dürfen den gemeinsamen Pilotdeckel nicht umgehen.
+Anbieterwarnungen und reine Aufruflimits gelten nicht als Nachweis eines harten Euro-Stopps.
+Ein Stopp verhindert neue Requests; laufende Providerarbeit wird nicht als kostenlos behauptet.
+
+Umsetzung und Abnahme:
+Owner bleibt Issue #25 für Live-Provider-Readiness. Den vorhandenen Budget-/Providerpfad vor
+jeder Änderung inventarisieren. Fehlende monetäre Reservierung/Abrechnung ist ein konkreter
+Vorgate-Task innerhalb dieses Pfads, keine neue unabhängige Queue oder zweite Providerarchitektur.
+Mit lokalen deterministischen Tarifen und simulierten Verbrauchsdaten prüfen: Tages- und
+Gesamtgrenze, gemeinsames Hauptmodell-/Criticbudget, gleichzeitige Requests, Timeout, Retry,
+Fallback, Restart und veralteter/fehlender Tarif. Live-Readiness erst bei bestandenem Nachweis.
+Vorhandene Aufruf-/Zeitfensterlimits allein erfüllen diese monetäre Abnahme nicht.
+
+Bei geeigneter Konfiguration zunächst die Readiness-Prüfung ohne bezahlte Requests ausführen.
+Ein erster Live-Smoke darf höchstens 0,20 EUR kosten und zählt vollständig zum Pilotbudget;
+danach drei vorab definierte Aufgaben aus dem Vergleichskorpus bewerten. Pro Auftrag
+Modell-IDs, Tokenverbrauch soweit bestätigt, konservative und bestätigte Kosten, Prüfresultat
+und verbleibendes Budget ohne Geheimnisse protokollieren. Nach Pilotende Nutzung auswerten
+und eine Fortsetzung gesondert entscheiden.
+
+Diese Budgetfestlegung ist keine Aktivierung eines Providers, keine Secretänderung, kein
+Deployment und keine Freigabe zum unmittelbaren Verbrauch der 10,00 EUR. Sie legt die
+finanziellen und technischen Grenzen für die anschließend konkret freizugebende Livephase fest.
+
+0.11.8 Leistbarkeit, ehrliche Qualitätsmessung und Projektprüfung
+Prüfrevision: 2026-10-11.2. Nutzerauftrag: vorhandenen Stand prüfen, Fehler beheben und
+leistbare, nützliche Intelligenz für möglichst viele Menschen als Richtung absichern.
+
+Ergänzender Prüfbericht: [docs/PROJECT_AUDIT_2026-10-11.md](docs/PROJECT_AUDIT_2026-10-11.md).
+Geprüfter main-Ausgangsstand: caccc601e6b04a8cc7bb5b5a24a47e514e1d290e,
+Tree dd8a71ee775658509e2158cad236993c65c11a53; CI Run 38118605910 mit test und cloudflare
+completed/success. Dieser aktuelle Auditbezug ersetzt keinen Production-Runtime-Nachweis
+und ändert die oben als historische Ausgangsbezüge gekennzeichneten SHAs nicht.
+
+Leitentscheidung: Die fachlichen Kernkriterien für Zieltreue, überprüfbare Ergebnisse,
+Fehlerkennzeichnung und Datenrechte gelten für alle Nutzerangebote. Leistbarkeit wird durch
+gemessene Kosten je erfolgreich erledigter Aufgabe, passende Fähigkeitswahl und geprüfte
+Wiederverwendung entwickelt. Konkrete Endkundenpreise, Freikontingente und Nutzungslimits
+bleiben bis zu belastbaren Stückkosten offen. Kein Versprechen unbegrenzter Maximalleistung.
+
+AUD-01: Den providerfreien Baseline-Receipt an dieselbe vollständige Fall-, Kriterien- und
+Budgetprüfung wie den Loader binden. Simulationskosten ohne externe Aufrufe verwerfen.
+Die unveränderte Mock-Baseline bleibt 3/15 Kriterien, 12 verfehlt, gewichteter Score 0.1778;
+das belegt den Ausgangspunkt, keine reale Modellintelligenz. Reparaturstatus und CI im PR prüfen.
+
+AUD-02: Der bestehende P2-Owner liefert den vollständigen Candidate mit nutzbaren Artefakten
+und Vergleich gegen denselben eingefrorenen Korpus. Ein JSON-Vertrag mit Varianten allein
+beweist weder bessere Ideen noch fertige Arbeit. Qualität und Kosten gemeinsam abnehmen.
+
+AUD-02-Zwischenstand am 12. Oktober 2026: Der aktuelle TankAI-Mock wurde tatsächlich über alle
+drei Fälle ausgeführt. Der versionierte Candidate bewahrt die drei Endartefakte mit SHA-256,
+vollständiger Kriterienbelegung, Laufzeit, fünf simulierten Aufrufen, Receiptzahl und null
+externen Kosten. Der Vergleich ergibt unverändert `0.1778`, Delta `0.0`, null erfolgreiche
+Fälle, `pilot_call_limit_met=true` und `pilot_eligible=false`. Der begrenzte Candidate-Pfad
+verwendet genau einen Planschritt, behält Plan-, Schritt- und finale Critic-Prüfung bei und
+spart nur den zusätzlichen LLM-Syntheseaufruf, wenn ein verifiziertes Einzelergebnis direkt
+übernommen werden kann. Ohne verifiziertes Ergebnis liefert er fail-closed eine Sperrmeldung.
+Dieser negative Befund ist ein reproduzierbarer
+Ausführungsnachweis, aber kein Qualitätsgewinn. P2 bleibt bis zu einem fachlich erfolgreichen,
+unabhängig bewerteten Candidate offen; den Korpus oder die Baseline nicht erleichtern.
+
+AUD-02-Zwischenstand am 14. Oktober 2026: Für die acht menschlich zu bewertenden Kriterien kann
+eine lokale Review-Vorlage erzeugt und nach unabhängiger Prüfung als Receipt validiert werden.
+Sie bindet Korpus, Source-Revision, vollständige Fallverträge, Candidate-Ausgaben und
+Artefakt-Hashes. Veränderte oder unvollständige Vorlagen, offene Urteile, fehlende Begründungen
+und eine fehlende Unabhängigkeitsbestätigung werden fail-closed abgewiesen. Der interne
+Dokumentfall bleibt in der Vorlage intern und darf nicht an externe Dienste übertragen werden.
+Es liegt noch kein tatsächlich ausgefülltes unabhängiges Review vor; Score `0.1778`,
+`human_reviewed=false` und `pilot_eligible=false` bleiben deshalb unverändert.
+
+AUD-03 bis AUD-06: Vor dem bezahlten Pilot unter Issue #25 gemeinsame persistente monetäre
+Reservierung einschließlich tatsächlicher Retry-/Fallback-Versuche, Cloudflare-Persistenz
+mit Restart-/Restore-Nachweis, einen zum Pilot passenden Quellen-/Suchmodus und aktuelle
+Konto-/Deploy-/Preflight-Belege schließen. Diese fehlenden Vorgates sind konkrete Arbeit;
+sie dürfen nicht allein als externe Providerentscheidung behandelt werden. Abgeschlossene
+Verträge aus PRs #26 bis #29 bleiben abgeschlossen.
+
+Der Korpusdeckel von zwölf Aufrufen ist kein Pilotdeckel. Der Live-Candidate muss zusätzlich
+die strengere Pilotpolicy aus 0.11.7 einhalten, einschließlich höchstens fünf tatsächlicher
+Modellversuche insgesamt. Den eingefrorenen Korpus und die Baseline nicht nachträglich ändern.
+
+Die Website antwortete bei der lesenden Prüfung mit HTTP 200 und production_ready=false.
+Die aktuelle Cloudflare-Verbindung zeigte weder die Domainzone noch den erwarteten Worker.
+Keine aktuelle Bestätigung des Runtime-SHA oder der dortigen Secretkonfiguration ableiten.
+Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und offene Abnahme.
+Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
+
+0.11.9 Vorstufe für kontrollierte Agenten-Codebeiträge
+
+Die lokale Vorbereitung `prepare-code-proposal` bindet begrenzte Dateiänderungen
+eines Programmieragenten an einen aktiven bestehenden Task, dessen Agenten,
+Basis-Commit, Schreibbereiche und Pflicht-Testbefehle. Der erzeugte Auftrag nutzt
+den unveränderten WorkerPipelineJob und weiterhin sämtliche Ausführungs-Gates.
+Details und Grenzen stehen in docs/CODE_PROPOSALS.md. Die Vorbereitung selbst
+verändert keinen Projektzustand, startet keine Queue und verwendet keinen Provider.
+
+Die lokale Request-/Response-Vorstufe ergänzt das gespeicherte Ziel und begrenzten,
+explizit freigegebenen Quellkontext aus dem exakten Basis-Commit. Antworten werden
+an Request, aktive Task-/Agentenvorgaben, Operator-Prüfungen und bekannte
+Dateiausgangshashes gebunden. Geänderte Verträge oder ungesehene bestehende Dateien
+werden vor dem Jobexport abgewiesen. Ein Modellzugang, automatische Datenübertragung
+und echte Inferenz werden dadurch nicht eingerichtet oder freigegeben.
+
+Neue Worker-Runs können lokal ab ihrem gespeicherten Implementierungscommit
+fortgesetzt werden. Auftrag, Task-/Agentenvertrag, Quellstand, Worktree und
+Prüfbelege werden erneut gebunden; gespeicherte Befehlsbelege müssen dabei exakt
+vollständig, als bestanden markiert, mit Exitcode 0 bestätigt und in ihrer
+ursprünglichen Reihenfolge vorhanden sein. Ein widersprüchlicher Erfolgsbeleg mit
+abweichendem Exitcode wird ebenso wie ein zusätzlicher oder umsortierter Beleg
+abgewiesen. Bestandene QA muss im Task und Worker-Run
+denselben vollständigen Belegsatz besitzen; ein gespaltenes Journal wird vor jeder
+Fortsetzung abgewiesen. Neue Review- und Security-Freigaben speichern ihre
+vollständigen Belege ebenfalls im Task und Worker-Run; Wiederaufnahme verlangt
+auch dort exakte Übereinstimmung. Die gespeicherten Review- und Security-
+Zusammenfassungen müssen sich unverändert aus diesen Belegen neu ableiten lassen;
+abweichende Texte werden vor jeder Fortsetzung abgewiesen. Ältere Freigaben ohne
+Task-Belege bleiben nicht wiederaufnehmbar.
+Eine bereits gespeicherte Einreichung muss außerdem dieselbe
+Implementierungszusammenfassung wie der hashgebundene Worker-Auftrag tragen;
+abweichende Receipt-Texte werden vor jeder weiteren Ausführung ohne
+Zustandsänderung abgewiesen.
+Integrationsbereite Runs benötigen außerdem Phase `complete`, einen gespeicherten
+Abschlusszeitpunkt und einen leeren Fehlertext. Unfertige Runs dürfen keinen
+Abschlusszeitpunkt oder Fehlertext tragen; widersprüchliche Terminal-Receipts
+werden ohne Fortsetzung abgewiesen. Start, Befehls- und Statusbelege sowie Abschluss
+müssen außerdem eine zeitzonenbezogene, widerspruchsfreie Zeitachse bilden. Der
+abschließende `complete`-Status ist exakt an den Abschlusszeitpunkt gebunden;
+Belege außerhalb des Laufintervalls werden vor jeder Zustandsänderung abgewiesen.
+Die gespeicherten Befehlsbelege müssen außerdem in der Phasenfolge chronologisch
+bleiben; Statusbelege benötigen eine lückenlose Sequenz und nicht rückläufige
+Zeitstempel. Ihre Phasen dürfen innerhalb des Resume-Vertrags nicht rückwärts
+laufen und der letzte Status muss die aktuelle Run-Phase belegen; `complete` ist
+ausschließlich als letzter Status zulässig. Rückwärts
+laufende, vorzeitig abgeschlossene oder doppelt nummerierte Journale werden damit
+vor jeder Fortsetzung abgewiesen.
+Dies schützt die Journal-Konsistenz, ersetzt aber keine vertrauenswürdige Host-Uhr.
+Neue Befehlsbelege erzwingen zentral, dass `passed=true` ausschließlich mit
+Exitcode 0 zulässig ist. Der Runner bindet die kanonische Befehlsdarstellung und
+revalidiert anschließend jeden vom Host- oder Container-Executor gelieferten
+Beleg; auch über umgangene Pydantic-Konstruktionsprüfungen erzeugte Adapterobjekte
+können deshalb keinen widersprüchlichen Erfolg persistieren. Fehlende oder
+abweichende Exitcodes können damit weder im aktiven Implementierungs-/Gatepfad
+noch später beim Resume Erfolg belegen; Timeout- und Fehlerbelege bleiben
+weiterhin darstellbar.
+Die Implementierung wird nicht wiederholt.
+Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
+abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme
+verlangt die bestehende Queue-/Fence-Kontrolle und eine verwaisungsfreie Inventur;
+automatisches Dispatcher-Recovery und realer Container-Restart sind noch offen.
+
+Ein begrenzter lokaler Korrekturauftrag kann nach konkret fehlgeschlagenen
+Worker-Tests aus dem gespeicherten Fehlercommit vorbereitet werden. Nur explizit
+ausgewählte zuvor geänderte Dateien sind editierbar; Tests und Gates bleiben
+unverändert. Export und Aktivierung sind getrennt. Die Aktivierung reserviert
+atomar höchstens zwei Versuche im vorhandenen ProjectState, erhält alte
+Fehlerbelege und bindet den nächsten Run an Job, Vertrag und Startcommit.
+Rohe Testausgaben werden nicht in den Auftrag übernommen. Die neue lokale
+Aktivierung weist Containeraufträge ab; dafür ist der kontrollierte Queue-Pfad vorgesehen.
+
+Containerkorrekturen können über die bestehende Queue von Workspace-Owner/Admin
+eingereiht werden. Die Einreichung reserviert noch keinen Korrekturversuch.
+Der Worker prüft Admission, aktuelle Berechtigung, rootless Runtime, Inventur,
+Lease und externen Fence vor der atomaren Reservierung erneut. Diese ist an die
+Queue-Job-ID gebunden. Doppelte Einreichungen und Wiederaufnahme desselben Jobs
+verbrauchen keinen weiteren Korrekturversuch. Ein gespeicherter Commit kann unter
+neuer Lease fortgesetzt und ein fertiger Run ohne erneute Implementierung als
+Queue-Ergebnis übernommen werden. Frühe unklare Unterbrechungen bleiben gesperrt.
+Regressionen verwenden echte Queue-/Fence-/Git-Persistenz mit Testexecutor;
+die zusätzliche reale Abnahme erfolgt im CI-Job rootless-worker. Dieser baut
+Dockerfile.worker, verwendet eine unveränderliche Image-ID mit rootless Podman
+und prüft Codekorrektur, Prozessneustart und tatsächliche Container-Schutzwerte.
+Nur ein erfolgreicher Lauf mit tankai-rootless-worker-receipt gilt als Beleg.
+Er ersetzt keinen Produktionsdeploy oder Dauerbetriebs-Pilot.
+
+Gebundene Erstantworten können Owner/Admin mit enqueue-code-response direkt
+in die bestehende Queue einreichen. Request, Antwort und Operator-Prüfvertrag
+bleiben im bestehenden Payload gespeichert und hashgebunden. Eine feste
+Repository-/Task-/Agent-/Basiscommit-Identität verhindert doppelte Jobs auch
+bei gleichzeitigen Admin-Einreichungen. Der Worker prüft Quelle und Vertrag
+unter Lease/Fence vor seinem ersten Run erneut; geänderte Vorgaben sperren die
+Ausführung. Ein vorhandener Run wird nicht durch eine neue Implementierung ersetzt.
+Der rootless-CI-Test prüft auch diesen Erstantwort-Pfad. Datenbankstruktur und
+externe Gateway-v1-Verträge bleiben unverändert; neue HTTP-/Tokenrechte entstehen nicht.
+
+Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
+Programmieragenten-Adapter und automatische Korrekturantworten bleiben eigenständige
+Schritte. Die reale Queue-/Containerausführung ist durch den erfolgreichen
+rootless-CI-Receipt für dessen konkreten Stand belegt. Der eingefrorene P2-Korpus und seine
+historischen Receipts bleiben unverändert; lokale Übergabetests sind kein
+Qualitätsgewinn oder neuer Produktionsnachweis. Die offenen Ausführungs- und
+Budgetarbeiten in den bestehenden Entwurfs-PRs werden nicht parallel ersetzt.
+
+0.12 Reality-Contract-Versionshistorie
+
+5.7.45, 15. Oktober 2026:
+
+Ausgangsstand f39f1a010db372e49ebb392173352828e885798d / Tree
+5ed5a4fadea14b6f7fdffcc71fe38b5386119422. PR #83 sowie TankAI Core CI Run #158
+(38523544347) und TankAI Core CI Run #159 (38523713865) sind erfolgreich abgeschlossen.
+Der getrennte Hetzner-Entwurf PR #84 mit erfolgreichem CI Run #160 (38565632103)
+bleibt offen und wird nicht parallel bearbeitet. Einen belegten Bewertungs-Bypass geschlossen:
+Das selbst deklarierte Flag `human_reviewed=true` benötigt vor Ausgabe eines Vergleichs-Receipts
+einen vollständig validierten Human-Review-Beleg. Dessen Urteile ersetzen ausschließlich
+Human-Kriterien; automatische Kriterien bleiben erhalten. Ungeprüfter Candidate und Score
+0.1778 bleiben unverändert. Keine Provider-, Secret-, Kosten- oder Produktionsmutation.
+
+5.7.44, 14. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 3d529f0c9dbb4ea840ba95327ea9807ad29e7197 / Tree
+32769ec5e73f76e3ab7a37b136bb7686f2a0246e gebunden. Für den unveränderten P2-Candidate eine
+lokale, manipulationsgebundene Human-Review-Vorlage und vollständige Receipt-Prüfung ergänzt.
+Nur unabhängig attestierte, vollständig begründete Entscheidungen zu den acht Human-Kriterien
+werden auf den Vergleichs-Receipt angewendet; automatische Kriterien bleiben unverändert und
+Pilotfähigkeit wird nicht automatisch behauptet. Noch kein Human-Review ausgeführt, keine
+Provider-, Secret-, Kosten- oder Produktionsmutation.
+
+5.7.43, 13. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf bac990b2ba4a2423173496414ec946754a925b74 / Tree
+0122389572925fa94fb12282585e32b1e96afadd gebunden; PR #81 sowie erfolgreiche CI Runs
+#153/#154 als Candidate-Ausgangsnachweis aufgenommen. Den providerfreien Candidate auf einen
+expliziten, vollständig geprüften Einzelschritt-Pfad begrenzt: Planner, Plan-Critic,
+Specialist, Schritt-Critic und finaler Critic benötigen genau fünf simulierte Modellaufrufe;
+ein verifiziertes Einzelergebnis wird ohne zusätzlichen Syntheseaufruf übernommen. Der
+eingefrorene Korpus und die Baseline bleiben unverändert. Qualität, Pilotfreigabe und
+Providerbetrieb werden nicht behauptet; keine Kosten, Secrets oder Produktionssysteme verändert.
+
+5.7.42, 12. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 12fd2658d353aef168f519b5599ddaae8e546729 / Tree
+178ea39982a87a6c08242c97f79ab6c26660938a gebunden; PR #80 und CI Runs #151/#152 als
+erfolgreichen Baseline-Reparaturnachweis aufgenommen. Den aktuellen providerfreien TankAI-Mock
+gegen alle drei eingefrorenen Fälle ausgeführt und die tatsächlichen Endartefakte, Hashes,
+Kriterien, Aufrufe, Receipts und Kosten in einem fail-closed Candidate-Vertrag gebunden. Der
+Candidate verbessert die Baseline nicht und bleibt ausdrücklich nicht pilotfähig; keine
+Provideraktivierung, Kosten, Secretänderung oder Produktionsmutation.
+
+5.7.41, 11. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf e012cb9706a475a8db35a69e6d01d06c9cf91f96 / Tree
+a89915c52d90f81dd308b12c64d01b76b7edb1cc gebunden; PR #77/#78 und CI Runs #145 bis #148
+als erfolgreiche P1-/Budgetnachweise aufgenommen. Den bestehenden Planner im selben Aufruf um
+einen begrenzten Zielklärungs- und Ideenlaborvertrag erweitert, ohne zweiten Commander,
+zusätzlichen Modellaufruf, Provideraktivierung oder Produktionsmutation. P2 bleibt bis zur
+vollständigen Candidate-Messung gegen den eingefrorenen Korpus aktiv.
+
+5.7.40, 10. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 6087b118b35555db98da65fddde35b67e2555797 / Tree
+6ab94d6737aea1f28ff064ed40d91c6e9a75bd8f gebunden. Den dreiteiligen kooperativen
+Acceptance-Korpus, 15 gewichtete Kriterien und die hashgebundene Mock-Baseline mit Score
+`0.1778` eingefroren; keine externen Aufrufe, Kosten oder Produktionsmutation.
+
+5.7.39, 9. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 46eb625d51c88d545fa50b216e7794716be12bbb / Tree
+dd2bfb0f4254cd938593cc5a281e9c85dc701aa7 gebunden. PR #75 ergänzte den neutralen
+HTTP-Parser-Fehlervertrag; CI Runs #141 und #142 bestanden einschließlich
+Produktions-Container-Build und Smoke. PR #76 priorisierte anschließend dokumentarisch den
+kooperativen TankAI- und hybriden Modellpfad; CI Runs #143 und #144 bestanden. Kein offener PR,
+Issue #25 blieb extern blockiert; keine Produktionsmutation.
+
+5.7.38, 8. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 7daeec9d315997ec513f33c60ccd02bf61029517 / Tree
+d0f1d559033a28322935324ae4bf7e8dbb010a73 gebunden. PR #74 ergänzte COEP require-corp;
+CI Runs #139 und #140 bestanden einschließlich Produktions-Container-Build und Smoke.
+Kein offener PR, Issue #25 bleibt extern blockiert; keine Produktionsmutation.
+
+
+5.7.37, 7. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 60599fbad5ebe87fae215f184ec0cd99d1b09505 / Tree
+610acc565a3f74dcb18c956cde98ee8c541a6a31 gebunden; PR #73 sowie CI Runs #137 und #138 als
+erfolgreichen Sharp-Sicherheitsupdate-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Die bestehende Cross-Origin-Isolation um
+`Cross-Origin-Embedder-Policy: require-corp` ergänzt, ohne CSP-, Cache-, Session-, API-,
+Provider-, Host- oder Produktionsgrenzen zu verändern.
+
+5.7.36, 6. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf df31153551cb0213242c9be49ce0a3df9426e623 / Tree
+987548be0d65bfa4782754455279635033fd0b3d gebunden; PR #70 sowie CI Runs #131 und #132 als
+erfolgreichen External-Agent-Methodenfehlervertrag-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert. Eine serverseitige,
+nicht übernehmbare Request-Korrelations-ID für sämtliche Webantworten, Zugriffslogs und neutrale
+interne Fehlerreferenzen ergänzt, ohne Authentifizierungs-, Provider-, Host- oder
+Produktionsgrenzen zu verändern.
+
+5.7.35, 5. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 48dd3988a66dfb6da861b7ad4cfe6ebed2996ca3 / Tree
+4b8b71a8c2fa04c00c908c0edc4a4fec1ef5b335 gebunden; PR #69 sowie CI Runs #129 und #130 als
+erfolgreichen HTTP-Methodenabwehr-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Nicht unterstützte Methoden im Namespace
+`/api/v1/` an den bestehenden versionierten Fehlervertrag gebunden, ohne Status-, Methoden-,
+Authentifizierungs-, Provider-, Host- oder Produktionsgrenzen zu verändern.
+
+5.7.34, 4. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 4890ac064956579bd00dc0c828b2456842c6a38b / Tree
+8816dbb338de7434d57eeea11b0593e1db184d5f gebunden; PR #68 sowie CI Runs #127 und #128 als
+erfolgreichen HSTS-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen extern
+blockierten Vorgang verifiziert. Nicht unterstützte HTTP-Methoden auf einen sicheren,
+maschinenlesbaren `405`-Vertrag vereinheitlicht, ohne erlaubte Methoden, Authentifizierung,
+Provider, Hosts oder Produktion zu verändern.
+
+5.7.33, 3. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 8052449647edbb669049e9c6ca394b7f5a2f1cfb / Tree
+9227920c792752941a05cdc52d8b2add209ef01b gebunden; PR #67 sowie CI Runs #125 und #126 als
+erfolgreichen Logout-Origin-Cleanup-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. HSTS an den sicheren Cookie-/Produktionsmodus
+gebunden, ohne lokale HTTP-Entwicklung, Subdomains, Provider, Hosts oder Produktion zu verändern.
+
+5.7.32, 2. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 2132f9a4267b38a22385d7c47a0d4ac922252d9c / Tree
+61dfb269e9f3417d96c446f6df94adf809abd89e gebunden; PR #66 sowie CI Runs #123 und #124 als
+erfolgreichen Cloudflare-Toolchain-Sicherheitsnachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert. Den erfolgreichen Logout um eine
+standardisierte Löschanforderung für Cache, Cookies und Origin-Storage ergänzt, ohne
+Authentifizierungs-, Provider-, Host- oder Produktionsgrenzen zu lockern.
+
+5.7.31, 1. Oktober 2026:
+
+Geschützten main-Ausgangsstand auf 4646cfe9a29e5937b43bbb94db28f5b62ac51a40 / Tree
+177c81741692a8c199ddb11dfb3928bfe2db9a58 gebunden; PR #65 sowie CI Runs #121 und #122 als
+erfolgreichen Cross-Origin-Response-Isolations-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert. Die Cloudflare-Entwicklungstoolchain
+gegen die beim frischen npm-Audit belegten High-Severity-Funde in transitiven `sharp`- und
+`undici`-Versionen aktualisiert, ohne Runtime-, Provider-, Host- oder Produktionsverträge zu
+verändern.
+
+5.7.30, 30. September 2026:
+
+Geschützten main-Ausgangsstand auf 3394d1c6ba37a384c63638d2b1d5f70d4c5cb396 / Tree
+40238fdcb0ba896d274995504d4882d9cf099eba gebunden; PR #64 sowie CI Runs #119 und #120 als
+erfolgreichen Nonce-gebundene-Inline-Styles-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert. Für alle Webantworten einheitliche
+Cross-Origin-Opener-, Cross-Origin-Resource-, Origin-Agent-Cluster- und
+Cross-Domain-Policy-Sperrheader ergänzt, ohne CSP-, Cache-, Session-, Provider-, Host- oder
+Produktionsverträge zu verändern.
+
+5.7.29, 29. September 2026:
+
+Geschützten main-Ausgangsstand auf 4a8f530dc371cfe0c8456701d83c7525f3a0204b / Tree
+455ae456f0158f4ab6890c3bee4b5fa6ee73ac27 gebunden; PR #63 sowie CI Runs #117 und #118 als
+erfolgreichen Per-Response-CSP-Nonce-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Den frischen Antwort-Nonce auf den eingebetteten
+Stylesheet-Block erweitert, vier feste Style-Attribute in CSS-Klassen verschoben und
+`style-src 'unsafe-inline'` entfernt. Nicht-HTML-Antworten sperren Styles vollständig; API-,
+Cache-, Provider-, Host- und Produktionsverträge bleiben unverändert.
+
+5.7.28, 28. September 2026:
+
+Geschützten main-Ausgangsstand auf b1dc766579baae9e1eb8054ea85bb09c9a327d90 / Tree
+e277ae5a24e43fe1edbc02a5e690fab627b5df6c gebunden; PR #62 sowie CI Runs #114 und #115 als
+erfolgreichen Jobverlauf-Limit-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert. Den wiederverwendeten prozessweiten CSP-Nonce
+durch einen frischen Nonce pro HTML-Antwort ersetzt und nicht ausführbare API-, `304`- und
+Asset-Antworten auf `script-src 'none'` begrenzt, ohne weitere Sicherheits-, Cache-, Provider-,
+Host- oder Produktionsverträge zu verändern.
+
+5.7.27, 27. September 2026:
+
+Geschützten main-Ausgangsstand auf 25e3095feec622f0926af2caf5fb58e85ce75d32 / Tree
+853dce6c7ebe28180afccb465e33fac3d8ce47fc gebunden; PR #61 sowie CI Runs #112 und #113 als
+erfolgreichen Terminalfilter-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen
+extern blockierten Vorgang verifiziert. Einen optionalen, maschinenlesbar beworbenen
+1-bis-100-Limitvertrag für den öffentlichen Job-Zustandsverlauf ergänzt, ohne Scope-, Agenten-,
+Repository-, Queue-, Datenminimierungs- oder Validatorgrenzen zu lockern. Provider, Host und
+Production-Runtime bleiben unverändert.
+
+5.7.26, 26. September 2026:
+
+Geschützten main-Ausgangsstand auf 2d9a41d03be3f4d2d784699394cdd6a5d1dc69cd / Tree
+6747f34c5f107d8eebfc94a3c88c23dd109b3292 gebunden; PR #60 sowie CI Runs #110 und #111 als
+erfolgreichen Batch-Lookup-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen
+extern blockierten Vorgang verifiziert. Einen maschinenlesbar beworbenen Terminalfilter für
+paginierte Agenten-Joblisten ergänzt, ohne Agenten-, Allowlist-, Repository-, Zustands-, Cursor-
+oder Validatorgrenzen zu lockern. Provider, Host und Production-Runtime bleiben unverändert.
+
+5.7.25, 25. September 2026:
+
+Geschützten main-Ausgangsstand auf 1d058f10231963ba0c004881b12d7627885628e2 / Tree
+4b417e0add4228702c42ebc1665c99a2a445c004 gebunden; PRs #58 und #59 sowie CI Runs #106 bis
+#109 als erfolgreichen Zustandsfilter- und Reality-Korrektur-Nachweis aufgenommen; keinen
+offenen PR und Issue #25 als einzigen extern blockierten Vorgang verifiziert. Den Queue-Zugriff
+für Agenten-Joblisten auf begrenzte Batch-Abfragen umgestellt, ohne Mandanten-, Workspace-,
+Agenten-, Allowlist-, Filter-, Cursor- oder Validatorgrenzen und ohne den öffentlichen
+API-Vertrag zu verändern. Provider, Host und Production-Runtime bleiben unverändert.
+
+5.7.24, 24. September 2026:
+
+Geschützten main-Ausgangsstand auf dfa3d536544bdffedb19c02b3f99d70012401340 / Tree
+aa4fa6cc520a9e7fae1431c2fee29fc15cfed5f6 gebunden; PR #57 sowie CI Runs #104 und #105 als
+erfolgreichen Discovery-Conditional-GET-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert. Einen maschinenlesbar beworbenen
+Zustandsfilter für paginierte Agenten-Joblisten ergänzt. Agenten-, Allowlist-, Repository-,
+Cursor- und Validatorgrenzen bleiben erhalten; Provider, Host und Production-Runtime bleiben
+unverändert.
+
+5.7.23, 23. September 2026:
+
+Geschützten main-Ausgangsstand auf 6db746aee15fef425326394be18e93d283e6f967 / Tree
+aa2928c561527447320f5f743516142fbd6c7864 gebunden; PR #56 sowie CI Runs #102 und #103 als
+erfolgreichen Repository-Joblistenindex-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert. Starkes bedingtes Lesen für Capability-,
+Repository-, Job-Schema- und Ergebnis-Schema-Discovery ergänzt. Authentifizierung, Scope,
+Queue-Zugriff und Allowlist-Prüfung bleiben vor dem Validatorvergleich; Provider, Host und
+Production-Runtime bleiben unverändert.
+
+5.7.22, 22. September 2026:
+
+Geschützten main-Ausgangsstand auf acbcd6ed47a740d1d8663472056c2dd7b6333781 / Tree
+3156b7d522a9921bf4dfd28965438bf09cf054b1 gebunden; PR #55 sowie CI Runs #100 und #101 als
+erfolgreichen Repository-Filter-Nachweis aufgenommen; keinen offenen PR und Issue #25 als einzigen
+extern blockierten Vorgang verifiziert. Einen deckenden Index für repository-gefilterte
+Agenten-Joblisten ergänzt; vorhandene Datenbanken werden ohne Änderung der Daten, Cursor oder
+API-Antworten beim Öffnen ergänzt. Provider, Host und Production-Runtime bleiben unverändert.
+
+5.7.21, 21. September 2026:
+
+Geschützten main-Ausgangsstand auf 2222c2c6b2987e0503d2cb8ac42306fdcf10cf7f / Tree
+612308c6ec890819a888b7d3311c3595fdd08a73 gebunden; PR #54 sowie CI Runs #98 und #99 als
+erfolgreichen Joblisten-Conditional-Polling-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert; einen maschinenlesbar beworbenen,
+repository-genauen Filter für paginierte eigene Joblisten ergänzt. Fremde IDs werden neutral
+abgewiesen; Agenten-, Allowlist-, Cursor- und Validatorgrenzen bleiben erhalten, während Queue,
+Worker, Provider, Host und Production-Runtime unverändert bleiben.
+
+5.7.20, 20. September 2026:
+
+Geschützten main-Ausgangsstand auf 69561830016fba710daffd9298877641d6cb55a5 / Tree
+5dca13317a3db0ac2dc50ec8339441b7f9723181 gebunden; PR #53 sowie CI Runs #96 und #97 als
+erfolgreichen External-Agent-Retry-Vertrag-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert; starkes bedingtes Lesen auch für Seiten der
+paginierten eigenen Jobliste ergänzt. Authentifizierung, Scope-, Repository- und
+Paginierungsprüfung erfolgen weiterhin vor dem Validatorvergleich; Queue, Worker, Provider,
+Host und Production-Runtime bleiben unverändert.
+
+5.7.19, 19. September 2026:
+
+Geschützten main-Ausgangsstand auf 2a6281b9eb6bccd7e339a8df431f900210633cbd / Tree
+c08c9f1c20382ecfe56627573a52ad4e73820316 gebunden; PR #52 sowie CI Runs #94 und #95 als
+erfolgreichen External-Agent-Abbruch-Idempotenz-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert; einen versionierten Retry-Vertrag für
+alle externen Fehler und präzise temporäre Queue-/Stundenlimit-Ablehnungen ergänzt. Bestehende
+HTTP- und Fehlercodes sowie Queue, Worker, Provider, Host und Production-Runtime bleiben
+unverändert.
+
+5.7.18, 18. September 2026:
+
+Geschützten main-Ausgangsstand auf fd4f8d1228c177a998ef1b80e600d7d9b4fecdbb / Tree
+edebb40adde2d07ce9cc1b92d358a4a870da52ef gebunden; PR #51 sowie CI Runs #92 und #93 als
+erfolgreichen External-Agent-Admission-Policy-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert; atomare, maschinenlesbar markierte
+Wiederholungen bereits erfolgreicher Job-Abbrüche ergänzt. Queue-Ereignisverlauf, Agenten-,
+Repository- und Scope-Isolation bleiben erhalten; Worker, Provider, Host und Production-Runtime
+bleiben unverändert.
+
+5.7.17, 17. September 2026:
+
+Geschützten main-Ausgangsstand auf 6cc912fb6a5ab0da5a5b1576c7a84d90cffe39a9 / Tree
+8c8b182e9913b7e78f72339c8633f7eaa78dde9e gebunden; PR #50 sowie CI Runs #90 und #91 als
+erfolgreichen External-Agent-Idempotenz-Outcome-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert; einen versionierten, rein lesenden
+Admission-Policy-Snapshot mit erlaubten Image-Digests und Einreichungsgrenzen ergänzt. Der echte
+Submit prüft die aktuelle Policy weiterhin neu; Queue, Worker, Token, Provider, Host und
+Production-Runtime bleiben unverändert.
+
+5.7.16, 16. September 2026:
+
+Geschützten main-Ausgangsstand auf dd89cc7c05d277f465ab732c47a19e5e5d8b8ebf / Tree
+eb061b0f3932a1e570c17ea7c4da65edc1874189 gebunden; PR #49 sowie CI Runs #88 und #89 als
+erfolgreichen External-Agent-Fehlervertrag-Nachweis aufgenommen; keinen offenen PR und Issue #25
+als einzigen extern blockierten Vorgang verifiziert; einen atomaren, versionierten
+Idempotenz-Outcome für erfolgreiche v1-Job-Submits ergänzt. Der vorhandene Queue-Vertrag und
+HTTP 202 bleiben kompatibel; Queue, Worker, Token, Provider, Host und Production-Runtime bleiben
+unverändert.
+
+5.7.15, 15. September 2026:
+
+Geschützten main-Ausgangsstand auf 2fbd1fe863cb234efff14d7501b99cee4915e894 / Tree
+417d4e64700bbab12da8e355429bb1b4eeafdd0e gebunden; PR #48 sowie CI Runs #86 und #87 als
+erfolgreichen External-Agent-Ergebnis-Receipt-Nachweis aufgenommen; keinen offenen PR und Issue
+#25 als einzigen extern blockierten Vorgang verifiziert; einen versionierten Top-Level-
+Fehlervertrag für alle v1-Antworten ergänzt. Bestehende Statuscodes und Meldungen bleiben
+erhalten, während KI-Clients Authentifizierungs-, Body-, Schema-, Scope-, Repository-, Queue-,
+Paginierungs-, Jobstatus-, Abbruch- und Routingfehler ohne Textauswertung unterscheiden können.
+Queue, Worker, Token, Provider, Host und Production-Runtime bleiben unverändert.
+
+5.7.14, 14. September 2026:
+
+Geschützten main-Ausgangsstand auf 4a8e84ae43ea2a76471d4da0297502deba10f9ad / Tree
+211ef370acafa93d7a6f5152406c8f7bef339a71 gebunden; PR #47 sowie CI Runs #84 und #85 als
+erfolgreichen External-Agent-Jobzustandsvertrag-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; den bereits gefilterten
+Worker-Ergebnis-Receipt als strikt begrenzten, versionierten und maschinenlesbaren JSON-Schema-
+Vertrag veröffentlicht. Nicht vertragskonforme interne Run-Daten werden fail-closed nicht
+teilweise ausgegeben; Queue, Worker, Token, Provider, Host und Production-Runtime bleiben
+unverändert.
+
+5.7.13, 13. September 2026:
+
+Geschützten main-Ausgangsstand auf 25cc18115a0fa508ec868da1fb40a82d131fb3ad / Tree
+9e6c381d26177faadc887ac8fe272956938df143 gebunden; PR #46 sowie CI Runs #82 und #83 als
+erfolgreichen External-Agent-Conditional-Polling-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; einen versionierten öffentlichen
+Jobzustandsvertrag mit terminalem Polling-Ende und discoverbarer, weiterhin scope- und
+zustandsgebundener Abbruchaktion ergänzt, ohne Queue, Worker, Token, Provider, Host oder
+Production-Runtime zu aktivieren.
+
+5.7.12, 12. September 2026:
+
+Geschützten main-Ausgangsstand auf aa9aa456164f69386a01c00a38fd96621960486a / Tree
+91c38a4ce7c0e8186b54bf8de7b0ae414de71d56 gebunden; PR #45 sowie CI Runs #80 und #81 als
+erfolgreichen External-Agent-Joblisten-Paginierungs-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; den Einzelstatus und begrenzten
+Zustandsverlauf um einen versionierten `ETag`-/`If-None-Match`-Vertrag erweitert, ohne
+Authentifizierungs-, Scope-, Agenten-, Repository- oder `no-store`-Grenzen zu lockern und ohne
+Queue, Worker, Provider, Host oder Production-Runtime zu aktivieren.
+
+5.7.11, 11. September 2026:
+
+Geschützten main-Ausgangsstand auf 4678d0749d460b639735927c0a7325e7a839d4ec / Tree
+8f49c69bfdf90ff740e145c164be959884ed58c2 gebunden; PR #44 sowie CI Runs #78 und #79 als
+erfolgreichen External-Agent-Jobverlauf-Nachweis aufgenommen; keinen offenen PR und Issue #25 als
+einzigen extern blockierten Vorgang verifiziert; die bisher nach 100 Einträgen endende
+External-Agent-Jobliste um eine stabile, begrenzte und agenten-/repositorygebundene
+Cursor-Paginierung erweitert, ohne Queue, Worker, Token, Provider, Host oder Production-Runtime
+zu aktivieren.
+
+5.7.10, 10. September 2026:
+
+Geschützten main-Ausgangsstand auf e1548701a6acce5d71cc7246deec0d88ce985d83 / Tree
+aae4b0ae2177de051c61fca74dfdfc82389c46b7 gebunden; PR #43 sowie CI Runs #76 und #77 als
+erfolgreichen Single-Host-Konfigurations-Readiness-Nachweis aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; einen auf 100 Einträge begrenzten,
+versionierten Zustandsverlauf für eigene External-Agent-Jobs ergänzt, ohne interne Eventdaten,
+Queue, Worker, Token, Provider, Host oder Production-Runtime offenzulegen beziehungsweise zu
+aktivieren.
+
+5.7.9, 9. September 2026:
+
+Geschützten main-Ausgangsstand auf bd546f8a34c17d2cb1f709779637bc77aa954ffc / Tree
+cc694d265dd39a9763a757a89e6d29355fc9c565 gebunden; PR #42 sowie CI Runs #74 und #75 als
+erfolgreichen Nachweis der Restart-sicheren Modellintegrität aufgenommen; keinen offenen PR und
+Issue #25 als einzigen extern blockierten Vorgang verifiziert; einen Owner-/Admin-Receipt für
+den gemeinsamen Single-Host-Konfigurationsvertrag aus aktiver Queue-Policy, gültiger
+Git-Registrierung und einreichungsfähigem Service-Agenten-Token ergänzt, ohne Queue, Worker,
+Token, Provider oder Production-Runtime zu aktivieren beziehungsweise zu verändern.
+
+5.7.8, 8. September 2026:
+
+Geschützten main-Ausgangsstand auf 39f9fc52816ca9d2fb12ebe93437b9718226a030 / Tree
+7ae4dc68f1512947ca376dbae9f78c786ff60893 gebunden; PRs #39 und #41 sowie CI Runs #70 bis #73
+als erfolgreichen lokalen Qwen2.5-Coder-Runtime- und Modellintegritätsnachweis aufgenommen;
+keinen offenen PR und Issue #25 als einzigen extern blockierten Vorgang verifiziert; die bisher
+nur dokumentierte Modellprüfsumme durch einen atomaren, wiederholbaren und fail-closed
+SHA-256-Init-Vertrag technisch erzwungen und den Serverprozess mit demselben Check umschlossen,
+damit automatische Container-Neustarts keinen Bypass erzeugen; kein Modell, Container, Provider
+oder Production-Runtime wurde gestartet beziehungsweise verändert.
+
+5.7.7, 7. September 2026:
+
+Geschützten main-Ausgangsstand auf 357e8bb51d0b5be0f285a8699916746f321b289a / Tree
+a18ecc459d4bf47380ca3b8312f00c335e13051e gebunden; PR #40 sowie CI Runs #68 und #69 als
+erfolgreichen repositoryweiten Node.js-24-Nachweis aufgenommen; den einzigen offenen PR #39
+statt eines konkurrierenden Modellpfads aktualisiert; lokalen Qwen2.5-Coder-Compose-Pfad durch
+unveränderliche Image-/Modellquellen, internes Netzwerk und Modell-Readiness-Gate gehärtet,
+ohne Modell, Container, Queue, Provider oder Production-Runtime zu starten beziehungsweise zu
+verändern.
+
+5.7.6, 6. September 2026:
+
+Geschützten main-Ausgangsstand auf 3c9cae6034b037c03dacd3e1c5b9d2bf5fd8316c / Tree
+079c7fcc433a49b95a2962a2551bb4b409c8b184 gebunden; PR #38 und CI Run #65 als erfolgreichen
+Node.js-24-Nachweis der Pflicht-CI aufgenommen; den separaten offenen PR #39 samt erfolgreicher
+CI #67 als parallel bearbeiteten lokalen Modellpfad ausgewiesen; sämtliche verwendeten
+First-Party-JavaScript-Actions repositoryweit auf offizielle, unveränderlich gepinnte
+Node.js-24-Releases vereinheitlicht, ohne Trigger, Berechtigungen, Secrets, Environment-Gates,
+Provider, Production-Runtime oder Workflow-Befehle zu verändern beziehungsweise auszuführen.
+
+5.7.5, 5. September 2026:
+
+Geschützten main-Ausgangsstand auf 62e8addc852d2178f7ec415b9c6184f3bef92a04 / Tree
+f43f1bed75eb58eb46be05e4ad833bbb1a1df002 gebunden; PR #37 sowie CI Runs #63 und #64 als
+erfolgreichen External-Agent-Job-Preflight-Nachweis aufgenommen; die in CI #64 konkret
+gemeldeten Node.js-20-Action-Runtime-Warnungen durch unveränderliche offizielle v7.0.0-Pins in
+der verpflichtenden CI behoben, ohne Berechtigungen, Secrets, Produktionsworkflows oder
+Deployment zu verändern.
+
+5.7.4, 4. September 2026:
+
+Geschützten main-Ausgangsstand auf 5c94ca686dd3bee2c4871b25362d5e46ec02cd59 / Tree
+5bc7c867f26c30314018da20d82c287ce63377dc gebunden; PR #36 und CI Run #61 als erfolgreichen
+External-Agent-Validierungsfehler-Nachweis aufgenommen; nicht einreihenden Job-Preflight mit
+gemeinsamem Admission-Vertrag ergänzt, ohne Queue-Kapazität, Idempotenz, Host, Provider oder
+Deployment zu reservieren beziehungsweise zu aktivieren.
+
+5.7.3, 3. September 2026:
+
+Geschützten main-Ausgangsstand auf b9a4ccb623619aeb016482161015da3b72533d1b / Tree
+539803430983b0ca1957c36296c78fc2b32f7a38 gebunden; PR #35 und CI Run #59 als erfolgreichen
+External-Agent-Job-Schema-Nachweis aufgenommen; begrenzte, versionierte und nicht reflektierende
+Validierungsfehler für externe v1-Job-Payloads ergänzt, ohne Host-, Queue-, Secret-, Provider-
+oder Deployment-Aktivierung abzuleiten.
+
+5.7.2, 2. September 2026:
+
+Geschützten main-Ausgangsstand auf d5cd3b9403f281f65a2053da846f6ed1663eef84 / Tree
+bb3ca90aee8457205f57a734be5a5f72684eb7de gebunden; PR #34 und CI Run #57 als erfolgreichen
+repositoryseitigen Single-Host-Doctor-Nachweis aufgenommen; versionierten, authentifizierten
+JSON-Schema-Discovery-Vertrag für externe v1-Development-Aufträge ergänzt, ohne daraus eine
+Host-, Queue-, Secret-, Provider- oder Deployment-Aktivierung abzuleiten.
+
+5.7.1, 1. September 2026:
+
+Geschützten main-Ausgangsstand auf 48ce98729d33254a21e484c8a69f0a1661d64458 / Tree
+756abe0dfb68c4b48db57e7a0c757ad6bff17013 gebunden; read-only Single-Host-Runner-Doctor als
+repositoryseitig implementierten Teil von ops.development.single_host_runner_bootstrap
+dokumentiert; tatsächliche Host-Bereitschaft weiterhin an einen vollständigen PASS-Receipt
+gebunden und keine Queue-, Runtime-Socket-, Secret- oder Deployment-Aktivierung abgeleitet.
+
+5.7.0, 31. August 2026:
+
+Repository-Implementierungsstand auf e43baadf3675af21d82aacde814f9fedf3739cf8 / Tree
+1af824bb7b7aaa73bc893037179dd720023c8001 synchronisiert; PRs #26 bis #29 als abgeschlossene
+repositoryseitige Live-Provider-Sicherheitsverträge gebunden; External Agent Gateway v1 und
+Service-Agent-Operator-CLI aus PRs #31/#32 samt erfolgreicher CI #53 dokumentiert; verbleibenden
+Teil von Issue #25 als externen Konfigurations-/Autorisierungsblocker präzisiert; unabhängigen
+Single-Host-Runner-Bootstrap als bereiten, weiterhin fail-closed Betriebsweg benannt.
+
+5.6.1, 28. August 2026:
+
+Repository-Head und tatsächlich deployter Runtime-Basis-Commit werden ausdrücklich getrennt;
+PR #23 / Merge-Commit 681b678b25f624a15a322c1de944401c0249d0da ist als docs-only
+Synchronisations-Commit dokumentiert; die unmittelbare Ausführungsreihenfolge beginnt nach
+abgeschlossenem Masterplan-Sync direkt mit ops.production.live_provider_readiness.
+
+5.6.0, 28. August 2026:
+
+Current Source of Truth auf main d7edb12b764310f00804c724ad6d3b4bbc96b54a / Tree
+f318d8ca72500b03f19635af0834c36d151ab232 gebunden; Ruleset und Pflichtchecks dokumentiert;
+Runtime-Smoke und Production Preflight als VERIFIED gebunden; erfolgreicher Cloudflare-Deploy #4
+mit Container-/Worker-Receipt und externem Healthcheck dokumentiert; production_ready=false und
+TANKAI_LLM=mock ausdrücklich als verbleibende Produktgrenzen ausgewiesen; nächstes Gate auf
+ops.production.live_provider_readiness gesetzt.
+
+5.5.0, 24. August 2026:
+
+Vorheriger Reality Contract vor Runtime-Smoke, Production-Preflight und Live-Cloudflare-Deploy.
+Die darin gebundene Commit-/Tree-Identität ist historisch und nicht mehr aktuelle Source of Truth.
+
+1. Ergebnis, das entstehen muss
+
+TankAI wird eine über das World Wide Web erreichbare allgemeine KI-Plattform. Ein Nutzer öffnet
+eine HTTPS-Adresse, meldet sich an, spricht natürlich mit TankAI, gibt größere Ziele ab und sieht
+eine einzige klare Antwort. Im Hintergrund plant ein Commander, verteilt Teilaufgaben an passende
+Modelle, lässt Ergebnisse prüfen, benutzt freigegebene Werkzeuge und hält den Projektzustand über
+Sitzungen hinweg.
+
+Das Endprodukt besteht aus vier realen Ebenen:
+
+TankAI Web – Browserprodukt, Identität, Chat, Ziele, Dateien, Status und Bedienung.
+
+TankAI Runtime – Planung, Providerteam, Werkzeuge, Gedächtnis, Receipts und Wiederaufnahme.
+
+TankAI Improvement System – Feedback, Evals, Candidates, Canary und Rollback.
+
+TankAI Model Family – eigene Router-, Critic-, Core-, Code- und Music-Checkpoints.
+
+TankAI ist erst vollständig, wenn alle vier Ebenen produktiv, geprüft und miteinander verbunden
+sind. Bis dahin nennt jeder Release exakt seinen Reifegrad.
+
+2. Was „besser als ChatGPT, Grok und andere“ technisch bedeutet
+
+Das Projekt übernimmt keine pauschale Behauptung. Es setzt ein härteres Abnahmesystem.
+
+Für jede Aufgabenklasse wird ein eingefrorener TankBench gebaut. TankAI und die jeweils
+verglichenen Systeme bearbeiten dieselben Aufgaben unter vergleichbaren Budgets. Bewertet werden:
+
+Dimension
+
+Messung
+
+Zielerfüllung
+
+vollständig erfüllte Definition-of-Done-Kriterien
+
+Faktentreue
+
+korrekte Claims / alle prüfbaren Claims
+
+Quellenqualität
+
+direkte, aktuelle und tatsächlich tragende Quellen
+
+Ausführung
+
+echte Artefakte und erfolgreiche Action Receipts
+
+Code
+
+Build-, Test- und Regressionserfolg
+
+Fehlererholung
+
+erfolgreiche Reparatur nach absichtlichem Teilausfall
+
+Gedächtnis
+
+Precision, Recall, Konflikt- und Ablaufbehandlung
+
+Sicherheit
+
+kritische Verstöße, Datenabfluss, Injection- und Rechtefehler
+
+Bedienung
+
+Zeit bis zum nutzbaren Ergebnis, unnötige Rückfragen, Abbruchrate
+
+Effizienz
+
+Latenz, Modellaufrufe, Tokens und Kosten
+
+Ein Sieg wird nur pro Version, Aufgabenklasse, Korpus und Datum ausgewiesen. Kritische
+Sicherheitsverstöße sperren einen Sieg unabhängig vom Durchschnittswert. Eloquenz ist keine
+Ersatzmetrik.
+
+3. Ehrliche Modellstrategie
+
+Ein Frontier-Grundmodell von null benötigt sehr große Daten-, Rechen-, Energie- und
+Spezialistenressourcen. Diese Ressourcen sind im aktuellen Projekt nicht belegt. TankAI beginnt
+deshalb nicht mit einer erfundenen „eigenen Super-KI“, sondern mit einem kontrollierten
+Compound-System und baut daraus eigene Modelle.
+
+Die Strategie:
+
+heute verfügbare starke Modelle über stabile Provideradapter nutzen,
+
+deren Aufgabenverteilung, Gedächtnis, Werkzeuge und Prüfung selbst besitzen,
+
+nur rechtmäßig nutzbare, verifizierte Trainingssignale erfassen,
+
+zuerst eigene kleine Router- und Critic-Modelle trainieren,
+
+danach ein offenes Basismodell zu Tank Core feinabstimmen,
+
+Spezialmodelle für Code und Musik entwickeln,
+
+erst bei nachgewiesenem Nutzen und vorhandenen Ressourcen größere Pretrains starten.
+
+Damit entsteht früh ein echtes Produkt und später ein echtes eigenes Modell, ohne den zweiten
+Schritt vorzutäuschen.
+
+4. Nicht verhandelbare Projektregeln
+
+Keine Platzhalter, Fake-Endpunkte oder festen Scheinantworten als Produktfunktion.
+
+Keine Aktion ohne Receipt und keine Testbehauptung ohne tatsächlichen Testlauf.
+
+Web ist Hauptoberfläche; lokale Komponenten sind Worker oder Integrationen.
+
+Modelle, Speicher und Werkzeuge bleiben austauschbar.
+
+Nutzeridentität und Eigentum werden bei jeder serverseitigen Datenoperation geprüft.
+
+Provider-Schlüssel bleiben serverseitige Secrets.
+
+Private Daten werden nicht automatisch Trainingsdaten.
+
+Kein Agent gibt seine eigene riskante Arbeit allein frei.
+
+Kein tägliches Lernen ohne eingefrorenen Korpus, Promotion Gate und Rollback.
+
+Kein Marketingtitel „beste KI“ ohne reproduzierbaren Vergleich.
+
+TankAI bleibt getrennt von TankStation und kommuniziert über eine versionierte lokale API.
+
+KI-Code läuft nie im Echtzeit-Audio-Thread.
+
+Bestehende Nutzerarbeit wird fortgesetzt und nicht durch alte Stände ersetzt.
+
+Jeder Meilenstein endet in einem nutzbaren Artefakt, nicht nur in einem Dokument.
+
+5. Zielarchitektur
+
+flowchart LR
+    B["Browser · HTTPS · ChatGPT Sign-in"] --> W["TankAI Web"]
+    W --> A["Web API · Rate Limit · Ownership"]
+    A --> C["Commander · Task Graph · Budgets"]
+    C --> M["Model Mesh"]
+    M --> O["OpenAI"]
+    M --> X["xAI / Grok"]
+    M --> G["Gemini"]
+    M --> H["Anthropic"]
+    M --> L["lokale / eigene Modelle"]
+    C --> T["Tool Fabric · Browser · Code · Dateien · MCP"]
+    C --> V["Critic · Evidence · Security"]
+    C --> D["Memory · Runs · Goals · Feedback"]
+    D --> I["Daily Improvement · TankBench"]
+    I --> P["Promotion · Canary · Rollback"]
+    P --> M
+    L --> S["TankBot · TankStation API"]
+
+6. TankAI Web
+
+6.1 Öffentliche Fläche
+
+stabile HTTPS-Adresse,
+
+verständliche Produktdefinition ohne erfundene Fähigkeiten,
+
+sichtbarer Release- und Betriebsstatus,
+
+Anmeldung zur Arbeitsoberfläche,
+
+öffentliche Benchmark- und Sicherheitsmethodik,
+
+responsive und barrierearme Bedienung.
+
+6.2 Geschützte Arbeitsoberfläche
+
+natürliches Chatfenster,
+
+Modi Schnell, Team und Tiefenprüfung,
+
+Gesprächsverlauf pro Nutzer,
+
+sichtbare Teamphasen und beteiligte Modelle,
+
+keine Ausgabe verborgener Gedankengänge,
+
+Feedback und präzise Korrektur pro Run,
+
+klare Fehlerzustände,
+
+langlebige Ziele mit Zustandsverlauf, bestätigtem Schritt und nächster sicherer Aktion,
+
+Projektbereiche mit versionierten Text-, Markdown- und JSON-Dateien,
+
+später: Binärdateien und Sprache.
+
+6.3 Serverregeln
+
+Identität aus vertrauenswürdigen, serverseitig gelieferten Authentifizierungsdaten,
+
+datensparsame Hash-ID in Datenbank und Modell-Sicherheitskennung,
+
+parametrisierte Datenbankabfragen mit Mandantenfilter,
+
+Eingabe- und Ratenlimits,
+
+harte Call-, Token-, Zeit- und Kostenbudgets,
+
+feste Providerziele,
+
+keine Provider-Schlüssel im Client,
+
+Security Header, sichere Fehlertexte und Secret-Redaction.
+
+7. TankAI Runtime
+
+7.1 Commander
+
+Der Commander erstellt für jede nicht triviale Anfrage:
+
+Ziel,
+
+Definition of Done,
+
+Risiko- und Datenklasse,
+
+Task-Graph,
+
+Modell- und Werkzeugbudget,
+
+Prüfkriterien,
+
+Recovery- und Abbruchstrategie.
+
+Er beendet eine Aufgabe nicht, solange ein geplanter Pflichtschritt unbestätigt fehlt.
+
+7.2 Teammodi
+
+Modus
+
+Ablauf
+
+Maximales Standardbudget
+
+Schnell
+
+stärkstes geeignetes Modell, Endprüfung im Prompt
+
+1 Modellaufruf
+
+Team
+
+Planner, 2 Spezialisten, Critic, Synthesizer
+
+5 Modellaufrufe
+
+Tief
+
+Planner, bis 3 Spezialisten, 2 unabhängige Critics, Synthesizer
+
+7 Modellaufrufe
+
+Budgets sind Obergrenzen. Unnötige Aufrufe werden ausgelassen. Wenn mehrere Provider aktiv sind,
+bevorzugt Critic oder Synthesizer eine andere Modellfamilie als der Hauptspezialist.
+
+7.3 Provider Mesh
+
+Erste produktive Adapter:
+
+OpenAI Responses API,
+
+xAI Responses/OpenAI-kompatible API,
+
+Anthropic Messages API,
+
+Gemini GenerateContent API,
+
+validierter eigener OpenAI-kompatibler Endpunkt.
+
+Ein Adapter besitzt feste Basisadresse, Authentifizierungsart, Modell-ID, Rollen, Timeouts,
+Tokenlimit und normalisierte Antwort. Nutzerinhalt darf keine Provideradresse bestimmen.
+
+7.4 Run Receipt
+
+Jeder Run speichert mindestens:
+
+{
+  "runId": "stabile UUID",
+  "conversationId": "stabile UUID",
+  "userId": "datensparsamer Hash",
+  "promptVersion": "2.1.0",
+  "mode": "team",
+  "status": "completed",
+  "providerTrace": [
+    {
+      "role": "engineer",
+      "provider": "openai",
+      "model": "gpt-5.6-sol",
+      "status": "completed",
+      "latencyMs": 4200
+    }
+  ],
+  "modelCalls": 5,
+  "elapsedMs": 9100,
+  "createdAt": "ISO-8601"
+}
+
+Candidate-Rohtexte und Geheimnisse gehören nicht in diesen Trace.
+
+8. Gedächtnis und langlebige Ziele
+
+8.1 Speicherklassen
+
+Conversation: sichtbare Nutzer- und Endantworten.
+
+Project: Architektur, Entscheidungen, Dateien und Fortschritt.
+
+Preference: bestätigte Präferenzen.
+
+Semantic: belegte Fakten mit Ablauf.
+
+Procedure: geprüfte Skills.
+
+Failure: reproduzierbare Fehlerursachen und Reparaturen.
+
+Eval: eingefrorene Aufgaben, Referenzen und Resultate.
+
+8.2 Eigentum und Löschung
+
+Jede Abfrage enthält die serverseitig ermittelte Nutzer-ID. Datenexport, Korrektur, Ablauf und
+Löschung werden vor der allgemeinen Produktionsfreigabe implementiert. E-Mail-Adressen werden
+nicht als Primärschlüssel oder Modellkennung verwendet.
+
+8.3 Zielzustände
+
+draft → planned → ready → running → waiting → verifying → completed | failed | cancelled
+
+Ein Neustart darf Ziel, letzten bestätigten Schritt, Receipts und nächste sichere Aktion nicht
+verlieren.
+
+9. Daily Improvement System
+
+9.1 Erlaubte Lernsignale
+
+explizites Nutzerfeedback,
+
+Nutzerkorrekturen,
+
+fehlgeschlagene Receipts,
+
+Build- und Testergebnisse,
+
+Quellen- und Evidence-Prüfungen,
+
+Latenz, Kosten und Providerausfälle,
+
+freigegebene öffentliche oder lizenzierte Trainingsdaten.
+
+9.2 Verbotene Lernsignale
+
+private Gesprächsrohdaten ohne ausdrückliche Einwilligung,
+
+Geheimnisse und Zugangsdaten,
+
+Candidate-Antworten als Referenzwahrheit,
+
+fremde proprietäre Modellantworten außerhalb erlaubter Nutzung,
+
+nach Candidate-Sicht ausgewählte Benchmarkfälle,
+
+bloße Nutzerverweildauer als Qualitätsbeweis.
+
+9.3 Täglicher Lauf
+
+abgeschlossene und fehlgeschlagene Runs selektieren,
+
+Daten minimieren und sensible Inhalte entfernen,
+
+Fehlercluster bilden,
+
+höchstwertigen reproduzierbaren Fall wählen,
+
+Baseline und genau einen Candidate einfrieren,
+
+vollständige Golden- und Safety-Suites ausführen,
+
+Qualität, Sicherheit, Latenz und Kosten vergleichen,
+
+Candidate verwerfen oder zum Canary freigeben,
+
+Canary überwachen und bei Regression zurückrollen,
+
+Improvement Receipt veröffentlichen.
+
+Der Scheduler darf Candidates erzeugen, aber keine G3- oder G4-Änderung ohne die vorgesehene
+Freigabe aktivieren.
+
+10. TankAI-Modellprogramm
+
+10.1 Tank Router
+
+Zweck: Aufgabenklasse, Risiko, Modalität und bestes Modell-/Toolprofil wählen.
+
+Eingabe: minimierte Auftragsmerkmale und verfügbare Fähigkeiten,
+
+Ausgabe: Rollen, Providerreihenfolge, Budget und Unsicherheit,
+
+Trainingsdaten: freigegebene Run-Metadaten und verifizierte Outcomes,
+
+Primärmetriken: Routing-Regret, Completion Rate, Kosten und kritische Fehlroute,
+
+erste Zielgröße: klein genug für CPU- oder Edge-Inferenz.
+
+10.2 Tank Critic
+
+Zweck: unbelegte Claims, Zielauslassungen, Action-Receipt-Widersprüche, Injection und
+Sicherheitsfehler erkennen.
+
+positives Material: verifizierte gute Endergebnisse,
+
+negatives Material: reproduzierbare Fehlerfälle und kontrollierte Mutationen,
+
+keine Bewertung eigener Trainingsantworten ohne unabhängige Referenz,
+
+hoher Recall für kritische Fehler, kalibrierte Unsicherheit.
+
+10.3 Tank Core
+
+Zweck: allgemeiner Dialog, Planung, Toolverträge, Deutsch/Englisch und Projektkontinuität.
+
+Stufen:
+
+offenes Basismodell nach Lizenz-, Qualität- und Hardwareprüfung auswählen,
+
+Tokenizer- und Sprachabdeckung messen,
+
+rechtmäßigen Instruction-/Tool-/Recovery-Korpus erzeugen,
+
+Supervised Fine-Tuning,
+
+Preference-Optimierung nur mit unabhängigen Labels,
+
+Safety- und Tool-Evals,
+
+quantisierte Inferenzprofile,
+
+signierter Modellcheckpoint und Modellkarte,
+
+Shadow-Traffic,
+
+begrenzter Canary.
+
+10.4 Tank Code und Tank Music
+
+Tank Code optimiert Repositoryverständnis, Patchgenauigkeit, Build-/Testschleifen und sichere
+Werkzeugverwendung. Tank Music optimiert musikalische Repräsentation, MIDI, Arrangement,
+Soundbeschreibung und erklärbare Varianten. Beide bleiben Spezialisten unter dem Commander und
+dürfen den allgemeinen Sicherheitskern nicht umgehen.
+
+10.5 Kein Frontier-Pretrain ohne Startgate
+
+Ein Training von null beginnt erst, wenn vorhanden sind:
+
+dokumentierter Datenbestand und Lizenzen,
+
+dedizierter Datenschutz- und Sicherheitsprozess,
+
+Tokenizer- und Architekturentscheidung,
+
+Compute-, Speicher-, Energie- und Finanzbudget,
+
+verteilte Trainings- und Checkpoint-Infrastruktur,
+
+unabhängige Evals und Red Team,
+
+Abbruch-, Recovery- und Releaseplan.
+
+Ohne dieses Gate wird kein „eigenes Frontier-Modell“ behauptet.
+
+11. Fehlerregister und Gegenmaßnahmen
+
+Fehlerklasse
+
+Verbindliche Gegenmaßnahme
+
+Halluzination
+
+Claims klassifizieren, aktuelle Quellen, Evidence Judge
+
+falsche Aktionsbehauptung
+
+Action Receipt als Freigabebedingung
+
+Gefälligkeit
+
+Critic prüft Grundannahme und Gegenargument
+
+Kontextverlust
+
+versioniertes Project Memory vor jeder Änderung
+
+unnötige Rückfrage
+
+Default-Policy und materielle-Frage-Gate
+
+zu große Autonomie
+
+Seiteneffektklassen und exakte Autorisierung
+
+zu kleine Autonomie
+
+sichere reversible Arbeit ohne Zwischenstopp
+
+Plan statt Ergebnis
+
+frühester echter Meilenstein und Artefaktpflicht
+
+Teilprodukt als Gesamtprodukt
+
+Release-Capability-Matrix
+
+Mehrheitsfehler
+
+Tests und Belege höher als Modellstimmen
+
+Prompt Injection
+
+Rangordnung, Datentrennung, Tool-Allowlist
+
+veraltete API
+
+offizielle Dokumentation und Versionsprüfung
+
+ungetesteter Code
+
+Build-/Test-Receipt
+
+Secret Leak
+
+serverseitige Secrets, Redaction, kein Client-Key
+
+Mandantenleck
+
+serverseitige User-ID in jeder Abfrage
+
+Kostenexplosion
+
+Modusbudgets, Rate Limits, Tokenlimits
+
+stiller Teilausfall
+
+degradierter Status und vollständiger Fehlertrace
+
+regressives Lernen
+
+vollständiger Golden-Korpus, Canary, Rollback
+
+Eval-Gaming
+
+eingefrorener Fingerprint und unabhängiger Richter
+
+Anbieterlock-in
+
+normalisierte Adapter und eigene Datenverträge
+
+künstliche Länge
+
+Relevanz- und Wiederholungsprüfung
+
+Wettbewerber werden nur über reproduzierbare Black-Box-Evals verglichen. Das Fehlerregister
+enthält keine unbelegten Markenurteile.
+
+12. Sicherheits- und Betriebsstandard
+
+Vor allgemeiner Freigabe müssen mindestens erfüllt sein:
+
+Threat Model für Prompt Injection, SSRF, XSS, CSRF, Auth-Bypass und Datenabfluss,
+
+serverseitige Autorisierung aller privaten Routen,
+
+Rate-, Kosten-, Laufzeit- und Größenlimits,
+
+parametrisierte D1-/SQL-Abfragen,
+
+Secret Management und Log-Redaction,
+
+Abhängigkeits- und Supply-Chain-Prüfung,
+
+Backup, Datenmigration und Recovery-Test,
+
+Audit-Receipts für externe Aktionen,
+
+Lösch- und Exportpfad,
+
+Last-, Fehler-, Chaos- und Canary-Tests,
+
+signierte, unveränderbare Releases.
+
+NIST AI RMF, OWASP ASVS und die jeweils aktuelle OWASP-Risikoklassifikation für
+LLM-/GenAI-Anwendungen dienen als externe Mindestorientierung. Maßgeblich bleiben konkrete Tests
+im Produkt.
+
+13. Releasephasen
+
+R0 – lokale Orchestrierungsbasis
+
+Status: implementiert und lokal geprüft als TankAI v0.4.0.
+
+Vorhanden:
+
+Provideradapter,
+
+Teamplanung, Spezialisten, Critic und Synthesizer,
+
+Goal-, Memory-, Tool- und Research-Basis,
+
+Golden-Evals, Candidates, Promotion und Rollback,
+
+versionierte Skills,
+
+kontrolliertes Routinglernen,
+
+Worker-Isolation und Secret-Redaction,
+
+29 erfolgreiche Tests im archivierten Release.
+
+Nicht öffentlich produktiv; JSON-Dateispeicher und lokaler Node-Server.
+
+R1 – echte Webgrundlage
+
+Status: als TankAI Web v0.5.0 implementiert und privat produktiv bereitgestellt.
+
+öffentlich erreichbare Landingpage,
+
+geschützte ChatGPT-Anmeldung,
+
+D1-gesicherte Conversations, Runs, Quoten und Feedback,
+
+serverseitige Provider-Secrets,
+
+OpenAI-, xAI-, Anthropic-, Gemini- und Custom-Adapter,
+
+Schnell-, Team- und Tiefenmodus,
+
+Planner/Specialists/Critic/Synthesizer,
+
+sichtbarer, datensparsamer Teamtrace,
+
+verbindlicher Masterprompt v2.0.0 direkt in der Runtime,
+
+produktiver Build und HTTPS-Deployment.
+
+Abnahme: Ein angemeldeter Nutzer sendet eine Nachricht, der Server führt einen echten Modelllauf
+aus, speichert nur Endantwort und Metadaten unter der richtigen Nutzer-ID und liefert einen
+prüfbaren Run-Trace. Ohne Provider-Secret meldet das System ehrlich einen Konfigurationsblocker.
+
+R1.1 – ehrliche Receipts und Improvement Control
+
+Status: als TankAI Web v0.6.0 implementiert, geprüft und privat bereitgestellt.
+
+Ausführungsabschluss, Faktenverifikation und Benchmarkstatus getrennt ausweisen,
+
+kein „VERIFIED“ allein aufgrund erfolgreicher Modellaufrufe,
+
+maschinenlesbarer TankBench-Vertrag mit deterministischem Promotion Gate,
+
+SHA-256-Fingerprint für eingefrorene Eval-Korpora,
+
+negative, korrigierte Antworten als unveränderbare Lernfälle vormerken,
+
+Nutzerstatus für Feedback, Warteschlange und Mutationssperren,
+
+Provider-Bereitschaft und unabhängige Modellfamilien ehrlich diagnostizieren.
+
+Abnahme: Ein Run erzeugt ein Execution Receipt, das erfolgreiche und fehlgeschlagene Schritte
+zählt und inhaltliche Verifikation ausdrücklich nicht vortäuscht. Eine korrigierte negative
+Bewertung erzeugt einen referenzierten Lernfall. Kein Lernfall kann ohne TankBench-Promotion Gate
+Prompt oder Gewichte verändern.
+
+R2 – langlebige Ziele und Werkzeuge
+
+Status: mehrquellige Recherche als TankAI Web v0.22.0 implementiert und geprüft.
+
+Implementiert:
+
+nutzereigene, D1-persistente Goals,
+
+verbindlicher Zustandsautomat
+draft → planned → ready → running → waiting → verifying → completed | failed | cancelled,
+
+Fortschritt, letzter bestätigter Schritt und nächste sichere Aktion,
+
+unveränderliche Goal Events für Anlage, Status, Fortschritt und zugeordnete Runs,
+
+optimistische Zielversionen gegen verlorene parallele Änderungen,
+
+Wiederaufnahme nach Browser- oder Worker-Neustart aus dem bestätigten D1-Stand,
+
+auswählbarer Zielkontext in der Weboberfläche und serverseitige Bindung an Teamläufe,
+
+nutzereigene Projektbereiche mit Archivierung, optimistischen Projektversionen und
+unveränderlichen Ereignis-Receipts,
+
+Text-, Markdown- und JSON-Dateien mit SHA-256, Byte-/Zeichenlimits und vollständiger,
+unveränderlicher Versionshistorie,
+
+Projekt- und Dateizugriffe mit serverseitigem Mandantenfilter,
+
+ausgewählter Projektkontext in der Weboberfläche und serverseitige Run-Bindung,
+
+Dateiinhalte als ausdrücklich unvertrauenswürdige Daten unterhalb von Masterprompt,
+Rechten und aktuellem Nutzerauftrag,
+
+archivierte Projekte sperren Dateiänderungen und neue Modellläufe,
+
+nutzereigene Capability Leases für model.run mit Konto- oder Projektbereich,
+
+feste Modusbindung an Schnell, Team oder Tief, 15 Minuten bis 24 Stunden Gültigkeit und
+höchstens 1 bis 20 Nutzungen,
+
+serverseitige Lease-Prüfung vor Quotenreservierung, Gesprächsanlage und Provideraufruf,
+
+atomare Lease-Nutzung mit Run-Bindung, Verbrauchszähler, Versionsschutz und unveränderlichem
+Erteilungs-, Nutzungs- oder Widerrufs-Receipt,
+
+abgelaufene, erschöpfte, widerrufene, fremde, projekt- oder modusfalsche Freigaben lösen keinen
+Provideraufruf aus.
+
+nutzer- und optional projektgebundenes D1-Langzeitgedächtnis mit episodischen, semantischen und
+prozeduralen Einträgen,
+
+lokale deterministische Hash-Embeddings und serverseitige Cosine-Relevanzbewertung ohne
+zwingenden externen Embedding-Provider,
+
+Retrieval vor jedem Modelllauf mit klarer Datengrenze unterhalb von Masterprompt, Rechten und
+aktueller Nutzeranfrage,
+
+automatische episodische Speicherung und deterministische Konsolidierung in semantische
+Kandidaten; erfolgreiche, nicht degradierte Planner-Läufe können prozedurale Kandidaten bilden,
+
+Verifikationszustände observed, candidate, confirmed, disputed, revoked; automatische
+Kandidaten gelten nie allein als verifizierte Fakten,
+
+Nutzerfeedback bestätigt oder bestreitet rungebundene Semantic-/Procedure-Einträge; eine
+ausdrückliche Korrektur kann als bestätigte Erinnerung gespeichert werden,
+
+Hot-/Warm-/Cold-/Deleted-Retention, Ablaufzeiten, Zugriffszähler, Versionsschutz und
+append-only Memory Events,
+
+geschützte Memory-API für nutzereigene Einsicht und Zustandsänderung.
+
+eigene, nutzer- und optional projektgebundene Tool Execution Leases mit exakter Toolbindung,
+Ablauf, Nutzungszähler, Widerruf und append-only Lease Events,
+
+persistente Werkzeugaufträge mit queued → running → succeeded | failed | cancelled,
+Eingabehash, Idempotenzschlüssel, Fortschritt, Versuchszähler, Version und Zeitstempeln,
+
+atomare Kopplung aus Lease-Verbrauch, genau einer Jobanlage und beiden initialen Receipts;
+identische Replays verbrauchen keine weitere Nutzung, abweichende Replays werden blockiert,
+
+exklusive Claim-Tokens und optimistische Jobversionen gegen doppelte Worker-Ausführung,
+
+Heartbeat-basierte Recovery verwaister Claims nach fünf Minuten und kontrolliertes Retry bis
+höchstens drei Versuche,
+
+append-only Job Events für Anlage, Claim, Erfolg, Fehler, Retry, Abbruch und Recovery,
+
+deterministische Basiswerkzeuge: SHA-256, Textanalyse, JSON-Validierung und Memory-Retention,
+
+kontrolliertes web.fetch für einzelne HTTPS-Ziele mit blockierten Zugangsdaten, IP-Literalen,
+lokalen/Intranetnamen und Sonderports, manuell revalidierten Redirects, ausgelassenen Cookies,
+Text-Content-Type-Positivliste, Laufzeit- und Bytebudget sowie SHA-256-Provenienz,
+
+Netzwerktext bleibt untrusted; bekannte Prompt-Injection-Muster werden als Signale gemeldet und
+erhalten weder System- noch Werkzeugrechte,
+
+project.document.inspect liest nur eine Datei unter exakt passender Nutzer- und Projekt-ID,
+meldet Hash, Struktur, Preview, JSON-Zustand und Injection-Signale und führt keinen Inhalt aus,
+
+code.patch.inspect validiert textuelle Unified Diffs, zählt Änderungen, markiert Binärpatches und
+unsichere Pfade und wendet weder Patch noch Code an,
+
+zentrale deny-by-default Egress-Policy für web.fetch: exakte und Wildcard-Hostregeln,
+vorrangige Denylist, erneute Prüfung jedes Redirects und Policy-Hash im Werkzeugergebnis,
+
+mehrquellige Recherche über zwei bis vier ausdrücklich gewählte HTTPS-Quellen mit mindestens
+zwei unterschiedlichen Hosts, eigenem persistenten web.fetch-Job und Receipt pro Quelle,
+begrenztem Ergebnis-Excerpt, Prompt-Injection-Signalen und ehrlichem Status
+unverified-source-observations,
+
+authentifizierter SSE-Stream für nutzereigene Tool-Jobs mit Cursor aus Jobversion und Event-ID,
+15-Sekunden-Streamingfenster, automatischer Wiederverbindung, Heartbeat und Live-Anzeige in der
+Werkzeugoberfläche; übertragen werden ausschließlich Ausführungsstatus und unveränderliche
+Events, niemals Tool-Eingabe oder Tool-Ausgabe,
+
+pro Werkzeug veröffentlichte Eingabe-, Ausgabe-, Laufzeit- und Netzwerkbudgets im Katalog und im
+Execution Receipt,
+
+geschützte Weboberfläche für Tool-Freigabe, Konto-/Projektbindung, Projektdateiauswahl,
+Jobanlage, Ausführung, Retry, Abbruch und sichtbare Resultate.
+
+vollständiger nutzereigener JSON-Export über 55 explizit registrierte D1-Datenmengen mit
+Zeilenzahlen, Einzelhashes, Gesamthash und Redaction flüchtiger Zugangswerte,
+
+zweistufige, kontoweite Löschung mit individueller Bestätigungsphrase, zentraler
+Aktionssperre, 24-Stunden-Widerrufsfrist, atomarer Löschreihenfolge und Nullprüfung,
+
+anonymisierter Löschbeleg ohne Nutzerkennung oder Nutzerinhalt; sein Beweisumfang bleibt auf
+die TankAI-D1-Anwendungsdatenbank begrenzt.
+
+versionierte CSV-Tabellendokumente mit Komma-/Semikolonerkennung, fester Kopfzeile,
+konsistenter Spaltenzahl, SHA-256 und unveränderlicher Versionshistorie,
+
+statische CSV-Grenzen von 500 Datenzeilen, 50 Spalten und 2.000 Zeichen je Zelle sowie
+Sperre von Spreadsheet-Formel-Injection; Tabelleninhalt wird nicht ausgeführt,
+
+CSV-Strukturanalyse im bestehenden nutzer-, projekt- und lease-gebundenen
+project.document.inspect-Werkzeug.
+
+deterministische CSV-Spaltenprofile mit Null-, Nichtnull-, Eindeutigkeits- und Typzahlen,
+festem Vergleichsvertrag und ausdrücklichem Status factsVerified: false,
+
+lease- und receipt-gebundenes CSV-Filtern und -Sortieren mit höchstens fünf Filtern,
+zwei Sortierschlüsseln, acht Ausgabespalten, zehn Zeilen und begrenzter Zellvorschau.
+
+Noch offen in R2:
+
+binäre Dateiablage in R2 nach bewusster Binding- und Kostenfreigabe,
+
+Suchanbieter zur kontrollierten Quellenentdeckung; die mehrquellige Verarbeitung ausdrücklich
+gewählter URLs ist seit v0.22.0 vorhanden,
+
+binäre Dokumentkonvertierung, weitergehende Tabellenaggregation und MCP auf der vorhandenen
+Tool-Job-Schicht; sichere CSV-Speicherung, Profile, Filter und Sortierung sind seit v0.26.0
+vorhanden,
+
+isolierte Code-Runner-Infrastruktur; statische Patchprüfung ist keine Codeausführung,
+
+kontrollierter Resolver oder Egress-Proxy mit DNS-/IP-Prüfung gegen Rebinding vor allgemeiner
+Netzwerkfreigabe; die Anwendungsschicht ist seit v0.21.0 bereits deny-by-default,
+
+Löschfortpflanzung in plattformverwaltete Backups und Logs; v0.24.0 behauptet diese externe
+Wirkung nicht.
+
+Teilabnahme v0.12.0: Ziel- und Projektzustand, Dateiinhalt, Dateiversionen, Hashes, Capability
+Leases, Run-Receipts, nutzereigenes Langzeitgedächtnis sowie Tool-Leases und Tool-Jobs überleben
+Browser- und Worker-Neustart. Ein einzelnes freigegebenes HTTPS-Ziel kann begrenzt abgerufen,
+eine eigene Projektdatei mandantenfest geprüft und ein textueller Patch statisch analysiert werden.
+Veraltete Paralleländerungen, Mutationen archivierter Projekte, fremde Memory-IDs sowie unpassende
 oder wiederverwendete Einmalfreigaben werden ohne falsche Versions- oder Ausführungs-Receipts
 blockiert. Automatisch extrahierte Memory-Inhalte bleiben als Kandidaten gekennzeichnet.
 Verwaiste Tool-Claims sind wieder einreihbar. Netzwerkdaten und Projektdateien bleiben als
