@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -24,6 +25,8 @@ from .memory import Memory
 from .long_term_memory import LongTermMemory
 from .tools import ToolRegistry
 from .run_store import RunStore
+from .request_dispatch import MonetaryDispatch
+from .supplied_sources import ApprovedSourceBundle
 from .models import (
     Critique,
     Goal,
@@ -66,13 +69,14 @@ class TankAI:
         strict_web_research: bool = False,
         run_store_path: str | None = "tankai_runs.jsonl",
         verified_single_step: bool = False,
+        monetary_dispatch: MonetaryDispatch | None = None,
     ) -> None:
         main_llm = llm if llm is not None else get_llm()
         raw_critic_llm = critic_llm if critic_llm is not None else main_llm
         self.main_llm_identity = llm_identity(main_llm)
         self.critic_llm_identity = llm_identity(raw_critic_llm)
         self.critic_independent = self.main_llm_identity != self.critic_llm_identity
-        self.llm_call_budget = LLMCallBudget(max_llm_calls_per_run)
+        self.llm_call_budget = LLMCallBudget(max_llm_calls_per_run, monetary_dispatch=monetary_dispatch)
         self.llm = BudgetedLLM(main_llm, self.llm_call_budget)
         self.critic_llm = (
             self.llm
@@ -117,12 +121,35 @@ class TankAI:
         # Laufzeit-Zustand
         self.receipts: list[Receipt] = []
         self.current_goal: Optional[Goal] = None
+        self._supplied_sources: ApprovedSourceBundle | None = None
+        self._run_lock = threading.Lock()
 
     def run(
         self,
         goal_description: str,
         definition_of_done: str = "Eine klare, überprüfbare Antwort liegt vor.",
         constraints: Optional[list[str]] = None,
+        *,
+        supplied_sources: ApprovedSourceBundle | None = None,
+    ) -> RunResult:
+        # A second caller must not replace the active goal, source grant or
+        # shared call counter while specialist threads are still using them.
+        if not self._run_lock.acquire(blocking=False):
+            raise RuntimeError("Diese TankAI-Instanz bearbeitet bereits einen Lauf")
+        try:
+            if supplied_sources is not None and type(supplied_sources) is not ApprovedSourceBundle:
+                raise ValueError("Ungültige bereitgestellte Quellen")
+            self._supplied_sources = supplied_sources
+            return self._run(goal_description, definition_of_done, constraints)
+        finally:
+            self._supplied_sources = None
+            self._run_lock.release()
+
+    def _run(
+        self,
+        goal_description: str,
+        definition_of_done: str,
+        constraints: Optional[list[str]],
     ) -> RunResult:
         """
         Führt den kompletten PLAN → ROUTE → VERIFY → LEARN Zyklus aus.
@@ -143,14 +170,14 @@ class TankAI:
 
         # LEARN / RETRIEVAL: Kurzzeit-Memory + Langzeit-Memory
         memory_context = ""
-        past = self.memory.search(goal_description, limit=3)
+        past = [] if self._supplied_sources is not None else self.memory.search(goal_description, limit=3)
         if past:
             memory_context = "\n\n".join(
                 f"[ShortMem | {e.source} | conf={e.confidence:.2f}] {e.content[:250]}"
                 for e in past
             )
 
-        if self.ltm:
+        if self.ltm and self._supplied_sources is None:
             hits = self.ltm.retrieve(goal_description, k=5)
             if hits:
                 ltm_ctx = self.ltm.format_retrieval_context(hits)
@@ -166,7 +193,7 @@ class TankAI:
 
         # 1. PLAN (mit Procedural Memory falls vorhanden)
         procedural_context = ""
-        if self.ltm:
+        if self.ltm and self._supplied_sources is None:
             proc_hits = self.ltm.retrieve(
                 goal_description,
                 k=3,
@@ -243,6 +270,7 @@ class TankAI:
                     self.llm,
                     specialist_type=step.specialist_type,
                     tools=self.tools,
+                    supplied_sources=self._supplied_sources,
                 )
 
                 parts = []
@@ -338,7 +366,7 @@ class TankAI:
 
         # Finale Critic-Prüfung der Gesamtheit
         final_critique, final_crit_receipt = self.critic.critique_result(
-            final_answer, "Gesamtergebnis / Synthese", goal
+            final_answer, "Gesamtergebnis / Synthese", goal, **self._source_critic_context(goal)
         )
 
         # Deterministische Quellenprüfung der Synthese. Ein LLM-Critic darf fehlende
@@ -393,6 +421,18 @@ class TankAI:
         goal.status = status
 
         source_ids, source_urls = self._research_provenance()
+        if self.ltm and (self.llm_call_budget.monetary_dispatch is not None or self._supplied_sources is not None):
+            # The owner pilot has five admitted model attempts. Preserve its
+            # episode; do not silently add a sixth call for memory distillation
+            # or replace model-backed extraction with heuristic "knowledge".
+            self.receipts.append(Receipt(
+                action="memory_consolidation_deferred", actor=Role.COMMANDER,
+                input_summary="Begrenzter Besitzerpilot",
+                output_summary="Lauf wird gespeichert; zusätzliche Modellaufbereitung bleibt ausstehend",
+                success=False,
+                details={"deferred": True, "reason": "bounded_source_run" if self._supplied_sources else "bounded_owner_pilot",
+                         "additional_model_calls": 0, "retry_scheduled": False},
+            ))
         failed_step_ids = [
             step.id for step in plan.steps if step.status != TaskStatus.COMPLETED
         ]
@@ -409,7 +449,7 @@ class TankAI:
             release_ready=final_critique.passed and not any_simulation,
             plan_gate_passed=plan_gate_passed,
             failed_step_ids=failed_step_ids,
-            web_research_provider=self.tools.web_research_status(),
+            web_research_provider="disabled" if self._supplied_sources is not None else self.tools.web_research_status(),
             source_ids=source_ids,
             source_urls=source_urls,
             plan=plan,
@@ -423,7 +463,7 @@ class TankAI:
         if self.ltm:
             run_id = self.ltm.store_episode(result, goal.description)
             created = []
-            if not any_simulation:
+            if not any_simulation and self.llm_call_budget.monetary_dispatch is None and self._supplied_sources is None:
                 created = self.ltm.consolidate(run_id, llm=self.llm)
                 if final_critique.passed and plan is not None:
                     self.ltm.promote_to_procedure(
@@ -517,7 +557,7 @@ class TankAI:
             critic_llm_identity=self.critic_llm_identity,
             critic_independent=self.critic_independent,
             verification_passed=False, release_ready=False, plan_gate_passed=False,
-            web_research_provider=self.tools.web_research_status(),
+            web_research_provider="disabled" if self._supplied_sources is not None else self.tools.web_research_status(),
             plan=plan, critiques=[*critiques, rejection], receipts=list(self.receipts),
             memory_entries_created=0, duration_seconds=round(time.perf_counter() - start, 3),
         )
@@ -559,6 +599,11 @@ class TankAI:
         return result
 
 
+    def _source_critic_context(self, goal: Goal) -> dict[str, str]:
+        if self._supplied_sources is None:
+            return {}
+        return {"source_evidence": self._supplied_sources.evidence(goal.description).render()}
+
     def _execute_and_critique(self, specialist, step, goal, context: str):
         """Kapselt Agentenfehler, damit ein einzelner Schritt den Run nicht unkontrolliert abbricht."""
         try:
@@ -594,7 +639,7 @@ class TankAI:
 
         try:
             critique, crit_receipt = self.critic.critique_result(
-                result_text, step.description, goal
+                result_text, step.description, goal, **self._source_critic_context(goal)
             )
         except LLMRateLimitExceeded:
             raise
@@ -621,13 +666,21 @@ class TankAI:
         crit_receipt.success = critique.passed
         crit_receipt.output_summary = f"passed={critique.passed}, score={critique.score}"
         crit_receipt.details["deterministic_research_gate"] = (
-            step.specialist_type == "research" and self.require_research_evidence
+            self._supplied_sources is not None or (step.specialist_type == "research" and self.require_research_evidence)
         )
         return result_text, exec_receipt, critique, crit_receipt
 
     @staticmethod
     def _citation_ids(text: str) -> set[str]:
         return set(re.findall(r"\[(SRC-[A-F0-9]{8})\]", text or "", flags=re.IGNORECASE))
+
+    def _evidence_citation_ids(self, text: str) -> set[str]:
+        markers = self._citation_ids(text)
+        if self._supplied_sources is not None:
+            # Malformed source-like markers cannot hide alongside a valid ID.
+            markers.update(item if len(item) <= 164 else "SRC-INVALID-LENGTH" for item in
+                           re.findall(r"\[(SRC-[^\]\r\n]*)\]", text or "", flags=re.IGNORECASE))
+        return {item.upper() for item in markers}
 
     def _apply_step_research_gate(
         self,
@@ -636,7 +689,7 @@ class TankAI:
         result_text: str,
         exec_receipt: Receipt,
     ) -> Critique:
-        if step.specialist_type != "research" or not self.require_research_evidence:
+        if self._supplied_sources is None and (step.specialist_type != "research" or not self.require_research_evidence):
             return critique
 
         expected_ids = {
@@ -644,7 +697,7 @@ class TankAI:
             for item in exec_receipt.details.get("source_ids", [])
             if isinstance(item, str)
         }
-        cited_ids = {item.upper() for item in self._citation_ids(result_text)}
+        cited_ids = self._evidence_citation_ids(result_text)
         issues = list(critique.issues)
         suggestions = list(critique.suggestions)
         passed = critique.passed
@@ -655,11 +708,11 @@ class TankAI:
             passed = False
             score = min(score, 0.2)
             issues.append(
-                "Research-Schritt besitzt keine erfolgreich abgerufenen Webquellen"
+                "Schritt besitzt keine bestätigten Quellenbelege"
                 + (f": {research_error}" if research_error else "")
             )
             suggestions.append(
-                "Suchanbieter und API-Key konfigurieren und den Research-Schritt erneut ausführen"
+                "Freigegebene Quellen bereitstellen oder den freigegebenen Rechercheweg prüfen"
             )
         else:
             valid = cited_ids & expected_ids
@@ -667,7 +720,7 @@ class TankAI:
             if not valid:
                 passed = False
                 score = min(score, 0.35)
-                issues.append("Research-Ergebnis zitiert keine der tatsächlich abgerufenen Quellen-IDs")
+                issues.append("Ergebnis zitiert keine der bestätigten Quellen-IDs")
                 suggestions.append("Faktische Aussagen mit den bereitgestellten [SRC-…]-IDs belegen")
             if unknown:
                 passed = False
@@ -688,10 +741,15 @@ class TankAI:
             timestamp=critique.timestamp,
         )
 
+    def _is_evidence_receipt(self, receipt: Receipt) -> bool:
+        return receipt.action == "execute_step:research" or (
+            self._supplied_sources is not None and receipt.action.startswith("execute_step:")
+            and receipt.details.get("evidence_mode") == "supplied")
+
     def _source_catalog(self) -> dict[str, dict[str, str]]:
         catalog: dict[str, dict[str, str]] = {}
         for receipt in self.receipts:
-            if receipt.action != "execute_step:research":
+            if not self._is_evidence_receipt(receipt):
                 continue
             for item in receipt.details.get("sources", []):
                 if not isinstance(item, dict):
@@ -711,7 +769,7 @@ class TankAI:
         return catalog
 
     def _append_source_catalog(self, final_answer: str) -> str:
-        cited = {item.upper() for item in self._citation_ids(final_answer)}
+        cited = self._evidence_citation_ids(final_answer)
         if not cited:
             return final_answer
         catalog = self._source_catalog()
@@ -719,10 +777,13 @@ class TankAI:
         if not selected:
             return final_answer
         missing = [source for source in selected if source["url"] not in final_answer]
-        if not missing:
+        if not missing and self._supplied_sources is None:
             return final_answer
         lines = [final_answer.rstrip(), "", "### Quellen"]
-        for source in missing:
+        if self._supplied_sources is not None:
+            lines.append("Bereitgestellte Texte; kein aktueller Webabruf. "
+                         "Freigabe und Prüfsummen bestätigen weder Richtigkeit noch Aktualität.")
+        for source in selected if self._supplied_sources is not None else missing:
             title = source["title"] or "Quelle"
             lines.append(f"[{source['source_id']}] {title} — {source['url']}")
         return "\n".join(lines).strip()
@@ -733,7 +794,7 @@ class TankAI:
         seen_ids: set[str] = set()
         seen_urls: set[str] = set()
         for receipt in self.receipts:
-            if receipt.action != "execute_step:research":
+            if not self._is_evidence_receipt(receipt):
                 continue
             for item in receipt.details.get("source_ids", []):
                 value = str(item).upper()
@@ -750,16 +811,16 @@ class TankAI:
     def _apply_final_research_gate(
         self, critique: Critique, final_answer: str, plan: Plan | None
     ) -> Critique:
-        if not self.require_research_evidence or plan is None:
+        if plan is None or (not self.require_research_evidence and self._supplied_sources is None):
             return critique
         research_steps = [step for step in plan.steps if step.specialist_type == "research"]
-        if not research_steps:
+        if not research_steps and self._supplied_sources is None:
             return critique
 
         expected_ids: set[str] = set()
         research_errors: list[str] = []
         for receipt in self.receipts:
-            if receipt.action != "execute_step:research":
+            if not self._is_evidence_receipt(receipt):
                 continue
             expected_ids.update(
                 str(item).upper()
@@ -770,7 +831,7 @@ class TankAI:
             if error:
                 research_errors.append(error)
 
-        cited_ids = {item.upper() for item in self._citation_ids(final_answer)}
+        cited_ids = self._evidence_citation_ids(final_answer)
         issues = list(critique.issues)
         suggestions = list(critique.suggestions)
         passed = critique.passed
@@ -779,10 +840,10 @@ class TankAI:
         if not expected_ids:
             passed = False
             score = min(score, 0.2)
-            issues.append("Finale Antwort beruht auf einem Research-Plan ohne verifizierbare Webquellen")
+            issues.append("Finale Antwort besitzt keine bestätigten Quellenbelege")
             if research_errors:
                 issues.append("Webrecherche-Fehler: " + "; ".join(research_errors[:3]))
-            suggestions.append("Webrecherche erfolgreich ausführen, bevor eine finale Faktenantwort freigegeben wird")
+            suggestions.append("Freigegebene Quellenbelege bereitstellen, bevor die Faktenantwort freigegeben wird")
         else:
             valid = cited_ids & expected_ids
             unknown = cited_ids - expected_ids
@@ -795,7 +856,7 @@ class TankAI:
                 passed = False
                 score = min(score, 0.25)
                 issues.append("Finale Antwort enthält unbekannte Quellen-IDs: " + ", ".join(sorted(unknown)))
-                suggestions.append("Nur tatsächlich abgerufene Quellen-IDs zitieren")
+                suggestions.append("Nur bestätigte Quellen-IDs zitieren")
 
         return Critique(
             id=critique.id,
@@ -869,7 +930,8 @@ class TankAI:
         def execute_one(idx_step):
             i, step = idx_step
             specialist = Specialist(
-                self.llm, specialist_type=step.specialist_type, tools=self.tools
+                self.llm, specialist_type=step.specialist_type, tools=self.tools,
+                supplied_sources=self._supplied_sources,
             )
             local_receipts: list[Receipt] = []
             local_critiques: list[Critique] = []

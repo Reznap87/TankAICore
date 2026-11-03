@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import traceback
+from contextlib import nullcontext
 from dataclasses import dataclass
 from http import HTTPStatus, cookies
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -29,6 +30,10 @@ if str(ROOT) not in sys.path:
 
 from tankai import __version__
 from tankai.core.llm import LLMRateLimitExceeded
+from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
+from tankai.core.request_dispatch import DispatchDenied
+from tankai.core.request_pricing import PricingError
+from tankai.web.owner_pilot import OwnerPilot, OwnerPilotForbidden
 from tankai.dev_orchestrator.job_queue import (
     DevelopmentJobQueue,
     JobState,
@@ -244,15 +249,26 @@ class AppContext:
     login_limiter: LoginRateLimiter
     provider_limiter: ProviderCallRateLimiter
     auth_state: AuthState | None = None
+    owner_pilot: OwnerPilot | None = None
+
+    def __post_init__(self) -> None:
+        if self.owner_pilot is not None and (
+                type(self.owner_pilot) is not OwnerPilot or self.auth_mode != "session"
+                or self.job_queue is not None or not self.runtimes.require_request_admission):
+            raise RuntimeError("Besitzerpilot benötigt Session-Anmeldung und geschützte Laufzeiten")
 
     @classmethod
-    def from_env(cls, server_host: str) -> "AppContext":
+    def from_env(cls, server_host: str, *, owner_pilot: OwnerPilot | None = None) -> "AppContext":
         mode = _env("TANKAI_AUTH_MODE", "session").lower()
         if mode not in {"session", "disabled"}:
             raise RuntimeError("TANKAI_AUTH_MODE muss session oder disabled sein")
         is_loopback = server_host in {"127.0.0.1", "localhost", "::1"}
         if mode == "disabled" and not is_loopback:
             raise RuntimeError("Deaktivierte Authentifizierung ist nur auf Loopback erlaubt")
+        if owner_pilot is not None and (type(owner_pilot) is not OwnerPilot or mode != "session"):
+            raise RuntimeError("Besitzerpilot benötigt geprüfte Konfiguration und Session-Anmeldung")
+        if owner_pilot is not None and _env_bool("TANKAI_DEV_QUEUE_ENABLED", False):
+            raise RuntimeError("Besitzerpilot erlaubt keine parallele Development-Queue")
         data_root = Path(_env("TANKAI_DATA_ROOT", ".tankai/data")).resolve()
         auth_db = Path(_env("TANKAI_AUTH_DB", str(data_root / "auth.db"))).resolve()
         cookie_secure = _env_bool("TANKAI_COOKIE_SECURE", not is_loopback)
@@ -289,7 +305,8 @@ class AppContext:
             auth_mode=mode,
             auth_state=auth_state,
             auth=auth,
-            runtimes=WorkspaceRuntimeManager(data_root),
+            runtimes=WorkspaceRuntimeManager(data_root, require_request_admission=owner_pilot is not None),
+            owner_pilot=owner_pilot,
             job_queue=job_queue,
             cookie_secure=cookie_secure,
             hsts_seconds=_safe_int(
@@ -847,6 +864,8 @@ class Handler(BaseHTTPRequestHandler):
                 "registration_enabled": self.app.allow_registration,
                 "production_ready": False,
                 "development_queue_enabled": self.app.job_queue is not None,
+                "live_model_requests_require_budget": True,
+                "monetary_admission_configured": self.app.owner_pilot is not None,
             }
             if context is not None:
                 try:
@@ -865,7 +884,8 @@ class Handler(BaseHTTPRequestHandler):
                             "web_research": web_status,
                             "execution_mode": mode,
                             "live_provider": mode == "live",
-                            "verification_ready": mode == "live" and tank.critic_independent and web_status != "disabled",
+                            "verification_ready": (mode == "live" and self.app.owner_pilot is not None
+                                                   and tank.critic_independent and web_status != "disabled"),
                             "tenant_isolation": True,
                             "ltm": tank.ltm.summary() if tank.ltm else "",
                         })
@@ -1991,8 +2011,26 @@ class Handler(BaseHTTPRequestHandler):
         self._json(self._me_payload(session.context), 201, set_cookie=self._session_cookie(session.token, remaining))
 
     def _run(self, context: AuthContext) -> None:
+        pilot = self.app.owner_pilot
+        if pilot is not None:
+            try:
+                pilot.authorize(context, self.app.auth)
+            except OwnerPilotForbidden:
+                self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id,
+                                    success=False, details='{"reason":"owner_pilot_forbidden"}')
+                self._json({"error": "Besitzerpilot ist für diesen Zugang nicht freigegeben"}, 403)
+                return
+            except DispatchDenied:
+                self._json({"error": "Sichere Quellenfreigabe ist derzeit nicht möglich"}, 503)
+                return
+            except Exception:
+                self._internal_error("owner_pilot_admission")
+                return
         data = self._read_json()
         if data is None:
+            return
+        if pilot is not None and set(data) - {"goal", "goal_description", "definition_of_done", "parallel"}:
+            self._json({"error": "Pilot-Einstellungen werden ausschließlich serverseitig festgelegt"}, 400)
             return
         goal_raw = data.get("goal") or data.get("goal_description") or ""
         dod_raw = data.get("definition_of_done") or "Eine klare, überprüfbare Antwort liegt vor."
@@ -2010,15 +2048,42 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(parallel, bool):
             self._json({"error": "parallel muss true oder false sein"}, 400)
             return
+        if pilot is not None and parallel:
+            self._json({"error": "Der Besitzerpilot erlaubt nur einen Auftrag gleichzeitig"}, 400)
+            return
         try:
             with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
                 tank = runtime.tank
+                # The legacy web path must never bypass monetary admission.
+                # A mixed simulation/live pair can still spend on its real
+                # adapter, so it requires exactly the same shared owner pilot.
+                # Keep read-only history and account access available while
+                # reviewed prices/counters/sources are still missing.
+                if pilot is None and (not tank.llm.is_simulation or not tank.critic_llm.is_simulation):
+                    self.app.auth.audit(
+                        "run", user_id=context.user_id, workspace_id=context.workspace_id,
+                        success=False, details='{"reason":"monetary_admission_required"}',
+                    )
+                    self._json({
+                        "error": "Reale Modellaufrufe benötigen eine geprüfte gemeinsame Geldfreigabe",
+                        "error_code": "monetary_admission_required",
+                    }, 503)
+                    return
                 tank.parallel = parallel
-                tank.llm_call_budget.set_call_guard(
-                    lambda identity: self.app.provider_limiter.consume(context.user_id, identity)
-                )
+                def admit_provider_call(identity: str) -> None:
+                    if pilot is not None:
+                        pilot.authorize(context, self.app.auth)
+                    self.app.provider_limiter.consume(context.user_id, identity)
+
+                tank.llm_call_budget.set_call_guard(admit_provider_call)
                 try:
-                    result = tank.run(goal_description=goal, definition_of_done=dod)
+                    with (pilot.scope(context, self.app.auth, tank) if pilot else nullcontext(None)) as pilot_job_id:
+                        if pilot is not None:
+                            sources = pilot.sources_for(context, self.app.auth)
+                            result = tank.run(goal_description=goal, definition_of_done=dod,
+                                              supplied_sources=sources)
+                        else:
+                            result = tank.run(goal_description=goal, definition_of_done=dod)
                 finally:
                     tank.llm_call_budget.set_call_guard(None)
                 plan_data = None
@@ -2062,9 +2127,25 @@ class Handler(BaseHTTPRequestHandler):
                     "source_urls": result.source_urls,
                     "ltm": tank.ltm.summary() if tank.ltm else "",
                 }
+                if pilot is not None:
+                    payload["monetary_admission"] = pilot.status(pilot_job_id)
+                    payload["evidence_mode"] = "supplied"
+                    payload["source_approval_id"] = sources.approval_id
                 runtime.history.append(payload)
             self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=True, details=json.dumps({"goal_id": result.goal_id, "status": payload["status"]}))
             self._json(payload)
+        except OwnerPilotForbidden:
+            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id,
+                                success=False, details='{"reason":"owner_pilot_membership_changed"}')
+            self._json({"error": "Besitzerberechtigung ist nicht mehr gültig"}, 403)
+        except BudgetDenied:
+            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id,
+                                success=False, details='{"reason":"owner_pilot_budget_denied"}')
+            self._json({"error": "Der Pilot ist durch seine Geld-, Auftrags- oder Zeitgrenze gesperrt"}, 429)
+        except (BudgetStateError, DispatchDenied, PricingError):
+            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id,
+                                success=False, details='{"reason":"owner_pilot_admission_unavailable"}')
+            self._json({"error": "Sichere Pilotfreigabe ist derzeit nicht möglich"}, 503)
         except LLMRateLimitExceeded as exc:
             self.app.auth.audit(
                 "run",

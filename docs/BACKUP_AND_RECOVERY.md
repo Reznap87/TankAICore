@@ -60,6 +60,28 @@ und SHA-256-Werte mit der lokalen `SHA256SUMS`-Datei verglichen werden.
 Diese Daten benötigen eine getrennte, verschlüsselte Betriebsdatensicherung mit
 eigenem Aufbewahrungs- und Wiederherstellungskonzept.
 
+Für die gemeinsame Geldbuchhaltung gibt es nun einen separat lokal geprüften
+Snapshot-/Restore-Baustein: [BUDGET_SNAPSHOTS.md](BUDGET_SNAPSHOTS.md). Er nimmt
+bestätigte WAL-Daten mit und erhält offene Reservierungen, Sperren und Quoten.
+Wiederhergestellt wird ausschließlich in eine neue isolierte Datei. Dies ist
+keine verschlüsselte Gesamtsicherung, kein Überschreiben eines laufenden
+Geldbuchs und kein Wiederherstellungsnachweis für den Produktionshost.
+Der optionale [verschlüsselte Budget-Wrapper](ENCRYPTED_BUDGET_BACKUP.md) schützt
+nun die gespeicherte Geldbuch-Sicherungsdatei mit AES-256-GCM. Die gemeinsame
+verschlüsselte Sicherung aller Konten-/Arbeitsraum-/Budgetdaten bleibt separat
+offen; getrennt erstellte Sicherungen gelten nicht als konsistenter Gesamtstand.
+
+## Gemeinsamer isolierter Probelauf
+
+Ein reproduzierbarer [Kalt-Restore-Probelauf](COLD_RECOVERY_DRILL.md) prüft jetzt
+einen gemeinsamen künstlichen Konto-/Arbeitsraum-/Quellen-/Geldbuchbestand.
+Nach Ende des Schreibprozesses werden 15 Dateien zusammen verschlüsselt,
+die künstliche Quelle entfernt und der neue Zielordner durch zwei frische
+Prozesse geprüft. Anmeldung, Mandantentrennung, Chat-/Run-Verlauf, Memory,
+Vektoren, Cold-Archive, Quellenbindung und Geldbuch-Sperren müssen erhalten sein.
+Das ist ein lokaler Testnachweis; produktive Schlüsselaufbewahrung, Live-Drain,
+die getrennte CSV-Arbeit und die Abnahme auf dem realen Server bleiben offen.
+
 ## Publikationsnachweis
 
 Ab Version `1.8.0-publication-ledger` wird nach dem lokalen Backup ein getrenntes Publikationsledger verwendet. Es unterscheidet zwischen lokal verifizierten Artefakten, tatsächlich nach Google Drive übertragenen Dateien und einem tatsächlich in GitHub vorhandenen Commit.
