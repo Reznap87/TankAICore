@@ -46,6 +46,15 @@ HTTP-Chunking bleibt erlaubt und wird anhand der gelieferten Body-Bytes gezählt
 Geldreservierung und Auftragsstopp bleiben
 auch nach einem Antwortlimit-Fehler über Anwendungsneustarts erhalten. Diese
 Byte-Grenzen ersetzen keinen Nachweis tatsächlich berechneter Anbietertokens.
+Ergänzung vom 3. November 2026: Der geschützte Versand weist vom Anbieter als
+abgeschnitten gekennzeichnete Antworten zurück (OpenAI `length`, Anthropic
+`max_tokens` und `model_context_window_exceeded`). Auch plausibel wirkender
+Teiltext darf dadurch nicht als vollständiges Ergebnis in den Core gelangen.
+Geldreservierung und Auftragsstopp bleiben erhalten; keine automatische Fortsetzung,
+Wiederholung oder Erhöhung des Tokenlimits. Drei lokale SDK-Regressionen prüfen
+diese Fälle ohne Anbieterzugriff. Dies beweist keine semantische Vollständigkeit
+anderer Antworten und aktiviert keinen Pilot. Vertrag:
+`docs/MONETARY_RESERVATIONS.md`.
 Die explizite Besitzer-Zulassung bindet diesen Pfad an aktuelle Sessions,
 Besitzerrolle, Mandant und freigegebene Arbeitsräume. Nach unsicheren Ausgängen
 oder Prozessabbruch bleibt der dauerhafte Auftragsplatz belegt; neue HTTP-Jobs
