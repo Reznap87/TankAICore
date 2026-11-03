@@ -16,6 +16,7 @@
     "src/cloudflare-pilot.ts",
     "src/pilot-controller.ts",
     "src/pilot-native.ts",
-    "src/pilot-api.ts"
+    "src/pilot-api.ts",
+    "src/pilot-operator.ts"
   ]
 }

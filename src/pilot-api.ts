@@ -14,6 +14,9 @@ export function pilotGuard(request: Request, token: unknown): Response | null {
       || !timingSafeEqual(Buffer.from(supplied), Buffer.from("Bearer " + token))) {
     return response({ error: "pilot_unauthorized" }, 403);
   }
+  return pilotEnvelope(request);
+}
+export function pilotEnvelope(request: Request): Response | null {
   const url = new URL(request.url);
   const method = paths.get(url.pathname);
   if (!method || url.search) return response({ error: "pilot_route_unknown" }, 404);

@@ -155,6 +155,10 @@ bereits als funktionierend nachgewiesen.**
 
 ## Noch offene Freigaben und Nachweise
 
+Der [konkrete Laufplan mit lokalem Operator](CLOUDFLARE_PILOT_RUNBOOK.md)
+ergänzt jetzt den privaten Zugangsweg, den einmaligen HTTP-Test und den
+aktuellen Konto-/Kostenbefund. Die Operator-Brücke wird nur lokal gestartet.
+
 Noch nicht ausgeführt sind Bereitstellung der getrennten Pilotressourcen,
 Operator-Secret-Einrichtung, ein geschützter Zugang und ein echter nativer
 Aufnahme-/Restore-Lauf auf Cloudflare. Vor einem solchen Lauf sind der konkrete

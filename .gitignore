@@ -8,4 +8,5 @@ worktrees/
 *.log
 pilot-configuration.d.ts
 pilot-runtime.d.ts
+pilot-operator-configuration.d.ts
 dist-pilot/
