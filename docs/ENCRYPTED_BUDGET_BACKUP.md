@@ -155,3 +155,16 @@ Diagnoseartefakt erhalten.
 Die Bindung ersetzt keine unveränderliche Offsite-Ablage, unabhängige
 Freshness-/Anti-Rollback-Evidenz oder Schutz eines nicht vertrauenswürdigen
 Quellverzeichnisses.
+
+### Zielverzeichnisbindung bis zum Restore-Receipt
+
+Der verschlüsselte Restore akzeptiert als Zielparent nur ein gewöhnliches
+Verzeichnis und bindet dessen Gerät/Inode bis unmittelbar vor den Erfolgs-Receipt.
+Die Prüfung erfolgt nach dem Schließen und nach der abschließenden Quellprüfung
+erneut. Wird der Parentpfad in diesem Fenster durch einen Symlink auf dasselbe
+ursprüngliche Verzeichnis ersetzt, bleiben Zieldatei, Inode und Snapshot-Bytes
+zwar erreichbar, der Restore wird dennoch fail-closed abgewiesen. Ein
+synthetischer POSIX-Negativtest deckt genau diesen Fall ab.
+
+Diese Bindung belegt keine vertrauenswürdige produktive Verzeichniskette,
+Windows-ACLs, Writer-Fencing, Freshness oder Anti-Rollback-Eigenschaften.

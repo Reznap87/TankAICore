@@ -84,6 +84,26 @@ def _require_read_identity(path: Path, expected_identity) -> None:
         raise BudgetBackupError("encrypted backup changed before receipt")
 
 
+def _directory_identity(path: Path) -> tuple[int, int]:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("ordinary restore destination directory required") from None
+    if not stat.S_ISDIR(current.st_mode):
+        raise BudgetBackupError("ordinary restore destination directory required")
+    return current.st_dev, current.st_ino
+
+
+def _require_directory_identity(path: Path, expected_identity: tuple[int, int]) -> None:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("restore destination directory changed before receipt") from None
+    if (not stat.S_ISDIR(current.st_mode)
+            or (current.st_dev, current.st_ino) != expected_identity):
+        raise BudgetBackupError("restore destination directory changed before receipt")
+
+
 def _read_regular(path: Path) -> bytes:
     path = Path(path)
     before = path.lstat()
@@ -197,6 +217,8 @@ def restore_backup(source: Path, destination: Path, key: bytes, *, expected_sha2
     try:
         snapshot, receipt, source_identity = _decode(source, key, expected_sha256, expected_policy)
         destination = Path(destination).absolute()
+        destination_parent = destination.parent
+        destination_parent_identity = _directory_identity(destination_parent)
         with MonetaryBudget.restore_new(destination, data=snapshot,
                 expected_sha256=receipt["snapshot_sha256"],
                 expected_policy=expected_policy, clock=clock) as restored:
@@ -215,7 +237,9 @@ def restore_backup(source: Path, destination: Path, key: bytes, *, expected_sha2
         # the next open without changing the verified main-file bytes.
         if _has_sidecars(destination):
             raise BudgetStateError("restored budget database gained a sidecar during close")
+        _require_directory_identity(destination_parent, destination_parent_identity)
         _require_read_identity(source, source_identity)
+        _require_directory_identity(destination_parent, destination_parent_identity)
         return {"ok":True, "operation":"restore", **receipt, "restored_state_verified":True}
     except (OSError, sqlite3.Error, BudgetStateError):
         raise BudgetBackupError("encrypted monetary restore failed closed") from None

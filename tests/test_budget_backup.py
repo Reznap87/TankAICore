@@ -266,6 +266,37 @@ def test_identical_replacement_after_restore_close_cannot_receive_success(
     assert target.read_bytes() == created.read_bytes()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory-symlink contract")
+def test_destination_directory_symlink_after_restore_close_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch,
+):
+    path, key, receipt, _ = saved
+    parent = tmp_path / "restore-parent"
+    preserved = tmp_path / "original-restore-parent"
+    parent.mkdir()
+    target = parent / "restored.sqlite"
+    real_close = MonetaryBudget.close
+    replaced = False
+
+    def replace_parent_after_close(self):
+        nonlocal replaced
+        real_close(self)
+        if not replaced and self.path == target.absolute():
+            replaced = True
+            parent.rename(preserved)
+            parent.symlink_to(preserved, target_is_directory=True)
+
+    monkeypatch.setattr(MonetaryBudget, "close", replace_parent_after_close)
+    with pytest.raises(backup.BudgetBackupError, match="destination directory changed"):
+        backup.restore_backup(
+            source=path, destination=target, key=key, **options(budget, receipt)
+        )
+
+    assert replaced
+    assert parent.is_symlink()
+    assert target.read_bytes() == (preserved / target.name).read_bytes()
+
+
 @pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
 def test_sidecar_created_during_restore_close_blocks_success(
     tmp_path, budget, saved, monkeypatch, suffix,

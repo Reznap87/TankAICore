@@ -133,6 +133,12 @@ nach dem authentifizierten Lesen, aber noch während der Snapshot- oder Zielprü
 wird damit abgewiesen. Zwei synthetische Negativtests prüfen Verify und Restore.
 Dies ersetzt weder vertrauenswürdige Quellverzeichnisse noch unabhängige
 Freshness-/Anti-Rollback-Evidenz.
+Der verschlüsselte Restore bindet nun auch das gewöhnliche übergeordnete
+Zielverzeichnis bis unmittelbar vor den Erfolgs-Receipt an Gerät und Inode.
+Ein nach dem SQLite-Close eingesetzter Symlink auf dasselbe ursprüngliche
+Verzeichnis wird trotz unveränderter Zieldatei und Bytes fail-closed abgewiesen.
+Ein synthetischer POSIX-Negativtest belegt diese Pfadgrenze; Windows-ACLs und
+produktive Verzeichnisvertrauenswürdigkeit bleiben Betreiberpflicht.
 Windows-Verzeichnismetadaten und reale Host-Stromausfälle bleiben Betreiberpflicht.
 Vertrag: `docs/ENCRYPTED_BUDGET_BACKUP.md`.
 Ein zusätzlicher künstlicher Kalt-Restore-Probelauf erfasst jetzt Konten,
