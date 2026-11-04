@@ -872,10 +872,21 @@ class DevelopmentOrchestrator:
                 raise ValidationError(
                     "Fast-Forward-Ziel entspricht nicht dem geprüften Worker-Commit"
                 )
+            if (
+                run.phase != WorkerPhase.INTEGRATION_TEST
+                or not run.status_messages
+                or run.status_messages[-1].phase != WorkerPhase.INTEGRATION_TEST
+                or run.integration_commit != normalized_commit
+            ):
+                raise ValidationError(
+                    "Integrationsabschluss besitzt keinen gebundenen Post-Merge-Status"
+                )
+            if executions != run.integration_executions:
+                raise ValidationError(
+                    "Integrationsabschluss darf gespeicherte Post-Merge-Belege nicht ersetzen"
+                )
             if not executions or not all(execution.passed for execution in executions):
                 raise TransitionError("Post-Merge-Gesamttests sind nicht vollständig bestanden")
-            run.integration_executions = list(executions)
-            run.integration_commit = normalized_commit
             run.state = WorkerRunState.INTEGRATED
             run.phase = WorkerPhase.INTEGRATED
             run.finished_at = utcnow()

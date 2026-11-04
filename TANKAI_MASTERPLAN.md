@@ -4705,3 +4705,16 @@ ihn ab, das Repository wird zurückgesetzt und weder Beleg noch Integrations-
 Teststatus bleiben gespeichert. Dies ist Repository- und synthetische
 Testevidenz, keine vertrauenswürdige Uhr-, Produktionsintegrations- oder
 Deployment-Attestierung.
+
+
+## Entwurfsnachweis: unveränderliche Post-Merge-Belege beim Abschluss
+
+Der atomare Integrationsabschluss verbraucht ausschließlich den Commit und die
+Belegliste, die bereits gemeinsam mit dem Integrations-Teststatus gespeichert
+wurden. Ein fehlender oder abweichender Phasenstatus, ein anderer
+Integrationscommit oder eine ersetzte Belegliste wird auch dann abgewiesen, wenn
+alle Ersatzbelege weiterhin Erfolg behaupten. Ein synthetischer Finalizer ändert
+nur den kanonischen Befehl eines grünen Belegs. Der Abschluss scheitert, das
+Repository wird zurückgesetzt und die zuvor validierte Evidenz bleibt unverändert
+zur Prüfung erhalten. Dies ist Zustandsübergangs- und synthetische Testevidenz,
+kein produktiver Merge- oder Deployment-Nachweis.

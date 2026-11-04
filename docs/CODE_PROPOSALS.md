@@ -633,3 +633,12 @@ second invocation tolerance. The state transaction rejects it, the repository is
 rolled back, and neither the receipt nor an integration-test status survives.
 This is repository and synthetic-test evidence, not trusted-clock, production
 integration or deployment attestation.
+
+Final integration now consumes exactly the commit and receipt list already stored
+by that atomic integration-test transition. It refuses a missing or different
+phase status, a different integration commit, or any replacement receipt list,
+even when every substituted receipt still claims success. A synthetic finalizer
+changes only the canonical command of one green receipt; finalization fails, the
+repository rolls back, and the previously validated evidence remains unchanged
+for inspection. This is state-transition and synthetic-test evidence, not a
+production merge or deployment claim.

@@ -823,6 +823,38 @@ def test_worker_integration_rolls_back_when_state_commit_fails(
     assert not (manager.common_git_dir / "tankai-integration-journal.json").exists()
 
 
+def test_worker_integration_cannot_replace_validated_receipts_at_finalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    finalize = orchestrator.finalize_worker_integration
+
+    def replace_receipts(run_id, **kwargs):
+        forged = list(kwargs["executions"])
+        forged[0] = forged[0].model_copy(update={"command": "forged-success"})
+        return finalize(run_id, **{**kwargs, "executions": forged})
+
+    monkeypatch.setattr(orchestrator, "finalize_worker_integration", replace_receipts)
+
+    with pytest.raises(IntegrationExecutionError, match="nicht ersetzen"):
+        WorkerIntegrationRunner(orchestrator, manager).run(
+            integration_job_for(pipeline, job)
+        )
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert manager.repository_head() == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions
+    assert run.integration_executions[0].command.startswith("git diff --check ")
+    assert all(item.command != "forged-success" for item in run.integration_executions)
+    assert not (manager.common_git_dir / "tankai-integration-journal.json").exists()
+
+
 def test_integration_journal_rejects_workspace_outside_managed_root(tmp_path: Path) -> None:
     repository, orchestrator, manager, job = make_pipeline(tmp_path)
     pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
