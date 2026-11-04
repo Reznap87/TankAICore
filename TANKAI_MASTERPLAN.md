@@ -4633,3 +4633,16 @@ Executor-Ausnahmebelege ohne Exitcode bleiben darstellbar. Ein synthetischer
 Adaptertest schleust über Pydantics nicht validierenden `model_copy(update=...)`-
 Pfad `passed=false` bei Exitcode 0 ein und verlangt die Ablehnung vor Persistenz
 oder Commit. Dies ist Code-/CI-Evidenz, kein produktiver Worker-Nachweis.
+
+
+## Entwurfsnachweis: atomare Abschlussprüfung der Worker-Zeitachse
+
+Die vollständige Zeitachsenprüfung läuft nun auch beim erstmaligen Abschluss
+eines Worker-Runs innerhalb derselben Zustandstransaktion, nicht erst bei einer
+späteren Wiederaufnahme. Jeweils im beobachteten Aufruffenster liegende, über
+Phasengrenzen hinweg jedoch rückwärts laufende Executor-Zeitstempel können damit
+keinen dauerhaften `complete`-Beleg erzeugen. Ein synthetischer Regressionstest
+liefert genau diese einzeln plausiblen, insgesamt ungeordneten Belege und verlangt
+die Sperrung des bereits committed Runs ohne gespeicherten Abschlussstatus. Dies
+ist Code-/CI-Evidenz; weder eine produktive Host-Uhr noch ein Live-Worker wurde
+geprüft.

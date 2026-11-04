@@ -689,7 +689,12 @@ class DevelopmentOrchestrator:
         _, failed = self.store.transaction(mutate)
         return failed
 
-    def complete_worker_run(self, run_id: str) -> WorkerRunRecord:
+    def complete_worker_run(
+        self,
+        run_id: str,
+        *,
+        state_validator: Callable[[ProjectState], None] | None = None,
+    ) -> WorkerRunRecord:
         def mutate(state: ProjectState) -> WorkerRunRecord:
             try:
                 run = state.worker_runs[run_id]
@@ -711,6 +716,8 @@ class DevelopmentOrchestrator:
             )
             run.status_messages.append(completed_status)
             run.finished_at = completed_status.created_at
+            if state_validator is not None:
+                state_validator(state)
             self._event(state, "worker_run_ready_to_integrate", run.agent_id, {
                 "run_id": run_id,
                 "task_id": run.task_id,

@@ -579,3 +579,13 @@ turn requires `passed=true`. Failed commands may still carry a genuine nonzero
 integer, while timeout and executor-exception evidence may omit the exit code.
 A synthetic malformed adapter receipt proves rejection before persistence or
 commit. This is code and synthetic-CI evidence, not a production-runtime claim.
+
+The same complete timeline check now runs atomically when a fresh worker run is
+marked ready to integrate, not only when a journal is resumed later. Individually
+plausible adapter timestamps that move backwards across implementation, test or
+gate phases therefore cannot produce a terminal `complete` receipt. The failed
+validation leaves no transient persisted completion status and the existing
+failure path blocks the committed run for inspection. A synthetic regression
+uses timestamps inside each observed invocation window but in reversed journal
+order. This is code and synthetic-CI evidence; it does not attest a production
+host clock or a live worker.

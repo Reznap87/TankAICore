@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -201,6 +202,37 @@ def test_executor_receipt_rejects_time_outside_observed_invocation(
     assert run.state == WorkerRunState.FAILED
     assert run.implementation_executions == []
     assert run.implementation_commit is None
+
+
+def test_fresh_completion_atomically_rejects_reversed_execution_timeline(
+    source_contract, monkeypatch,
+):
+    _, orchestrator, manager, _, _ = source_contract
+    package = request(source_contract)
+    job = prepare(source_contract, package, response_for(package))
+    run_command = manager.run_command
+    call_count = 0
+
+    def run_with_reversed_receipts(*args, **kwargs):
+        nonlocal call_count
+        result = run_command(*args, **kwargs)
+        call_count += 1
+        if call_count == 1:
+            result.executed_at = datetime.now(timezone.utc) + timedelta(milliseconds=500)
+        elif call_count == 2:
+            time.sleep(0.6)
+            result.executed_at = datetime.now(timezone.utc) - timedelta(milliseconds=300)
+        return result
+
+    monkeypatch.setattr(manager, "run_command", run_with_reversed_receipts)
+    with pytest.raises(WorkerExecutionError, match="ungeordnete Befehlsbelege") as error:
+        WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    run = orchestrator.state().worker_runs[error.value.run_id]
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.phase == WorkerPhase.FAILED
+    assert run.implementation_commit is not None
+    assert not any(status.phase == WorkerPhase.COMPLETE for status in run.status_messages)
 
 
 class AbruptExit(BaseException):
