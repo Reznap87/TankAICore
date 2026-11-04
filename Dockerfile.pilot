@@ -1,0 +1,14 @@
+# Separate offline rehearsal image. The production Dockerfile is unchanged.
+FROM python:3.12-slim
+WORKDIR /app
+RUN useradd -m -u 10001 tankai
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY tankai ./tankai
+RUN mkdir -p /app/data && chown -R tankai:tankai /app
+USER tankai
+ENV PYTHONUNBUFFERED=1
+# No ports published, credentials, .env or automatic web restart.
+HEALTHCHECK NONE
+ENTRYPOINT ["python", "-m", "tankai.web.pilot_supervisor"]
+CMD ["inspect"]

@@ -66,7 +66,8 @@ class OwnerPilot:
             tariffs=self._tariffs, endpoints=self._endpoints, input_token_bound=self._counter,
             clock=self._clock, authorize=authorize)
 
-    def authorize(self, context: AuthContext, auth: AuthStore) -> None:
+    def authorize_identity(self, context: AuthContext, auth: AuthStore) -> None:
+        """Require fresh owner membership before exposing scoped pilot metadata."""
         if (type(context) is not AuthContext or context.user_id != self.ledger.policy.owner_id
                 or context.tenant_id != self.tenant_id or context.workspace_id not in self.workspace_ids
                 or context.role != "owner"):
@@ -78,7 +79,46 @@ class OwnerPilot:
         access = auth.workspace_access(context.user_id, context.workspace_id)
         if access is None or access.tenant_id != self.tenant_id or access.role != "owner":
             raise OwnerPilotForbidden("Besitzerberechtigung ist nicht mehr gültig")
+
+    def authorize(self, context: AuthContext, auth: AuthStore) -> None:
+        self.authorize_identity(context, auth)
         self._current_sources(context)
+
+    def preflight(self, context: AuthContext, auth: AuthStore, tank) -> dict:
+        """Inspect current admission prerequisites; never begin a job or send."""
+        self.authorize_identity(context, auth)
+        budget = self.ledger.admission_status(owner_id=context.user_id)
+        blockers = list(budget["blockers"])
+        try:
+            self._current_sources(context)
+        except (OwnerPilotForbidden, DispatchDenied):
+            blockers.append("source_approval_unavailable")
+        dispatch = self._guard("preflight-only")
+        for role, wrapper in (("main", tank.llm), ("critic", tank.critic_llm)):
+            adapter = wrapper.delegate
+            if (type(adapter) not in (OpenAILLM, AnthropicLLM)
+                    or not adapter.requires_request_admission):
+                blockers.append(role + "_adapter_not_guarded")
+                continue
+            try:
+                dispatch.check_target(provider=adapter.provider_name, model=adapter.model,
+                                      endpoint=str(adapter.client.base_url))
+            except DispatchDenied:
+                blockers.append(role + "_target_not_current")
+        if not tank.critic_independent:
+            blockers.append("independent_critic_required")
+        # Slow runtime initialization or concurrent account changes must not
+        # return an old owner identity's budget/model information.
+        self.authorize_identity(context, auth)
+        return {
+            "configured": True, "admission_checks_passed": not blockers,
+            "blockers": blockers, "budget": budget,
+            "main_model": tank.main_llm_identity, "critic_model": tank.critic_llm_identity,
+            "source_mode": "supplied", "dispatch_authorized": False,
+            "production_ready": False, "operational_verification": "not_assessed",
+            "request_pricing": "checked_at_dispatch",
+            "provider_rate_limit": "checked_at_dispatch",
+        }
 
     def _current_sources(self, context: AuthContext) -> ApprovedSourceBundle:
         manifest = self._sources.get(context.workspace_id)

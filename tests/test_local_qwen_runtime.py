@@ -17,6 +17,13 @@ MODEL_REVISION = "1f629da0c8bed16b9e50cee91c70693650e66c35"
 MODEL_SHA256 = "1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6"
 
 
+def test_linux_model_initializer_has_lf_bytes_including_windows_checkouts() -> None:
+    data = MODEL_INIT.read_bytes()
+    assert data.startswith(b"#!/bin/sh\n") and b"\r" not in data
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    assert "*.sh text eol=lf" in attributes
+
+
 def test_local_runtime_uses_immutable_image_and_model_sources() -> None:
     text = LOCAL_COMPOSE.read_text(encoding="utf-8")
 

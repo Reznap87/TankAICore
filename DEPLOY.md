@@ -511,6 +511,10 @@ Alle Tenant- und Workspace-IDs werden serverseitig aus der Auth-Datenbank bezoge
 
 ## 12. Backup und Wiederherstellung
 
+Der getrennte Offline-Container für die Vorbereitung nativer Cloudflare-Snapshots
+ist in [CLOUDFLARE_SNAPSHOT_PILOT.md](docs/CLOUDFLARE_SNAPSHOT_PILOT.md) beschrieben.
+Er führt keinen produktiven Restore oder Cutover aus.
+
 Konsistent sichern:
 
 - `auth.db`, `development-jobs.db` und die getrennte `development-fences.db` einschließlich jeweiliger `-wal`/`-shm`, falls Dienste laufen,

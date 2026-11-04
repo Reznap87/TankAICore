@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "./pilot-runtime.d.ts",
+      "node"
+    ]
+  },
+  "include": [
+    "src/cloudflare-pilot.ts",
+    "src/pilot-controller.ts",
+    "src/pilot-native.ts",
+    "pilot-configuration.d.ts",
+    "src/pilot-api.ts"
+  ],
+  "exclude": []
+}

@@ -15,7 +15,51 @@ Installation, Linux-CI, reale Tarif-/Zählerfreigabe und öffentliche dauerhafte
 Workspace-/Budget-Speicherung bleiben gesondert nachzuweisen. Details:
 `docs/REQUIRED_WEB_BUDGET.md`. Kein automatischer Merge oder Deploy.
 
+Ergänzung vom 2. November 2026: Der geschlossene Besitzerpilot erhält eine
+authentifizierte Startprüfung unter `GET /api/pilot/preflight`. Sie verbindet
+aktuelle Besitzer-/Workspace-Berechtigung, Quellenfreigabe, geschützte
+Modellziele/Tarife und die vorhandenen Geld-/Auftragsgrenzen. Der Statusaufruf
+erstellt weder Auftrag noch Reservierung und startet keinen Modellaufruf;
+offene Aufträge und unklare Kosten bleiben erhalten. Die Chat-Einstellungen
+zeigen die Prüfung und Sperrgründe. Eine bestandene lokale Prüfung ersetzt
+weder konkrete Requestbepreisung noch Host-/Restore-/Deploynachweise oder
+Live-Freigabe. `production_ready` bleibt false. Umsetzung auf PR #101;
+dessen Merge und Issue #25 bleiben getrennt offen. Details:
+`docs/OWNER_PILOT_PREFLIGHT.md`.
+
 0. Verifizierter Projektstand und Ausführungsvertrag am 24. Oktober 2026
+
+Weiterer lokaler Pilot-Schritt vom 2. November 2026: Der Webserver erhält einen
+begrenzten HTTP-Drain vor dem Speicherabschluss. Neue Anfragen werden beim
+kontrollierten Stopp abgewiesen; registrierte Worker werden abgewartet.
+Ein Timeout schließt den Anwendungsspeicher nicht und ist kein Erfolgs-Receipt.
+Der Compose-Dienst bekommt dafür 150 Sekunden Stoppfrist. Das gilt nur für
+diese Serverinstanz und ersetzt weder gemeinsame Datenexporte noch zusätzliche
+Writer-Sperren oder einen Restore auf dem Produktionshost. PR #102 wurde
+geprüft; seine Konto-/CSV-Recovery bleibt eine getrennte Abhängigkeit.
+Details: `docs/WEB_SHUTDOWN.md`.
+
+Weiterer lokaler Pilot-Schritt vom 2. November 2026: Ein gemeinsamer,
+AES-256-GCM-verschlüsselter Checkpoint erfasst Konten, Budget, Quellenfreigaben
+und Workspace-Dateien eines neu angelegten verwalteten Pilotordners. Die
+teilnehmende Web-Anwendung hält eine exklusive Betriebssystem-Dateisperre bis
+nach HTTP-Drain und vollständigem Workspace-Abschluss; der Export benötigt
+dieselbe Sperre und gleichzeitige SQLite-Schreibreservierungen. Ein Restore
+erzeugt nur einen neuen `staged-restore`-Prüfstand mit gesperrtem Web-Start,
+widerrufenen alten Zugängen und unveränderten unbekannten Kosten. Unbekannte
+Bestände und ausgelagerte Speicher blockieren den Export. Bestehende Ordner
+werden nicht umgestellt. Host-Cutover, Aktualitätsnachweis, Linux-/Container-CI
+und Produktionsfreigabe bleiben offen. Details: `docs/APPLICATION_CHECKPOINT.md`.
+
+Weiterer lokaler Pilot-Schritt vom 3. November 2026: Die kurzlebigen SQLite-
+Verbindungen in Kontenspeicher, Development-Queue und Lease-Fences werden nach
+jeder Operation ausdrücklich geschlossen, auch bei PRAGMA- und Transaktions-
+fehlern. 13 zunächst fehlschlagende Regressionen belegen den vorher fehlenden
+Ressourcenabschluss. Nach der Korrektur besteht der vollständige Windows-
+Self-Test einschließlich der zuvor gesperrten Fence-Dateien. Budget-/Lease-
+Semantik und Datenbestände werden nicht erneuert. Linux-/Containerprüfungen
+und Host-Abnahme bleiben an ihren jeweiligen Quellstand gebunden. Details:
+`docs/SQLITE_CONNECTION_LIFETIME.md`.
 
 5.7.54: Die gemeinsame monetäre Reservierung aus 0.11.7 erhält ein separat
 prüfbares SQLite-Fundament auf main-Ausgangsstand
@@ -4633,3 +4677,22 @@ bereits geprüften Hauptdateibytes anzutasten. Drei synthetische Negativtests
 erzeugen die jeweiligen Sidecars während close und verlangen fail-closed
 Ablehnung. Dies ist Code-/CI-Evidenz, kein produktiver Restore-, Writer-Fencing-
 oder Anti-Rollback-Nachweis.
+
+## Entwicklungsstand: getrennter nativer Container-Pilot
+
+Ein eigener Pilot-Worker ergänzt den Offline-Supervisor um persistente Start-,
+Aufnahme- und Restore-Absichten. Die SQLite-Revision wird vor jedem nativen
+Effekt atomar geprüft und gespeichert. Unklare Ergebnisse bleiben gesperrt;
+es gibt weder automatische Wiederholung noch eine Aktivierungsroute.
+
+Aufnahmen binden den nativen Handle an Image-Digest, Generation und den vor/nach
+der Aufnahme geprüften Root-Receipt. Der Restore adressiert ausschließlich
+eine zweite, noch unbenutzte Inspect-Instanz und verändert die Quelle nicht.
+Die getrennte Konfiguration enthält keine öffentliche Domain und keine
+Secretwerte. Produktionsworker, Routing und Provider bleiben unberührt.
+
+Verträge und Grenzen stehen in `docs/CLOUDFLARE_NATIVE_PILOT.md`. Lokale
+Integrationsprüfungen verwenden echten Durable-Object-SQLite-Speicher mit
+ausdrücklich simulierten nativen Container-Effekten. Eine tatsächliche native
+Cloudflare-Aufnahme/Wiederherstellung und spätere Aktivierung sind weiterhin
+gesondert nachzuweisen; `production_ready=false` bleibt bestehen.

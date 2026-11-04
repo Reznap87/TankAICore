@@ -46,6 +46,14 @@ jobs:
         run: npm run cf:check
       - name: Verify Worker artifact
         run: test -s dist/cloudflare.js
+      - name: Build separate native snapshot pilot without deployment
+        run: npm run pilot:check
+      - name: Test pilot coordination with durable SQLite and simulated native effects
+        run: npm run pilot:test
+      - name: Typecheck the loopback-only private-service operator
+        run: npm run pilot:operator:check
+      - name: Test operator guards and private-service protocol with a local fake
+        run: npm run pilot:operator:test
       - name: Test durable auth snapshots in the Worker runtime
         run: node scripts/test-auth-state.mjs
       - name: Validate local Qwen Compose contract
@@ -61,6 +69,19 @@ jobs:
           --image "tankai-core-ci:${GITHUB_SHA}"
           --image-id-file "${RUNNER_TEMP}/tankai-core-production.iid"
           --scope "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-cloudflare"
+      - name: Build separate offline snapshot pilot
+        run: docker build --file Dockerfile.pilot --tag "tankai-pilot-ci:${GITHUB_SHA}" .
+      - name: Rehearse pilot quiescence and filesystem-only restore
+        run: >-
+          python .github/scripts/pilot_container_smoke.py
+          --image "tankai-pilot-ci:${GITHUB_SHA}"
+          --scope "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-pilot"
+      - name: Clean snapshot pilot resources
+        if: always()
+        run: >-
+          python .github/scripts/pilot_container_smoke.py
+          --cleanup
+          --scope "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-pilot"
       - name: Clean production web smoke resources
         if: always()
         run: >-

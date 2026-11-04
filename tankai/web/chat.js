@@ -75,6 +75,36 @@
       byId('health').textContent = label; byId('connection-info').dataset.mode = mode;
       byId('model-label').textContent = mode === 'live' ? String(data.llm || 'Live-Modell') : mode === 'simulation' ? 'Simulation · kein Live-Modell' : label;
       byId('sysInfo').textContent = 'Hauptmodell: ' + (data.llm || 'unbekannt') + '\nPrüfmodell: ' + (data.critic_llm || 'unbekannt') + '\nUnabhängige Prüfung: ' + (data.critic_independent ? 'Ja' : 'Nein') + '\nRecherche: ' + (data.web_research || 'disabled') + '\nModus: ' + mode + '\nVersion: ' + String(data.version || '');
+      if (data.monetary_admission_configured) {
+        try {
+          const pilot = await jsonFetch('/api/pilot/preflight'); if (requestEpoch !== epoch) return;
+          const reasons = {
+            source_approval_unavailable: 'Quellenfreigabe fehlt oder ist abgelaufen',
+            concurrent_job_limit: 'Ein Auftrag ist noch aktiv oder muss geklärt werden',
+            pilot_not_started: 'Der freigegebene Testzeitraum hat noch nicht begonnen',
+            pilot_expired: 'Der freigegebene Testzeitraum ist beendet',
+            pilot_halted: 'Der Pilot wurde angehalten',
+            daily_budget: 'Das Tagesbudget ist ausgeschöpft', total_budget: 'Das Gesamtbudget ist ausgeschöpft',
+            daily_job_quota: 'Die Tagesgrenze für Aufträge ist erreicht', total_job_quota: 'Die Auftragsgrenze ist erreicht',
+            clock_regression: 'Die Serverzeit muss geprüft werden',
+            main_target_not_current: 'Modell- oder Tarifprüfung für das Hauptmodell fehlt',
+            critic_target_not_current: 'Modell- oder Tarifprüfung für das Prüfmodell fehlt',
+            independent_critic_required: 'Ein unabhängiges Prüfmodell fehlt',
+          };
+          const details = (pilot.blockers || []).map(reason => reasons[reason] || 'Eine Startbedingung ist nicht erfüllt');
+          byId('sysInfo').textContent += '\nPilot-Startprüfung: ' + (pilot.admission_checks_passed
+            ? 'Startbedingungen derzeit erfüllt. Berechtigung und Kosten werden vor jedem Modellaufruf erneut geprüft.'
+            : details.join('; ') || 'Startbedingungen noch nicht erfüllt');
+          if (!pilot.admission_checks_passed) byId('health').textContent = 'Pilot derzeit gesperrt';
+        } catch (error) {
+          if (requestEpoch !== epoch) return;
+          byId('sysInfo').textContent += '\nPilot-Startprüfung derzeit nicht verfügbar.';
+          byId('health').textContent = 'Pilotprüfung offen';
+        }
+      } else if (mode === 'live' || mode === 'mixed') {
+        byId('health').textContent = 'Live-Start noch gesperrt';
+        byId('sysInfo').textContent += '\nPilot-Startprüfung: Eine gemeinsame Budgetfreigabe ist noch nicht eingerichtet.';
+      }
     } catch (error) { if (requestEpoch !== epoch) return; byId('login-health').textContent = 'Core momentan nicht erreichbar'; if (currentUser) { byId('health').textContent = 'Verbindung unterbrochen'; byId('connection-info').dataset.mode = 'offline'; byId('model-label').textContent = 'Core momentan nicht erreichbar'; } }
   }
   async function loadMe() {
