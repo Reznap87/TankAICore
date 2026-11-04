@@ -244,6 +244,7 @@ def test_worker_pipeline_blocks_out_of_scope_change_and_persists_error(tmp_path:
     run = state.worker_runs[captured.value.run_id]
     assert run.state == WorkerRunState.BLOCKED
     assert run.phase.value == "failed"
+    assert run.finished_at == run.status_messages[-1].created_at
     assert "außerhalb" in run.error
     assert state.tasks["AUTH-001"].state == TaskState.BLOCKED
     assert not Path(run.workspace_path).exists()

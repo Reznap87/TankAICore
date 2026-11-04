@@ -650,3 +650,10 @@ single completion receipt without reconciling two nearly identical instants. A
 regression first demonstrated the former mismatch and now requires exact equality.
 This remains local state-transition and synthetic-test evidence; it does not make
 the host clock trusted or attest a production integration.
+
+Failed and blocked worker runs use the same terminal-time rule. Their
+`finished_at` value is now taken from the final `failed` status receipt instead of
+a separate earlier clock sample. Regressions cover both an ordinary failed run and
+a policy-blocked run, and first reproduce the former microsecond-level mismatch.
+This gives each terminal run one canonical completion receipt without claiming a
+trusted clock, production execution or remote attestation.

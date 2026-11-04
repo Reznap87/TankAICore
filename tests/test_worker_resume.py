@@ -75,6 +75,7 @@ def test_executor_receipt_rejects_failed_zero_exit_code(
 
     run = orchestrator.state().worker_runs[error.value.run_id]
     assert run.state == WorkerRunState.FAILED
+    assert run.finished_at == run.status_messages[-1].created_at
     assert run.implementation_executions == []
     assert run.implementation_commit is None
 

@@ -666,12 +666,13 @@ class DevelopmentOrchestrator:
             run.state = WorkerRunState.BLOCKED if blocked else WorkerRunState.FAILED
             run.phase = WorkerPhase.FAILED
             run.error = error
-            run.finished_at = utcnow()
-            run.status_messages.append(WorkerStatusMessage(
+            failed_status = WorkerStatusMessage(
                 sequence=len(run.status_messages) + 1,
                 phase=WorkerPhase.FAILED,
                 message=error,
-            ))
+            )
+            run.status_messages.append(failed_status)
+            run.finished_at = failed_status.created_at
             task.state = TaskState.BLOCKED if blocked else TaskState.FAILED
             task.updated_at = utcnow()
             agent.status = AgentStatus.BLOCKED if blocked else AgentStatus.FAILED

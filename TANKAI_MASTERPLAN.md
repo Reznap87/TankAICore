@@ -4729,3 +4729,14 @@ um wenige Mikrosekunden unterschieden. Ein zuerst fehlschlagender Regressionstes
 belegt diese Abweichung und verlangt jetzt Zeitstempelgleichheit. Damit ist der
 terminale Status der eindeutige Abschlussbeleg; eine vertrauenswürdige Host-Uhr,
 Produktionsintegration oder Remote-Attestierung wird weiterhin nicht behauptet.
+
+
+## Entwurfsnachweis: einheitlicher terminaler Fehlerzeitpunkt
+
+Fehlgeschlagene und durch eine Richtlinie blockierte Worker-Runs übernehmen ihren
+Abschlusszeitpunkt nun exakt aus dem letzten `failed`-Statusbeleg. Zuvor entstanden
+auch hier zwei aufeinanderfolgende Uhrwerte mit einer kleinen Abweichung. Je ein
+zuerst fehlschlagender Regressionstest für `failed` und `blocked` verlangt jetzt
+Zeitstempelgleichheit. Der letzte Fehlerstatus ist damit der eindeutige terminale
+Beleg; eine vertrauenswürdige Host-Uhr, Produktionsausführung oder Remote-
+Attestierung wird nicht behauptet.
