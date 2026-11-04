@@ -12,7 +12,7 @@
     "pilot:operator:types": "wrangler types pilot-operator-configuration.d.ts --config wrangler.pilot-operator.jsonc --env-interface PilotOperatorEnv --include-runtime false",
     "pilot:operator:check": "npm run pilot:operator:types && tsc --project tsconfig.pilot-operator.json",
     "pilot:operator:test": "node scripts/test-pilot-operator.mjs",
-    "pilot:operator": "wrangler dev --config wrangler.pilot-operator.jsonc --local --ip 127.0.0.1 --port 8766",
+    "pilot:operator": "wrangler dev --config wrangler.pilot-operator.jsonc --ip 127.0.0.1 --port 8766",
     "cf:deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
