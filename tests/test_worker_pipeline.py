@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -901,6 +902,67 @@ class InvalidIntegrationReceiptExecutor(LocalRecordingContainerExecutor):
         if kwargs["phase"] == "integration_test":
             return result.model_copy(update={"passed": 1})
         return result
+
+
+class EarlyIntegrationReceiptExecutor(LocalRecordingContainerExecutor):
+    """Returns an invocation-plausible receipt from before the merge phase."""
+
+    def __init__(self, manager: GitWorkspaceManager, orchestrator) -> None:
+        super().__init__(manager)
+        self.orchestrator = orchestrator
+
+    def execute(self, *args, **kwargs):
+        result = super().execute(*args, **kwargs)
+        if kwargs["phase"] == "integration_test":
+            run = self.orchestrator.state().worker_runs[kwargs["run_id"]]
+            merge_started_at = next(
+                status.created_at
+                for status in reversed(run.status_messages)
+                if status.phase == "merge"
+            )
+            return result.model_copy(
+                update={"executed_at": merge_started_at - timedelta(microseconds=1)}
+            )
+        return result
+
+
+def test_integration_rejects_receipt_before_merge_phase_atomically(
+    tmp_path: Path,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    isolation = WorkerIsolationSpec(
+        image="tankai-worker@sha256:" + "e" * 64,
+        user="10001:10001",
+    )
+
+    with pytest.raises(IntegrationExecutionError, match="Integrationsfensters"):
+        WorkerIntegrationRunner(
+            orchestrator,
+            manager,
+            container_executor=EarlyIntegrationReceiptExecutor(manager, orchestrator),
+        ).run(IntegrationJob(
+            run_id=pipeline.run.run_id,
+            test_commands=job.worker.test_commands,
+            isolation=isolation,
+        ))
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions == []
+    assert not any(
+        status.phase == "integration_test" for status in run.status_messages
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
 
 
 def test_integration_revalidates_repository_diff_receipt_before_persistence(

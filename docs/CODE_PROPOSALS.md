@@ -623,3 +623,13 @@ strictly invalid value `passed=1` only for the integration phase; the integratio
 rolls the repository back and blocks the run without saving the forged receipt or
 an integration-test status. This is repository and synthetic-test evidence, not
 production integration, container-runtime or deployment attestation.
+
+Integration receipt timing is also checked atomically when the integration-test
+status and receipts are stored. Every repository or container post-merge receipt
+must be no earlier than the latest persisted merge status and no later than the
+new integration-test status. A synthetic executor returns a timestamp one
+microsecond before that phase starts while remaining inside the adapter's five-
+second invocation tolerance. The state transaction rejects it, the repository is
+rolled back, and neither the receipt nor an integration-test status survives.
+This is repository and synthetic-test evidence, not trusted-clock, production
+integration or deployment attestation.

@@ -21,6 +21,7 @@ from .container_runtime import DockerCommandExecutor
 from .git_workspace import GitWorkspaceError, GitWorkspaceManager, Workspace
 from .models import (
     IntegrationJob,
+    ProjectState,
     TaskState,
     TestExecution,
     WorkerExecutionBackend,
@@ -248,6 +249,12 @@ class WorkerIntegrationRunner:
                         integration_executions=executions,
                         integration_commit=merged_commit,
                         integration_isolation=job.isolation,
+                        state_validator=lambda updated_state: (
+                            self._require_integration_execution_window(
+                                updated_state,
+                                run.run_id,
+                            )
+                        ),
                     )
                     failed = [item.command for item in executions if not item.passed]
                     if failed:
@@ -501,6 +508,39 @@ class WorkerIntegrationRunner:
                 summary="Keine Post-Merge-Prüfung ausgeführt",
             ))
         return executions
+
+    @staticmethod
+    def _require_integration_execution_window(
+        state: ProjectState,
+        run_id: str,
+    ) -> None:
+        run = state.worker_runs[run_id]
+        merge_statuses = [
+            status for status in run.status_messages
+            if status.phase == WorkerPhase.MERGE
+        ]
+        integration_statuses = [
+            status for status in run.status_messages
+            if status.phase == WorkerPhase.INTEGRATION_TEST
+        ]
+        if (
+            not merge_statuses
+            or not integration_statuses
+            or run.status_messages[-1].phase != WorkerPhase.INTEGRATION_TEST
+        ):
+            raise ValidationError(
+                "Integrationszeitachse besitzt kein eindeutiges Phasenfenster"
+            )
+        phase_started_at = merge_statuses[-1].created_at
+        phase_finished_at = integration_statuses[-1].created_at
+        if not run.integration_executions or any(
+            execution.executed_at < phase_started_at
+            or execution.executed_at > phase_finished_at
+            for execution in run.integration_executions
+        ):
+            raise ValidationError(
+                "Post-Merge-Belege liegen außerhalb ihres Integrationsfensters"
+            )
 
     def _container_executor(self) -> DockerCommandExecutor:
         if self.container_executor is None:

@@ -4691,3 +4691,17 @@ Integration setzt das Repository zurück, sperrt den Run und speichert weder den
 gefälschten Beleg noch einen Integrations-Teststatus. Dies ist Repository- und
 synthetische Testevidenz, kein produktiver Integrations-, Container- oder
 Deployment-Nachweis.
+
+
+## Entwurfsnachweis: Post-Merge-Belege innerhalb ihres Phasenfensters
+
+Die Persistenz von Integrations-Teststatus und Post-Merge-Belegen prüft deren
+Zeitachse innerhalb derselben Zustandstransaktion. Jeder Repository- oder
+Container-Beleg muss frühestens beim letzten gespeicherten Merge-Status und
+spätestens beim neuen Integrations-Teststatus liegen. Ein synthetischer Executor
+liefert einen einzeln noch innerhalb der fünfsekündigen Adaptertoleranz liegenden
+Zeitstempel eine Mikrosekunde vor dem Phasenbeginn. Die Zustandstransaktion weist
+ihn ab, das Repository wird zurückgesetzt und weder Beleg noch Integrations-
+Teststatus bleiben gespeichert. Dies ist Repository- und synthetische
+Testevidenz, keine vertrauenswürdige Uhr-, Produktionsintegrations- oder
+Deployment-Attestierung.

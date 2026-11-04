@@ -562,6 +562,7 @@ class DevelopmentOrchestrator:
         *,
         phase: WorkerPhase,
         message: str,
+        state_validator: Callable[[ProjectState], None] | None = None,
         implementation_executions: list[TestExecution] | None = None,
         test_executions: list[TestExecution] | None = None,
         review_executions: list[TestExecution] | None = None,
@@ -629,6 +630,8 @@ class DevelopmentOrchestrator:
                 run.integration_isolation = integration_isolation.model_copy(deep=True)
             if state_value is not None:
                 run.state = state_value
+            if state_validator is not None:
+                state_validator(state)
             self._event(state, "worker_run_updated", run.agent_id, {
                 "run_id": run_id,
                 "phase": phase.value,
