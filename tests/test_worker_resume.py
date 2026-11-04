@@ -151,6 +151,31 @@ def test_executor_receipt_rejects_boolean_exit_code(
     assert run.implementation_commit is None
 
 
+def test_review_diff_receipt_is_revalidated_before_persistence(
+    source_contract, monkeypatch,
+):
+    _, orchestrator, manager, _, _ = source_contract
+    package = request(source_contract)
+    job = prepare(source_contract, package, response_for(package))
+    run_command = manager.run_command
+
+    def run_with_malformed_review_receipt(*args, **kwargs):
+        result = run_command(*args, **kwargs)
+        if args[1][:3] == ["git", "diff", "--check"]:
+            return result.model_copy(update={"passed": 1})
+        return result
+
+    monkeypatch.setattr(manager, "run_command", run_with_malformed_review_receipt)
+    with pytest.raises(WorkerExecutionError, match="valid boolean") as error:
+        WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    run = orchestrator.state().worker_runs[error.value.run_id]
+    assert run.state == WorkerRunState.FAILED
+    assert run.implementation_commit is not None
+    assert run.review_executions == []
+    assert not any(status.phase == WorkerPhase.COMPLETE for status in run.status_messages)
+
+
 @pytest.mark.parametrize("executed_at", [datetime.now(), "2026-11-03T01:00:00+00:00"])
 def test_executor_receipt_rejects_unbound_execution_time(
     source_contract, monkeypatch, executed_at,

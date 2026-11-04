@@ -4662,3 +4662,18 @@ erzeugt genau einen solchen leicht zukünftigen
 Implementierungsbeleg und verlangt die Sperrung ohne gespeicherten
 `complete`-Status. Dies ist Code-/CI-Evidenz, keine vertrauenswürdige Host-Uhr,
 Remote-Attestierung oder produktive Worker-Prüfung.
+
+
+## Entwurfsnachweis: revalidierter Host-Diff-Beleg
+
+Der verpflichtende Host-Review `git diff --check` durchläuft nun dieselbe
+Adaptergrenze wie Implementierungs-, Test- und konfigurierte Gate-Befehle. Nach
+Bindung der kanonischen Befehlsdarstellung werden Ergebnis, Exitcode,
+Zusammenfassung und Zeitstempel erneut validiert; der Zeitpunkt muss außerdem im
+lokal beobachteten Aufruffenster liegen. Ein synthetischer Workspace-Adapter
+liefert ausschließlich für diesen Diff-Check den typwidrigen Wert `passed=1`.
+Der Run weist ihn nach dem Implementierungscommit, aber vor Review-Beleg oder
+Abschlussstatus ab. Die Host-Prüfung bleibt unverändert außerhalb
+job-kontrollierter Container; Review-Richtlinie und Befehlsumfang werden nicht
+erweitert. Dies ist Code-/CI-Evidenz, kein produktiver Worker- oder
+Reviewer-Nachweis.

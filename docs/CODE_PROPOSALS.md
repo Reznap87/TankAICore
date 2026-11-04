@@ -602,3 +602,14 @@ recorded as complete. A synthetic fresh-run regression exercises that exact
 case and requires fail-closed blocking without a persisted `complete` status.
 This remains code and synthetic-CI evidence, not trusted-clock or live-worker
 attestation.
+
+The mandatory host-side `git diff --check` review receipt now crosses the same
+adapter boundary as implementation, test and configured gate commands. Its raw
+outcome, exit code, summary and timestamp are revalidated after the canonical
+command is bound, and its time must remain inside the host-observed invocation
+window. A synthetic workspace adapter returns `passed=1` only for this review
+check; the runner rejects it after the implementation commit but before any
+review receipt or terminal status is persisted. This closes a host-review
+exception to the existing receipt contract without moving the check into the
+job-controlled container or changing review policy. It remains code and
+synthetic-CI evidence, not production-worker or reviewer attestation.
