@@ -4646,3 +4646,19 @@ liefert genau diese einzeln plausiblen, insgesamt ungeordneten Belege und verlan
 die Sperrung des bereits committed Runs ohne gespeicherten Abschlussstatus. Dies
 ist Code-/CI-Evidenz; weder eine produktive Host-Uhr noch ein Live-Worker wurde
 geprüft.
+
+
+## Entwurfsnachweis: Befehlsbelege innerhalb ihres Phasenfensters
+
+Die Abschlussprüfung bindet jeden gespeicherten Befehlsbeleg zusätzlich an das
+Statusfenster seiner eigenen Phase. Ein einzeln plausibler und global geordneter
+Executor-Zeitstempel darf damit nicht nach dem Status liegen, der seine
+Implementierungs-, Test-, Review-, Security- oder QA-Phase bereits als beendet
+protokolliert. Auch die Untergrenze wird durch den jeweils vorausgehenden
+Prepare-, Commit-, Submit-, Review- oder Security-Status festgelegt. Überlebt
+die Task-Einreichung einen Abbruch vor ihrem Run-Status, dient der ausdrückliche
+Test-Wiederanlaufstatus als Review-Untergrenze. Ein synthetischer frischer Lauf
+erzeugt genau einen solchen leicht zukünftigen
+Implementierungsbeleg und verlangt die Sperrung ohne gespeicherten
+`complete`-Status. Dies ist Code-/CI-Evidenz, keine vertrauenswürdige Host-Uhr,
+Remote-Attestierung oder produktive Worker-Prüfung.

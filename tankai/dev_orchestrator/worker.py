@@ -446,6 +446,7 @@ class WorkerPipelineRunner:
         }
         status_timestamps = []
         status_phase_positions = []
+        latest_status_by_phase: dict[WorkerPhase, datetime] = {}
         for expected_sequence, status in enumerate(run.status_messages, start=1):
             if status.sequence != expected_sequence:
                 raise ValidationError("Gespeicherte Worker-Statusfolge ist nicht lückenlos")
@@ -460,6 +461,7 @@ class WorkerPipelineRunner:
                 raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Statusbelege")
             status_timestamps.append(timestamp)
             status_phase_positions.append(phase_position)
+            latest_status_by_phase[status.phase] = timestamp
         if any(current < previous for previous, current in zip(
                 status_phase_positions, status_phase_positions[1:])):
             raise ValidationError("Gespeicherte Worker-Phasenfolge läuft rückwärts")
@@ -470,6 +472,40 @@ class WorkerPipelineRunner:
         if any(current < previous for previous, current in zip(
                 status_timestamps, status_timestamps[1:])):
             raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungeordnete Statusbelege")
+
+        review_preceding_phase = (
+            WorkerPhase.SUBMIT
+            if WorkerPhase.SUBMIT in latest_status_by_phase
+            else WorkerPhase.TEST
+        )
+        execution_phase_bounds = (
+            (WorkerPhase.IMPLEMENT, run.implementation_executions, WorkerPhase.PREPARE),
+            (WorkerPhase.TEST, run.test_executions, WorkerPhase.COMMIT),
+            (WorkerPhase.REVIEW, run.review_executions, review_preceding_phase),
+            (WorkerPhase.SECURITY, run.security_executions, WorkerPhase.REVIEW),
+            (
+                WorkerPhase.QA,
+                run.qa_executions,
+                (
+                    WorkerPhase.SECURITY
+                    if WorkerPhase.SECURITY in latest_status_by_phase
+                    else WorkerPhase.REVIEW
+                ),
+            ),
+        )
+        for phase, phase_executions, preceding_phase in execution_phase_bounds:
+            if not phase_executions:
+                continue
+            phase_started_at = latest_status_by_phase.get(preceding_phase)
+            phase_finished_at = latest_status_by_phase.get(phase)
+            if phase_started_at is None or phase_finished_at is None or any(
+                    execution.executed_at < phase_started_at
+                    or execution.executed_at > phase_finished_at
+                    for execution in phase_executions):
+                raise ValidationError(
+                    "Gespeicherte Worker-Zeitachse enthält Befehlsbelege außerhalb "
+                    f"ihrer Phase ({phase.value})"
+                )
         if (finish is not None and (not run.status_messages
                 or run.status_messages[-1].phase != WorkerPhase.COMPLETE
                 or run.status_messages[-1].created_at != finish)):

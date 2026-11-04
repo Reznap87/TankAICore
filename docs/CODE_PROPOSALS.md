@@ -589,3 +589,16 @@ failure path blocks the committed run for inspection. A synthetic regression
 uses timestamps inside each observed invocation window but in reversed journal
 order. This is code and synthetic-CI evidence; it does not attest a production
 host clock or a live worker.
+
+Terminal timeline validation also binds every persisted execution receipt to its
+own phase window. Implementation receipts must fall after the latest prepare
+status and no later than the implementation status; the corresponding commit,
+submit, review or security status provides the lower bound for later test and
+gate phases. If task submission survives a crash before its run status, the
+explicit recovery test status is the review lower bound. A timestamp can
+therefore no longer be individually plausible and globally ordered while
+claiming that a command ran after its phase was already
+recorded as complete. A synthetic fresh-run regression exercises that exact
+case and requires fail-closed blocking without a persisted `complete` status.
+This remains code and synthetic-CI evidence, not trusted-clock or live-worker
+attestation.

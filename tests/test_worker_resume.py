@@ -235,6 +235,36 @@ def test_fresh_completion_atomically_rejects_reversed_execution_timeline(
     assert not any(status.phase == WorkerPhase.COMPLETE for status in run.status_messages)
 
 
+def test_fresh_completion_rejects_execution_after_its_phase_status(
+    source_contract, monkeypatch,
+):
+    _, orchestrator, manager, _, _ = source_contract
+    package = request(source_contract)
+    job = prepare(source_contract, package, response_for(package))
+    run_command = manager.run_command
+    call_count = 0
+
+    def run_with_receipt_after_phase_status(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            time.sleep(0.4)
+        result = run_command(*args, **kwargs)
+        if call_count == 1:
+            result.executed_at = datetime.now(timezone.utc) + timedelta(milliseconds=300)
+        return result
+
+    monkeypatch.setattr(manager, "run_command", run_with_receipt_after_phase_status)
+    with pytest.raises(WorkerExecutionError, match="außerhalb ihrer Phase") as error:
+        WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    run = orchestrator.state().worker_runs[error.value.run_id]
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.phase == WorkerPhase.FAILED
+    assert run.implementation_commit is not None
+    assert not any(status.phase == WorkerPhase.COMPLETE for status in run.status_messages)
+
+
 class AbruptExit(BaseException):
     """Simulate loss of the process without normal exception persistence."""
 
