@@ -2,11 +2,15 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { request as httpRequest } from 'node:http';
 
+const packageConfig = JSON.parse(await readFile('package.json', 'utf8'));
+const operatorArguments = packageConfig.scripts['pilot:operator'].split(/\s+/);
+assert.equal(operatorArguments.some(argument => /^(--local|-l)(=|$)/.test(argument)), false,
+  'Explicit local mode disables the remote service binding');
 const directory = await mkdtemp(resolve('dist-pilot/operator-test-'));
 assert.equal(directory.startsWith(resolve('dist-pilot/operator-test-')), true);
 const path = join(directory, 'operator.mjs');
