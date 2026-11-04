@@ -4677,3 +4677,17 @@ Abschlussstatus ab. Die Host-Prüfung bleibt unverändert außerhalb
 job-kontrollierter Container; Review-Richtlinie und Befehlsumfang werden nicht
 erweitert. Dies ist Code-/CI-Evidenz, kein produktiver Worker- oder
 Reviewer-Nachweis.
+
+
+## Entwurfsnachweis: revalidierte Post-Merge-Belege
+
+Der verpflichtende Repository-Diff-Check und alle konfigurierten Host- oder
+Container-Post-Merge-Tests durchlaufen vor der Persistenz dieselbe Adaptergrenze
+wie Worker- und Gate-Befehle. Ergebnis, Exitcode, Zusammenfassung und Zeitstempel
+werden nach Bindung des kanonischen Befehls erneut validiert; der Zeitpunkt muss
+im lokal beobachteten Aufruffenster liegen. Ein synthetischer Container-Adapter
+liefert nur in der Integrationsphase den typwidrigen Wert `passed=1`. Die
+Integration setzt das Repository zurück, sperrt den Run und speichert weder den
+gefälschten Beleg noch einen Integrations-Teststatus. Dies ist Repository- und
+synthetische Testevidenz, kein produktiver Integrations-, Container- oder
+Deployment-Nachweis.

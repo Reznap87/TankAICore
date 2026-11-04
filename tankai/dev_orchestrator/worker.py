@@ -60,6 +60,39 @@ def render_command(command: CommandSpec) -> str:
     return shlex.join(command.argv)
 
 
+def validate_execution_receipt(
+    result: TestExecution,
+    *,
+    command: str,
+    invocation_started_at: datetime,
+    invocation_finished_at: datetime,
+) -> TestExecution:
+    """Bind an executor result to the canonical command and observed call window."""
+    if not isinstance(result.executed_at, datetime):
+        raise ValueError(
+            "Executor-Befehlsbelege benötigen einen datetime-Zeitstempel"
+        )
+    validated = TestExecution.model_validate(
+        {
+            "command": command,
+            "passed": result.passed,
+            "exit_code": result.exit_code,
+            "summary": result.summary,
+            "executed_at": result.executed_at,
+        }
+    )
+    executed_at = validated.executed_at.astimezone(timezone.utc)
+    if not (
+        invocation_started_at - EXECUTION_RECEIPT_CLOCK_SKEW
+        <= executed_at
+        <= invocation_finished_at + EXECUTION_RECEIPT_CLOCK_SKEW
+    ):
+        raise ValueError(
+            "Executor-Befehlsbeleg liegt außerhalb des beobachteten Aufruffensters"
+        )
+    return validated
+
+
 def _resume_contract(state: ProjectState, job: WorkerPipelineJob) -> str:
     agent = state.agents[job.worker.agent_id]
     task = state.tasks[agent.task_id]
@@ -597,7 +630,7 @@ class WorkerPipelineRunner:
                 ["git", "diff", "--check", f"{run.base_commit}..{run.implementation_commit}"],
             )
             invocation_finished_at = utcnow()
-            diff_check = self._validate_execution_receipt(
+            diff_check = validate_execution_receipt(
                 diff_check,
                 command=diff_command,
                 invocation_started_at=invocation_started_at,
@@ -799,7 +832,7 @@ class WorkerPipelineRunner:
                 )
             invocation_finished_at = utcnow()
             self._guard(f"{phase.value}:command:{index}:after")
-            result = self._validate_execution_receipt(
+            result = validate_execution_receipt(
                 result,
                 command=render_command(command),
                 invocation_started_at=invocation_started_at,
@@ -809,38 +842,6 @@ class WorkerPipelineRunner:
             if not result.passed:
                 break
         return executions
-
-    @staticmethod
-    def _validate_execution_receipt(
-        result: TestExecution,
-        *,
-        command: str,
-        invocation_started_at: datetime,
-        invocation_finished_at: datetime,
-    ) -> TestExecution:
-        if not isinstance(result.executed_at, datetime):
-            raise ValueError(
-                "Executor-Befehlsbelege benötigen einen datetime-Zeitstempel"
-            )
-        validated = TestExecution.model_validate(
-            {
-                "command": command,
-                "passed": result.passed,
-                "exit_code": result.exit_code,
-                "summary": result.summary,
-                "executed_at": result.executed_at,
-            }
-        )
-        executed_at = validated.executed_at.astimezone(timezone.utc)
-        if not (
-            invocation_started_at - EXECUTION_RECEIPT_CLOCK_SKEW
-            <= executed_at
-            <= invocation_finished_at + EXECUTION_RECEIPT_CLOCK_SKEW
-        ):
-            raise ValueError(
-                "Executor-Befehlsbeleg liegt außerhalb des beobachteten Aufruffensters"
-            )
-        return validated
 
     def _execute_gate_commands(
         self,

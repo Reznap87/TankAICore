@@ -893,6 +893,95 @@ class LocalRecordingContainerExecutor:
         )
 
 
+class InvalidIntegrationReceiptExecutor(LocalRecordingContainerExecutor):
+    """Returns an unvalidated outcome only for the post-merge command."""
+
+    def execute(self, *args, **kwargs):
+        result = super().execute(*args, **kwargs)
+        if kwargs["phase"] == "integration_test":
+            return result.model_copy(update={"passed": 1})
+        return result
+
+
+def test_integration_revalidates_repository_diff_receipt_before_persistence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    run_repository_command = manager.run_repository_command
+
+    def invalid_diff_receipt(command, **kwargs):
+        result = run_repository_command(command, **kwargs)
+        if list(command[:3]) == ["git", "diff", "--check"]:
+            return result.model_copy(update={"passed": 1})
+        return result
+
+    monkeypatch.setattr(manager, "run_repository_command", invalid_diff_receipt)
+
+    with pytest.raises(IntegrationExecutionError, match="Input should be a valid boolean"):
+        WorkerIntegrationRunner(orchestrator, manager).run(
+            integration_job_for(pipeline, job)
+        )
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions == []
+    assert not any(
+        status.phase == "integration_test" for status in run.status_messages
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
+
+
+def test_integration_revalidates_container_executor_receipt_before_persistence(
+    tmp_path: Path,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    isolation = WorkerIsolationSpec(
+        image="tankai-worker@sha256:" + "d" * 64,
+        user="10001:10001",
+    )
+    executor = InvalidIntegrationReceiptExecutor(manager)
+
+    with pytest.raises(IntegrationExecutionError, match="Input should be a valid boolean"):
+        WorkerIntegrationRunner(
+            orchestrator,
+            manager,
+            container_executor=executor,
+        ).run(IntegrationJob(
+            run_id=pipeline.run.run_id,
+            test_commands=job.worker.test_commands,
+            isolation=isolation,
+        ))
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions == []
+    assert not any(
+        status.phase == "integration_test" for status in run.status_messages
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
+
+
 def test_container_policy_covers_worker_gates_and_post_merge_tests(tmp_path: Path) -> None:
     repository, orchestrator, manager, job = make_pipeline(tmp_path, security=True)
     image = "tankai-worker@sha256:" + "b" * 64

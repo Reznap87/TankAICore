@@ -613,3 +613,13 @@ review receipt or terminal status is persisted. This closes a host-review
 exception to the existing receipt contract without moving the check into the
 job-controlled container or changing review policy. It remains code and
 synthetic-CI evidence, not production-worker or reviewer attestation.
+
+Post-merge integration commands now cross that same receipt boundary as well.
+The mandatory repository diff check and every configured host or container
+integration test bind the adapter's raw outcome, exit code, summary and timestamp
+to the canonical command and the locally observed invocation window before any
+integration receipt is persisted. A synthetic container executor returns the
+strictly invalid value `passed=1` only for the integration phase; the integration
+rolls the repository back and blocks the run without saving the forged receipt or
+an integration-test status. This is repository and synthetic-test evidence, not
+production integration, container-runtime or deployment attestation.

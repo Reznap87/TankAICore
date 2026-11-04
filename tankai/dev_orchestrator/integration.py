@@ -27,6 +27,7 @@ from .models import (
     WorkerPhase,
     WorkerRunRecord,
     WorkerRunState,
+    utcnow,
 )
 from .orchestrator import (
     DevelopmentOrchestrator,
@@ -34,7 +35,7 @@ from .orchestrator import (
     TransitionError,
     ValidationError,
 )
-from .worker import render_command
+from .worker import render_command, validate_execution_receipt
 
 
 class IntegrationExecutionError(RuntimeError):
@@ -427,10 +428,18 @@ class WorkerIntegrationRunner:
         previous_commit: str,
         expected_commit: str,
     ) -> list[TestExecution]:
+        diff_command = f"git diff --check {previous_commit}..{expected_commit}"
+        invocation_started_at = utcnow()
         diff_check = self.workspace_manager.run_repository_command(
             ["git", "diff", "--check", f"{previous_commit}..{expected_commit}"],
         )
-        diff_check.command = f"git diff --check {previous_commit}..{expected_commit}"
+        invocation_finished_at = utcnow()
+        diff_check = validate_execution_receipt(
+            diff_check,
+            command=diff_command,
+            invocation_started_at=invocation_started_at,
+            invocation_finished_at=invocation_finished_at,
+        )
         executions: list[TestExecution] = [diff_check]
         if not diff_check.passed:
             return executions
@@ -441,6 +450,7 @@ class WorkerIntegrationRunner:
             base_commit=previous_commit,
         )
         for command in job.test_commands:
+            invocation_started_at = utcnow()
             if job.isolation is None:
                 execution = self.workspace_manager.run_repository_command(
                     command.argv,
@@ -464,7 +474,13 @@ class WorkerIntegrationRunner:
                     job.isolation,
                     **execute_kwargs,
                 )
-            execution.command = render_command(command)
+            invocation_finished_at = utcnow()
+            execution = validate_execution_receipt(
+                execution,
+                command=render_command(command),
+                invocation_started_at=invocation_started_at,
+                invocation_finished_at=invocation_finished_at,
+            )
             executions.append(execution)
             if not execution.passed:
                 break
