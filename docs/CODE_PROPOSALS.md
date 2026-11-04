@@ -642,3 +642,11 @@ changes only the canonical command of one green receipt; finalization fails, the
 repository rolls back, and the previously validated evidence remains unchanged
 for inspection. This is state-transition and synthetic-test evidence, not a
 production merge or deployment claim.
+
+The integrated run's terminal timestamp is now the exact creation timestamp of
+its final `integrated` status rather than a separate clock sample taken a few
+microseconds earlier. Consumers can therefore treat the terminal status as the
+single completion receipt without reconciling two nearly identical instants. A
+regression first demonstrated the former mismatch and now requires exact equality.
+This remains local state-transition and synthetic-test evidence; it does not make
+the host clock trusted or attest a production integration.

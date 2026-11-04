@@ -479,6 +479,7 @@ def test_worker_integration_fast_forwards_main_and_finalizes_state(tmp_path: Pat
 
     state = orchestrator.state()
     assert result.run.state == WorkerRunState.INTEGRATED
+    assert result.run.finished_at == result.run.status_messages[-1].created_at
     assert result.run.integration_commit == result.integration_commit
     assert result.integration_commit != previous
     assert state.current_commit == result.integration_commit

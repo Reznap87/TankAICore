@@ -4718,3 +4718,14 @@ nur den kanonischen Befehl eines grünen Belegs. Der Abschluss scheitert, das
 Repository wird zurückgesetzt und die zuvor validierte Evidenz bleibt unverändert
 zur Prüfung erhalten. Dies ist Zustandsübergangs- und synthetische Testevidenz,
 kein produktiver Merge- oder Deployment-Nachweis.
+
+
+## Entwurfsnachweis: einheitlicher terminaler Integrationszeitpunkt
+
+Der Abschlusszeitpunkt eines integrierten Worker-Runs entspricht nun exakt dem
+Erstellungszeitpunkt seines letzten `integrated`-Statusbelegs. Zuvor wurden dafür
+zwei unmittelbar aufeinanderfolgende Uhrwerte gespeichert, die sich typischerweise
+um wenige Mikrosekunden unterschieden. Ein zuerst fehlschlagender Regressionstest
+belegt diese Abweichung und verlangt jetzt Zeitstempelgleichheit. Damit ist der
+terminale Status der eindeutige Abschlussbeleg; eine vertrauenswürdige Host-Uhr,
+Produktionsintegration oder Remote-Attestierung wird weiterhin nicht behauptet.

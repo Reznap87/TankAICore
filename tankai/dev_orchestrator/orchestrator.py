@@ -889,15 +889,16 @@ class DevelopmentOrchestrator:
                 raise TransitionError("Post-Merge-Gesamttests sind nicht vollständig bestanden")
             run.state = WorkerRunState.INTEGRATED
             run.phase = WorkerPhase.INTEGRATED
-            run.finished_at = utcnow()
-            run.status_messages.append(WorkerStatusMessage(
+            integrated_status = WorkerStatusMessage(
                 sequence=len(run.status_messages) + 1,
                 phase=WorkerPhase.INTEGRATED,
                 message=(
                     f"Fast-Forward nach {state.current_branch} und "
                     f"{len(executions)} Post-Merge-Prüfung(en) bestanden."
                 ),
-            ))
+            )
+            run.status_messages.append(integrated_status)
+            run.finished_at = integrated_status.created_at
             task.state = TaskState.INTEGRATED
             task.integration_commit = normalized_commit
             task.updated_at = utcnow()
