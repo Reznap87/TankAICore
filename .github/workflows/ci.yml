@@ -10,6 +10,74 @@ permissions:
   contents: read
 
 jobs:
+  rootless-worker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"
+      TANKAI_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install smoke dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Prepare unprivileged Podman user session
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v podman
+          command -v newuidmap
+          command -v newgidmap
+          smoke_uid="$(id -u)"
+          test "$smoke_uid" -ne 0
+          sudo loginctl enable-linger "$(id -un)"
+          sudo systemctl start "user@${smoke_uid}.service"
+          export XDG_RUNTIME_DIR="/run/user/${smoke_uid}"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+          export XDG_DATA_HOME="${RUNNER_TEMP}/tankai-rootless-data"
+          test -S "${XDG_RUNTIME_DIR}/bus"
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS}" >> "$GITHUB_ENV"
+          echo "XDG_DATA_HOME=${XDG_DATA_HOME}" >> "$GITHUB_ENV"
+          python -m tankai.dev_orchestrator.runtime_cli --container-runtime podman
+      - name: Build immutable worker image with rootless Podman
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman pull docker.io/library/python:3.12-slim
+          smoke_base_image="$(podman image inspect --format '{{index .RepoDigests 0}}' docker.io/library/python:3.12-slim)"
+          [[ "$smoke_base_image" =~ @sha256:[a-f0-9]{64}$ ]]
+          printf '%s\n' "$smoke_base_image" > "$RUNNER_TEMP/tankai-rootless-base-image.txt"
+          podman build --file Dockerfile.worker \
+            --build-arg "PYTHON_BASE_IMAGE=${smoke_base_image}" \
+            --iidfile "$RUNNER_TEMP/tankai-rootless-worker.iid" \
+            --tag "localhost/tankai-rootless-smoke:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" .
+      - name: Verify real rootless correction and worker restart
+        run: >-
+          python .github/scripts/rootless_code_repair_smoke.py
+          --root "${RUNNER_TEMP}/tankai-rootless-smoke"
+          --runtime podman
+          --image-id-file "${RUNNER_TEMP}/tankai-rootless-worker.iid"
+          --base-image-file "${RUNNER_TEMP}/tankai-rootless-base-image.txt"
+          --output "${RUNNER_TEMP}/tankai-rootless-receipt.json"
+      - name: Clean only this smoke's managed containers
+        if: always()
+        run: >-
+          python .github/scripts/rootless_code_repair_smoke.py
+          --cleanup --root "${RUNNER_TEMP}/tankai-rootless-smoke" --runtime podman
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: tankai-rootless-worker-receipt
+          path: ${{ runner.temp }}/tankai-rootless-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

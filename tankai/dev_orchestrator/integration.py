@@ -21,12 +21,14 @@ from .container_runtime import DockerCommandExecutor
 from .git_workspace import GitWorkspaceError, GitWorkspaceManager, Workspace
 from .models import (
     IntegrationJob,
+    ProjectState,
     TaskState,
     TestExecution,
     WorkerExecutionBackend,
     WorkerPhase,
     WorkerRunRecord,
     WorkerRunState,
+    utcnow,
 )
 from .orchestrator import (
     DevelopmentOrchestrator,
@@ -34,7 +36,7 @@ from .orchestrator import (
     TransitionError,
     ValidationError,
 )
-from .worker import render_command
+from .worker import WorkerPipelineRunner, render_command, validate_execution_receipt
 
 
 class IntegrationExecutionError(RuntimeError):
@@ -179,6 +181,11 @@ class WorkerIntegrationRunner:
                     self.orchestrator.begin_worker_integration(
                         run.run_id,
                         expected_project_commit=previous_commit,
+                        state_validator=lambda updated_state: (
+                            WorkerPipelineRunner._require_coherent_timeline(
+                                updated_state.worker_runs[run.run_id]
+                            )
+                        ),
                     )
                     integration_started = True
 
@@ -247,6 +254,12 @@ class WorkerIntegrationRunner:
                         integration_executions=executions,
                         integration_commit=merged_commit,
                         integration_isolation=job.isolation,
+                        state_validator=lambda updated_state: (
+                            self._require_integration_execution_window(
+                                updated_state,
+                                run.run_id,
+                            )
+                        ),
                     )
                     failed = [item.command for item in executions if not item.passed]
                     if failed:
@@ -427,10 +440,18 @@ class WorkerIntegrationRunner:
         previous_commit: str,
         expected_commit: str,
     ) -> list[TestExecution]:
+        diff_command = f"git diff --check {previous_commit}..{expected_commit}"
+        invocation_started_at = utcnow()
         diff_check = self.workspace_manager.run_repository_command(
             ["git", "diff", "--check", f"{previous_commit}..{expected_commit}"],
         )
-        diff_check.command = f"git diff --check {previous_commit}..{expected_commit}"
+        invocation_finished_at = utcnow()
+        diff_check = validate_execution_receipt(
+            diff_check,
+            command=diff_command,
+            invocation_started_at=invocation_started_at,
+            invocation_finished_at=invocation_finished_at,
+        )
         executions: list[TestExecution] = [diff_check]
         if not diff_check.passed:
             return executions
@@ -441,6 +462,7 @@ class WorkerIntegrationRunner:
             base_commit=previous_commit,
         )
         for command in job.test_commands:
+            invocation_started_at = utcnow()
             if job.isolation is None:
                 execution = self.workspace_manager.run_repository_command(
                     command.argv,
@@ -464,7 +486,13 @@ class WorkerIntegrationRunner:
                     job.isolation,
                     **execute_kwargs,
                 )
-            execution.command = render_command(command)
+            invocation_finished_at = utcnow()
+            execution = validate_execution_receipt(
+                execution,
+                command=render_command(command),
+                invocation_started_at=invocation_started_at,
+                invocation_finished_at=invocation_finished_at,
+            )
             executions.append(execution)
             if not execution.passed:
                 break
@@ -485,6 +513,39 @@ class WorkerIntegrationRunner:
                 summary="Keine Post-Merge-Prüfung ausgeführt",
             ))
         return executions
+
+    @staticmethod
+    def _require_integration_execution_window(
+        state: ProjectState,
+        run_id: str,
+    ) -> None:
+        run = state.worker_runs[run_id]
+        merge_statuses = [
+            status for status in run.status_messages
+            if status.phase == WorkerPhase.MERGE
+        ]
+        integration_statuses = [
+            status for status in run.status_messages
+            if status.phase == WorkerPhase.INTEGRATION_TEST
+        ]
+        if (
+            not merge_statuses
+            or not integration_statuses
+            or run.status_messages[-1].phase != WorkerPhase.INTEGRATION_TEST
+        ):
+            raise ValidationError(
+                "Integrationszeitachse besitzt kein eindeutiges Phasenfenster"
+            )
+        phase_started_at = merge_statuses[-1].created_at
+        phase_finished_at = integration_statuses[-1].created_at
+        if not run.integration_executions or any(
+            execution.executed_at < phase_started_at
+            or execution.executed_at > phase_finished_at
+            for execution in run.integration_executions
+        ):
+            raise ValidationError(
+                "Post-Merge-Belege liegen außerhalb ihres Integrationsfensters"
+            )
 
     def _container_executor(self) -> DockerCommandExecutor:
         if self.container_executor is None:

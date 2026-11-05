@@ -1761,6 +1761,111 @@ Keine aktuelle Bestätigung des Runtime-SHA oder der dortigen Secretkonfiguratio
 Der Prüfbericht unterscheidet öffentliche Beobachtung, Repositorybeleg und offene Abnahme.
 Die Prüfung aktiviert keine Provider, bezahlt keine Requests und veröffentlicht keine Runtime.
 
+0.11.9 Vorstufe für kontrollierte Agenten-Codebeiträge
+
+Die lokale Vorbereitung `prepare-code-proposal` bindet begrenzte Dateiänderungen
+eines Programmieragenten an einen aktiven bestehenden Task, dessen Agenten,
+Basis-Commit, Schreibbereiche und Pflicht-Testbefehle. Der erzeugte Auftrag nutzt
+den unveränderten WorkerPipelineJob und weiterhin sämtliche Ausführungs-Gates.
+Details und Grenzen stehen in docs/CODE_PROPOSALS.md. Die Vorbereitung selbst
+verändert keinen Projektzustand, startet keine Queue und verwendet keinen Provider.
+
+Die lokale Request-/Response-Vorstufe ergänzt das gespeicherte Ziel und begrenzten,
+explizit freigegebenen Quellkontext aus dem exakten Basis-Commit. Antworten werden
+an Request, aktive Task-/Agentenvorgaben, Operator-Prüfungen und bekannte
+Dateiausgangshashes gebunden. Geänderte Verträge oder ungesehene bestehende Dateien
+werden vor dem Jobexport abgewiesen. Ein Modellzugang, automatische Datenübertragung
+und echte Inferenz werden dadurch nicht eingerichtet oder freigegeben.
+
+Neue Worker-Runs können lokal ab ihrem gespeicherten Implementierungscommit
+fortgesetzt werden. Auftrag, Task-/Agentenvertrag, Quellstand, Worktree und
+Prüfbelege werden erneut gebunden; gespeicherte Befehlsbelege müssen dabei exakt
+vollständig, als bestanden markiert, mit Exitcode 0 bestätigt und in ihrer
+ursprünglichen Reihenfolge vorhanden sein. Ein widersprüchlicher Erfolgsbeleg mit
+abweichendem Exitcode wird ebenso wie ein zusätzlicher oder umsortierter Beleg
+abgewiesen. Bestandene QA muss im Task und Worker-Run
+denselben vollständigen Belegsatz besitzen; ein gespaltenes Journal wird vor jeder
+Fortsetzung abgewiesen. Neue Review- und Security-Freigaben speichern ihre
+vollständigen Belege ebenfalls im Task und Worker-Run; Wiederaufnahme verlangt
+auch dort exakte Übereinstimmung. Die gespeicherten Review- und Security-
+Zusammenfassungen müssen sich unverändert aus diesen Belegen neu ableiten lassen;
+abweichende Texte werden vor jeder Fortsetzung abgewiesen. Ältere Freigaben ohne
+Task-Belege bleiben nicht wiederaufnehmbar.
+Eine bereits gespeicherte Einreichung muss außerdem dieselbe
+Implementierungszusammenfassung wie der hashgebundene Worker-Auftrag tragen;
+abweichende Receipt-Texte werden vor jeder weiteren Ausführung ohne
+Zustandsänderung abgewiesen.
+Integrationsbereite Runs benötigen außerdem Phase `complete`, einen gespeicherten
+Abschlusszeitpunkt und einen leeren Fehlertext. Unfertige Runs dürfen keinen
+Abschlusszeitpunkt oder Fehlertext tragen; widersprüchliche Terminal-Receipts
+werden ohne Fortsetzung abgewiesen. Start, Befehls- und Statusbelege sowie Abschluss
+müssen außerdem eine zeitzonenbezogene, widerspruchsfreie Zeitachse bilden. Der
+abschließende `complete`-Status ist exakt an den Abschlusszeitpunkt gebunden;
+Belege außerhalb des Laufintervalls werden vor jeder Zustandsänderung abgewiesen.
+Die gespeicherten Befehlsbelege müssen außerdem in der Phasenfolge chronologisch
+bleiben; Statusbelege benötigen eine lückenlose Sequenz und nicht rückläufige
+Zeitstempel. Ihre Phasen dürfen innerhalb des Resume-Vertrags nicht rückwärts
+laufen und der letzte Status muss die aktuelle Run-Phase belegen; `complete` ist
+ausschließlich als letzter Status zulässig. Rückwärts
+laufende, vorzeitig abgeschlossene oder doppelt nummerierte Journale werden damit
+vor jeder Fortsetzung abgewiesen.
+Dies schützt die Journal-Konsistenz, ersetzt aber keine vertrauenswürdige Host-Uhr.
+Neue Befehlsbelege erzwingen zentral, dass `passed=true` ausschließlich mit
+Exitcode 0 zulässig ist. Der Runner bindet die kanonische Befehlsdarstellung und
+revalidiert anschließend jeden vom Host- oder Container-Executor gelieferten
+Beleg; auch über umgangene Pydantic-Konstruktionsprüfungen erzeugte Adapterobjekte
+können deshalb keinen widersprüchlichen Erfolg persistieren. Fehlende oder
+abweichende Exitcodes können damit weder im aktiven Implementierungs-/Gatepfad
+noch später beim Resume Erfolg belegen; Timeout- und Fehlerbelege bleiben
+weiterhin darstellbar.
+Die Implementierung wird nicht wiederholt.
+Ein echter Prozess-Exit mit anschließendem CLI-Neustart ist als Regression
+abgedeckt. Frühe/unklare Unterbrechungen bleiben gesperrt. Containerwiederaufnahme
+verlangt die bestehende Queue-/Fence-Kontrolle und eine verwaisungsfreie Inventur;
+automatisches Dispatcher-Recovery und realer Container-Restart sind noch offen.
+
+Ein begrenzter lokaler Korrekturauftrag kann nach konkret fehlgeschlagenen
+Worker-Tests aus dem gespeicherten Fehlercommit vorbereitet werden. Nur explizit
+ausgewählte zuvor geänderte Dateien sind editierbar; Tests und Gates bleiben
+unverändert. Export und Aktivierung sind getrennt. Die Aktivierung reserviert
+atomar höchstens zwei Versuche im vorhandenen ProjectState, erhält alte
+Fehlerbelege und bindet den nächsten Run an Job, Vertrag und Startcommit.
+Rohe Testausgaben werden nicht in den Auftrag übernommen. Die neue lokale
+Aktivierung weist Containeraufträge ab; dafür ist der kontrollierte Queue-Pfad vorgesehen.
+
+Containerkorrekturen können über die bestehende Queue von Workspace-Owner/Admin
+eingereiht werden. Die Einreichung reserviert noch keinen Korrekturversuch.
+Der Worker prüft Admission, aktuelle Berechtigung, rootless Runtime, Inventur,
+Lease und externen Fence vor der atomaren Reservierung erneut. Diese ist an die
+Queue-Job-ID gebunden. Doppelte Einreichungen und Wiederaufnahme desselben Jobs
+verbrauchen keinen weiteren Korrekturversuch. Ein gespeicherter Commit kann unter
+neuer Lease fortgesetzt und ein fertiger Run ohne erneute Implementierung als
+Queue-Ergebnis übernommen werden. Frühe unklare Unterbrechungen bleiben gesperrt.
+Regressionen verwenden echte Queue-/Fence-/Git-Persistenz mit Testexecutor;
+die zusätzliche reale Abnahme erfolgt im CI-Job rootless-worker. Dieser baut
+Dockerfile.worker, verwendet eine unveränderliche Image-ID mit rootless Podman
+und prüft Codekorrektur, Prozessneustart und tatsächliche Container-Schutzwerte.
+Nur ein erfolgreicher Lauf mit tankai-rootless-worker-receipt gilt als Beleg.
+Er ersetzt keinen Produktionsdeploy oder Dauerbetriebs-Pilot.
+
+Gebundene Erstantworten können Owner/Admin mit enqueue-code-response direkt
+in die bestehende Queue einreichen. Request, Antwort und Operator-Prüfvertrag
+bleiben im bestehenden Payload gespeichert und hashgebunden. Eine feste
+Repository-/Task-/Agent-/Basiscommit-Identität verhindert doppelte Jobs auch
+bei gleichzeitigen Admin-Einreichungen. Der Worker prüft Quelle und Vertrag
+unter Lease/Fence vor seinem ersten Run erneut; geänderte Vorgaben sperren die
+Ausführung. Ein vorhandener Run wird nicht durch eine neue Implementierung ersetzt.
+Der rootless-CI-Test prüft auch diesen Erstantwort-Pfad. Datenbankstruktur und
+externe Gateway-v1-Verträge bleiben unverändert; neue HTTP-/Tokenrechte entstehen nicht.
+
+Dies ist eine Vertragsscheibe für den späteren Goal-to-Code-Pfad. Ein echter
+Programmieragenten-Adapter und automatische Korrekturantworten bleiben eigenständige
+Schritte. Die reale Queue-/Containerausführung ist durch den erfolgreichen
+rootless-CI-Receipt für dessen konkreten Stand belegt. Der eingefrorene P2-Korpus und seine
+historischen Receipts bleiben unverändert; lokale Übergabetests sind kein
+Qualitätsgewinn oder neuer Produktionsnachweis. Die offenen Ausführungs- und
+Budgetarbeiten in den bestehenden Entwurfs-PRs werden nicht parallel ersetzt.
+
 0.12 Reality-Contract-Versionshistorie
 
 5.7.45, 15. Oktober 2026:
@@ -4455,3 +4560,216 @@ executableContentRun: false und factsVerified: false bleiben verbindlich.
 Die Funktion ist rein lesend und benötigt keine Migration. Nächster nicht blockierter Gate:
 begrenzte DFFITS-Einflussdiagnostik mit expliziter Schwellenregel oder der kontrollierte DNS-/IP-
 Resolver, sobald die nötige Infrastruktur bereitsteht.
+
+## Entwurfsnachweis: strikt boolescher Befehlsbeleg
+
+`TestExecution.passed` ist nun strikt boolesch. Die Executor-Revalidierung
+normalisiert weder Ganzzahlen noch Zeichenketten zu einem Erfolg. Ein
+synthetischer Adaptertest erzeugt über Pydantics nicht validierenden
+`model_copy(update=...)`-Pfad einen Beleg mit `passed=1` und Exitcode 0 und
+verlangt dessen Ablehnung vor Implementierungsbeleg oder Commit. Der bestehende
+Erfolgsvertrag `passed=true` plus Exitcode 0 bleibt erhalten; Fehler- und
+Timeout-Belege werden nicht eingeschränkt. Dies ist Code-/CI-Evidenz, kein
+Produktionslauf oder unabhängiger Modellreview.
+
+
+Die Executor-Grenze validiert dabei die rohen Receipt-Felder direkt. Sie
+serialisiert kein bereits typwidriges Pydantic-Objekt vor der Prüfung; dadurch
+bleibt die strikte Ablehnung ohne Serialisierungswarnung erhalten und kann nicht
+durch JSON-Normalisierung verändert werden. Der Nachweis bleibt synthetische
+Code-/CI-Evidenz und sagt nichts über einen produktiven Workerzustand aus.
+
+
+## Entwurfsnachweis: strikt ganzzahliger Exitcode
+
+Befehlsbelege akzeptieren als Exitcode nur noch einen echten Integer oder None.
+Insbesondere kann ein Adapter den Python-Boolean False nicht mehr über
+Integer-Normalisierung als erfolgreichen Exitcode 0 einschleusen. Ein
+synthetischer Executor-Test erzeugt genau diesen typwidrigen Beleg über
+model_copy(update=...) und verlangt dessen Ablehnung vor Persistenz oder Commit.
+Echte ganzzahlige Fehlercodes und fehlende Timeout-Exitcodes bleiben
+darstellbar. Dies ist Code-/CI-Evidenz, kein produktiver Worker- oder
+unabhängiger Modellreview.
+
+
+## Entwurfsnachweis: zeitzonengebundener Ausführungszeitpunkt
+
+Executor-Belege müssen an der Adaptergrenze einen echten `datetime` liefern;
+das Receipt-Modell akzeptiert nur Zeitpunkte mit explizitem Zeitzonenbezug.
+Naive Zeitpunkte und über Pydantics nicht validierenden `model_copy(update=...)`-
+Pfad eingeschleuste Zeitstempeltexte werden vor Persistenz oder Commit
+abgewiesen. Beim Laden autoritativer JSON-Zustände bleiben ISO-8601-Texte
+zulässig, müssen aber zu einem zeitzonengebundenen Zeitpunkt aufgelöst werden.
+Dies ist Code-/CI-Evidenz und keine Aussage über einen produktiven Workerzustand.
+
+
+## Entwurfsnachweis: Ausführungszeitpunkt im beobachteten Aufruffenster
+
+Der zeitzonengebundene Executor-Zeitpunkt muss zusätzlich innerhalb des lokal
+beobachteten Aufrufbeginns und -endes liegen. Eine ausdrücklich begrenzte
+Uhrtoleranz von fünf Sekunden verhindert Fehlablehnungen durch geringe
+Zeitabweichungen; Belege aus ferner Vergangenheit oder Zukunft werden vor
+Persistenz und Commit abgewiesen. Zwei synthetische Adaptertests decken beide
+Richtungen ab. Dies ist Code-/CI-Evidenz, keine vertrauenswürdige Hardwarezeit,
+Remote-Attestierung oder produktive Zeitsynchronisationsprüfung.
+
+
+## Entwurfsnachweis: kanonischer UTC-Ausführungszeitpunkt
+
+Gültige zeitzonengebundene Ausführungszeitpunkte werden vor Persistenz und
+Hashbildung auf UTC kanonisiert. Verschiedene Offsets für denselben Zeitpunkt
+erzeugen dadurch denselben serialisierten Receipt-Zeitstempel. Ein synthetischer
+Regressionstest belegt die Normalisierung einschließlich JSON-Darstellung. Dies
+verbessert die deterministische Code-/CI-Evidenz, begründet aber weder eine
+vertrauenswürdige noch eine produktiv synchronisierte Executor-Uhr.
+
+
+## Entwurfsnachweis: widerspruchsfreier Befehlsausgang
+
+Ergebnisstatus und Exitcode eines Befehlsbelegs sind nun in beide Richtungen
+gebunden: Erfolg verlangt Exitcode 0, und Exitcode 0 verlangt `passed=true`.
+Echte Fehlerbelege mit einem von null verschiedenen Integer sowie Timeout- und
+Executor-Ausnahmebelege ohne Exitcode bleiben darstellbar. Ein synthetischer
+Adaptertest schleust über Pydantics nicht validierenden `model_copy(update=...)`-
+Pfad `passed=false` bei Exitcode 0 ein und verlangt die Ablehnung vor Persistenz
+oder Commit. Dies ist Code-/CI-Evidenz, kein produktiver Worker-Nachweis.
+
+
+## Entwurfsnachweis: atomare Abschlussprüfung der Worker-Zeitachse
+
+Die vollständige Zeitachsenprüfung läuft nun auch beim erstmaligen Abschluss
+eines Worker-Runs innerhalb derselben Zustandstransaktion, nicht erst bei einer
+späteren Wiederaufnahme. Jeweils im beobachteten Aufruffenster liegende, über
+Phasengrenzen hinweg jedoch rückwärts laufende Executor-Zeitstempel können damit
+keinen dauerhaften `complete`-Beleg erzeugen. Ein synthetischer Regressionstest
+liefert genau diese einzeln plausiblen, insgesamt ungeordneten Belege und verlangt
+die Sperrung des bereits committed Runs ohne gespeicherten Abschlussstatus. Dies
+ist Code-/CI-Evidenz; weder eine produktive Host-Uhr noch ein Live-Worker wurde
+geprüft.
+
+
+## Entwurfsnachweis: Befehlsbelege innerhalb ihres Phasenfensters
+
+Die Abschlussprüfung bindet jeden gespeicherten Befehlsbeleg zusätzlich an das
+Statusfenster seiner eigenen Phase. Ein einzeln plausibler und global geordneter
+Executor-Zeitstempel darf damit nicht nach dem Status liegen, der seine
+Implementierungs-, Test-, Review-, Security- oder QA-Phase bereits als beendet
+protokolliert. Auch die Untergrenze wird durch den jeweils vorausgehenden
+Prepare-, Commit-, Submit-, Review- oder Security-Status festgelegt. Überlebt
+die Task-Einreichung einen Abbruch vor ihrem Run-Status, dient der ausdrückliche
+Test-Wiederanlaufstatus als Review-Untergrenze. Ein synthetischer frischer Lauf
+erzeugt genau einen solchen leicht zukünftigen
+Implementierungsbeleg und verlangt die Sperrung ohne gespeicherten
+`complete`-Status. Dies ist Code-/CI-Evidenz, keine vertrauenswürdige Host-Uhr,
+Remote-Attestierung oder produktive Worker-Prüfung.
+
+
+## Entwurfsnachweis: revalidierter Host-Diff-Beleg
+
+Der verpflichtende Host-Review `git diff --check` durchläuft nun dieselbe
+Adaptergrenze wie Implementierungs-, Test- und konfigurierte Gate-Befehle. Nach
+Bindung der kanonischen Befehlsdarstellung werden Ergebnis, Exitcode,
+Zusammenfassung und Zeitstempel erneut validiert; der Zeitpunkt muss außerdem im
+lokal beobachteten Aufruffenster liegen. Ein synthetischer Workspace-Adapter
+liefert ausschließlich für diesen Diff-Check den typwidrigen Wert `passed=1`.
+Der Run weist ihn nach dem Implementierungscommit, aber vor Review-Beleg oder
+Abschlussstatus ab. Die Host-Prüfung bleibt unverändert außerhalb
+job-kontrollierter Container; Review-Richtlinie und Befehlsumfang werden nicht
+erweitert. Dies ist Code-/CI-Evidenz, kein produktiver Worker- oder
+Reviewer-Nachweis.
+
+
+## Entwurfsnachweis: revalidierte Post-Merge-Belege
+
+Der verpflichtende Repository-Diff-Check und alle konfigurierten Host- oder
+Container-Post-Merge-Tests durchlaufen vor der Persistenz dieselbe Adaptergrenze
+wie Worker- und Gate-Befehle. Ergebnis, Exitcode, Zusammenfassung und Zeitstempel
+werden nach Bindung des kanonischen Befehls erneut validiert; der Zeitpunkt muss
+im lokal beobachteten Aufruffenster liegen. Ein synthetischer Container-Adapter
+liefert nur in der Integrationsphase den typwidrigen Wert `passed=1`. Die
+Integration setzt das Repository zurück, sperrt den Run und speichert weder den
+gefälschten Beleg noch einen Integrations-Teststatus. Dies ist Repository- und
+synthetische Testevidenz, kein produktiver Integrations-, Container- oder
+Deployment-Nachweis.
+
+
+## Entwurfsnachweis: Post-Merge-Belege innerhalb ihres Phasenfensters
+
+Die Persistenz von Integrations-Teststatus und Post-Merge-Belegen prüft deren
+Zeitachse innerhalb derselben Zustandstransaktion. Jeder Repository- oder
+Container-Beleg muss frühestens beim letzten gespeicherten Merge-Status und
+spätestens beim neuen Integrations-Teststatus liegen. Ein synthetischer Executor
+liefert einen einzeln noch innerhalb der fünfsekündigen Adaptertoleranz liegenden
+Zeitstempel eine Mikrosekunde vor dem Phasenbeginn. Die Zustandstransaktion weist
+ihn ab, das Repository wird zurückgesetzt und weder Beleg noch Integrations-
+Teststatus bleiben gespeichert. Dies ist Repository- und synthetische
+Testevidenz, keine vertrauenswürdige Uhr-, Produktionsintegrations- oder
+Deployment-Attestierung.
+
+
+## Entwurfsnachweis: unveränderliche Post-Merge-Belege beim Abschluss
+
+Der atomare Integrationsabschluss verbraucht ausschließlich den Commit und die
+Belegliste, die bereits gemeinsam mit dem Integrations-Teststatus gespeichert
+wurden. Ein fehlender oder abweichender Phasenstatus, ein anderer
+Integrationscommit oder eine ersetzte Belegliste wird auch dann abgewiesen, wenn
+alle Ersatzbelege weiterhin Erfolg behaupten. Ein synthetischer Finalizer ändert
+nur den kanonischen Befehl eines grünen Belegs. Der Abschluss scheitert, das
+Repository wird zurückgesetzt und die zuvor validierte Evidenz bleibt unverändert
+zur Prüfung erhalten. Dies ist Zustandsübergangs- und synthetische Testevidenz,
+kein produktiver Merge- oder Deployment-Nachweis.
+
+
+## Entwurfsnachweis: einheitlicher terminaler Integrationszeitpunkt
+
+Der Abschlusszeitpunkt eines integrierten Worker-Runs entspricht nun exakt dem
+Erstellungszeitpunkt seines letzten `integrated`-Statusbelegs. Zuvor wurden dafür
+zwei unmittelbar aufeinanderfolgende Uhrwerte gespeichert, die sich typischerweise
+um wenige Mikrosekunden unterschieden. Ein zuerst fehlschlagender Regressionstest
+belegt diese Abweichung und verlangt jetzt Zeitstempelgleichheit. Damit ist der
+terminale Status der eindeutige Abschlussbeleg; eine vertrauenswürdige Host-Uhr,
+Produktionsintegration oder Remote-Attestierung wird weiterhin nicht behauptet.
+
+
+## Entwurfsnachweis: einheitlicher terminaler Fehlerzeitpunkt
+
+Fehlgeschlagene und durch eine Richtlinie blockierte Worker-Runs übernehmen ihren
+Abschlusszeitpunkt nun exakt aus dem letzten `failed`-Statusbeleg. Zuvor entstanden
+auch hier zwei aufeinanderfolgende Uhrwerte mit einer kleinen Abweichung. Je ein
+zuerst fehlschlagender Regressionstest für `failed` und `blocked` verlangt jetzt
+Zeitstempelgleichheit. Der letzte Fehlerstatus ist damit der eindeutige terminale
+Beleg; eine vertrauenswürdige Host-Uhr, Produktionsausführung oder Remote-
+Attestierung wird nicht behauptet.
+
+
+## Entwurfsnachweis: korrekter Abschlusszeitpunkt bei Integrations-Retry
+
+Beim Start einer realen Integration wird der frühere Abschlusszeitpunkt des
+Zustands `ready_to_integrate` nun gelöscht, solange der Run aktiv rebased und
+geprüft wird. Setzt die Journal-Recovery einen unterbrochenen Versuch sicher
+zurück, übernimmt der neue `complete`-Recovery-Status seinen Erstellungszeitpunkt
+als neuen Abschlusszeitpunkt. Ein zunächst fehlschlagender Recovery-Test belegt
+beide Übergänge. Dies ist Zustandsmaschinen- und synthetische Git-Evidenz, kein
+produktiver Merge, keine vertrauenswürdige Uhr und kein Deployment-Nachweis.
+
+
+## Entwurfsnachweis: gebundener Abschlussbeleg vor Integrationsbeginn
+
+Die Integrationszulassung verlangt nun, dass ein bereiter Worker-Run tatsächlich
+durch seinen terminalen Abschlussbeleg gedeckt ist. Aktuelle Phase und letzter
+Status müssen `complete` sein; `finished_at` muss exakt dem Erstellungszeitpunkt
+dieses Status entsprechen. Synthetische Regressionen verfälschen jeweils Phase,
+letzten Status oder Zeitstempel und werden vor der Aktivierung abgewiesen. Dies
+ist persistierte Zustands- und synthetische Testevidenz, keine Produktions-
+ausführung, Remote-Attestierung oder Deployment-Freigabe.
+
+
+## Entwurfsnachweis: vollständige Zeitachsenprüfung bei Integrationszulassung
+
+Der Produktions-Integrationspfad prüft innerhalb derselben Zulassungstransaktion
+erneut die vollständige gespeicherte Worker-Zeitachse. Ein nach einem gültigen
+`complete`-Beleg verfälschter früherer Status kann dadurch keinen Integrationsstart
+mehr auslösen. Die Regression behält den terminalen Beleg bei, dupliziert jedoch
+eine frühere Sequenznummer; Repository-HEAD und bereiter Run bleiben unverändert.
+Dies ist persistierte Zustands- und synthetische Git-Evidenz, keine produktive
+Integration, vertrauenswürdige Speicherung oder Remote-Attestierung.
