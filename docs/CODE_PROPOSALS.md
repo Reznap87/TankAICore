@@ -671,3 +671,11 @@ terminal completion receipt. The current phase and latest status must both be
 regressions independently corrupt the phase, remove the final status, and move the
 timestamp; each is rejected before the run becomes active. This is persisted-state
 and synthetic-test evidence, not production execution or remote attestation.
+
+The production integration runner also revalidates the complete persisted worker
+timeline inside that same admission transaction. A run whose earlier status
+sequence is changed after its valid `complete` receipt is therefore rejected before
+Git or ProjectState can advance. The regression preserves the final receipt while
+duplicating an earlier sequence number and verifies that both repository HEAD and
+the ready run remain unchanged. This is persisted-state and synthetic Git evidence,
+not a production integration, trusted storage, or remote-attestation claim.

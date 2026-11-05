@@ -737,6 +737,7 @@ class DevelopmentOrchestrator:
         run_id: str,
         *,
         expected_project_commit: str,
+        state_validator: Callable[[ProjectState], None],
     ) -> WorkerRunRecord:
         """Reserve a ready run for one serialized, real Git integration attempt."""
 
@@ -766,6 +767,7 @@ class DevelopmentOrchestrator:
                 raise TransitionError(
                     "Worker-Run besitzt keinen gebundenen Abschlussbeleg"
                 )
+            state_validator(state)
             if task.worker_run_id != run_id:
                 raise ValidationError("Task verweist nicht auf den zu integrierenden Worker-Run")
             if not run.implementation_commit or task.implementation_commit != run.implementation_commit:

@@ -632,10 +632,43 @@ def test_worker_integration_rejects_unbound_completion_receipt(
         orchestrator.begin_worker_integration(
             pipeline.run.run_id,
             expected_project_commit=orchestrator.state().current_commit,
+            state_validator=lambda state: WorkerPipelineRunner._require_coherent_timeline(
+                state.worker_runs[pipeline.run.run_id]
+            ),
         )
 
     persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
     assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
+
+
+def test_worker_integration_revalidates_completed_run_timeline(
+    tmp_path: Path,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        run.status_messages[1].sequence = run.status_messages[0].sequence
+
+    orchestrator.store.transaction(corrupt)
+
+    with pytest.raises(IntegrationExecutionError, match="Statusfolge"):
+        WorkerIntegrationRunner(orchestrator, manager).run(
+            integration_job_for(pipeline, job)
+        )
+
+    persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
+    assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
+    assert orchestrator.state().current_commit == previous
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
 
 
 def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) -> None:
@@ -646,6 +679,9 @@ def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) 
     orchestrator.begin_worker_integration(
         pipeline.run.run_id,
         expected_project_commit=previous,
+        state_validator=lambda state: WorkerPipelineRunner._require_coherent_timeline(
+            state.worker_runs[pipeline.run.run_id]
+        ),
     )
     assert orchestrator.state().worker_runs[pipeline.run.run_id].finished_at is None
     merged = manager.fast_forward_repository(
@@ -768,6 +804,9 @@ def test_recovery_restores_branch_if_crash_occurs_after_rebase_before_state_upda
     orchestrator.begin_worker_integration(
         pipeline.run.run_id,
         expected_project_commit=advanced,
+        state_validator=lambda state: WorkerPipelineRunner._require_coherent_timeline(
+            state.worker_runs[pipeline.run.run_id]
+        ),
     )
     runner.journal.write({
         "stage": "prepared",
@@ -899,6 +938,9 @@ def test_integration_journal_rejects_workspace_outside_managed_root(tmp_path: Pa
     orchestrator.begin_worker_integration(
         pipeline.run.run_id,
         expected_project_commit=current,
+        state_validator=lambda state: WorkerPipelineRunner._require_coherent_timeline(
+            state.worker_runs[pipeline.run.run_id]
+        ),
     )
     runner.journal.write({
         "stage": "prepared",

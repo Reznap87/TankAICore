@@ -4762,3 +4762,14 @@ dieses Status entsprechen. Synthetische Regressionen verfälschen jeweils Phase,
 letzten Status oder Zeitstempel und werden vor der Aktivierung abgewiesen. Dies
 ist persistierte Zustands- und synthetische Testevidenz, keine Produktions-
 ausführung, Remote-Attestierung oder Deployment-Freigabe.
+
+
+## Entwurfsnachweis: vollständige Zeitachsenprüfung bei Integrationszulassung
+
+Der Produktions-Integrationspfad prüft innerhalb derselben Zulassungstransaktion
+erneut die vollständige gespeicherte Worker-Zeitachse. Ein nach einem gültigen
+`complete`-Beleg verfälschter früherer Status kann dadurch keinen Integrationsstart
+mehr auslösen. Die Regression behält den terminalen Beleg bei, dupliziert jedoch
+eine frühere Sequenznummer; Repository-HEAD und bereiter Run bleiben unverändert.
+Dies ist persistierte Zustands- und synthetische Git-Evidenz, keine produktive
+Integration, vertrauenswürdige Speicherung oder Remote-Attestierung.

@@ -36,7 +36,7 @@ from .orchestrator import (
     TransitionError,
     ValidationError,
 )
-from .worker import render_command, validate_execution_receipt
+from .worker import WorkerPipelineRunner, render_command, validate_execution_receipt
 
 
 class IntegrationExecutionError(RuntimeError):
@@ -181,6 +181,11 @@ class WorkerIntegrationRunner:
                     self.orchestrator.begin_worker_integration(
                         run.run_id,
                         expected_project_commit=previous_commit,
+                        state_validator=lambda updated_state: (
+                            WorkerPipelineRunner._require_coherent_timeline(
+                                updated_state.worker_runs[run.run_id]
+                            )
+                        ),
                     )
                     integration_started = True
 
