@@ -664,3 +664,10 @@ crash recovery safely returns the run to `ready_to_integrate`, the new recovery
 `complete` status supplies the replacement terminal timestamp. A journal-recovery
 regression covers both transitions. This is local state-machine and synthetic Git
 evidence, not a production merge, trusted clock or deployment receipt.
+
+Integration admission now verifies that a ready run is actually backed by its
+terminal completion receipt. The current phase and latest status must both be
+`complete`, and `finished_at` must equal that status's creation time. Synthetic
+regressions independently corrupt the phase, remove the final status, and move the
+timestamp; each is rejected before the run becomes active. This is persisted-state
+and synthetic-test evidence, not production execution or remote attestation.

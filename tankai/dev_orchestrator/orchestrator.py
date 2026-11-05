@@ -757,6 +757,15 @@ class DevelopmentOrchestrator:
                 )
             if task.state != TaskState.READY_TO_INTEGRATE:
                 raise TransitionError(f"Task ist nicht integrationsbereit: {task.state.value}")
+            if (
+                run.phase != WorkerPhase.COMPLETE
+                or not run.status_messages
+                or run.status_messages[-1].phase != WorkerPhase.COMPLETE
+                or run.finished_at != run.status_messages[-1].created_at
+            ):
+                raise TransitionError(
+                    "Worker-Run besitzt keinen gebundenen Abschlussbeleg"
+                )
             if task.worker_run_id != run_id:
                 raise ValidationError("Task verweist nicht auf den zu integrierenden Worker-Run")
             if not run.implementation_commit or task.implementation_commit != run.implementation_commit:

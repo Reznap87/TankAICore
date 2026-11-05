@@ -28,6 +28,7 @@ from tankai.dev_orchestrator import (
     WorkerJob,
     WorkerPipelineJob,
     WorkerPipelineRunner,
+    WorkerPhase,
     WorkerRunRecord,
     WorkerRunState,
     render_command,
@@ -605,6 +606,36 @@ def test_worker_integration_rejects_dirty_main_before_state_transition(tmp_path:
     assert state.tasks["AUTH-001"].state == TaskState.READY_TO_INTEGRATE
     assert state.worker_runs[pipeline.run.run_id].state == WorkerRunState.READY_TO_INTEGRATE
     assert (repository / "local-note.txt").exists()
+
+
+@pytest.mark.parametrize("tamper", ["phase", "status", "timestamp"])
+def test_worker_integration_rejects_unbound_completion_receipt(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        if tamper == "phase":
+            run.phase = WorkerPhase.QA
+        elif tamper == "status":
+            run.status_messages.pop()
+        else:
+            assert run.finished_at is not None
+            run.finished_at += timedelta(microseconds=1)
+
+    orchestrator.store.transaction(corrupt)
+
+    with pytest.raises(TransitionError, match="Abschlussbeleg"):
+        orchestrator.begin_worker_integration(
+            pipeline.run.run_id,
+            expected_project_commit=orchestrator.state().current_commit,
+        )
+
+    persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
+    assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
 
 
 def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) -> None:

@@ -4751,3 +4751,14 @@ zurück, übernimmt der neue `complete`-Recovery-Status seinen Erstellungszeitpu
 als neuen Abschlusszeitpunkt. Ein zunächst fehlschlagender Recovery-Test belegt
 beide Übergänge. Dies ist Zustandsmaschinen- und synthetische Git-Evidenz, kein
 produktiver Merge, keine vertrauenswürdige Uhr und kein Deployment-Nachweis.
+
+
+## Entwurfsnachweis: gebundener Abschlussbeleg vor Integrationsbeginn
+
+Die Integrationszulassung verlangt nun, dass ein bereiter Worker-Run tatsächlich
+durch seinen terminalen Abschlussbeleg gedeckt ist. Aktuelle Phase und letzter
+Status müssen `complete` sein; `finished_at` muss exakt dem Erstellungszeitpunkt
+dieses Status entsprechen. Synthetische Regressionen verfälschen jeweils Phase,
+letzten Status oder Zeitstempel und werden vor der Aktivierung abgewiesen. Dies
+ist persistierte Zustands- und synthetische Testevidenz, keine Produktions-
+ausführung, Remote-Attestierung oder Deployment-Freigabe.
