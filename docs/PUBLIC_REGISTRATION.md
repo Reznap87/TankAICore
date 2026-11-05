@@ -22,5 +22,27 @@ email ownership verification. Keep these constraints visible in release review.
 
 Validation includes Python HTTP account creation and subsequent login, actual
 Worker forwarding with a controlled backend, persistent limiter tests, and UI
-handler tests with a synthetic DOM. A real-browser/public deployment test remains
-necessary before claiming the public user journey is verified.
+handler tests with a synthetic DOM. The local Edge test covers native form
+validation, registration, visible account/workspace, logout and login. The public
+deployment still needs its own verification.
+
+The optional local container restart smoke check uses only synthetic accounts and
+an in-memory HTTPS test adapter. With Docker, OpenSSL, and the baseline commit
+available, run:
+
+```sh
+python .github/scripts/registration_auth_restart_smoke.py --baseline-commit b9eb349363889efe90e84460258ee19f0892b003
+```
+
+`--expected-head <full-sha>` optionally checks the current checkout. The check
+builds from the working tree, which should be clean when attributing a result to
+that commit. CI must fetch the baseline commit and make OpenSSL available. This
+test does not exercise the production Cloudflare Durable Object or real accounts.
+
+The browser check uses an existing Edge executable and a separate installation of
+`playwright-core` (tested with 1.64.1, without downloading a browser). Set
+`TANKAI_PLAYWRIGHT_CORE` to that package's absolute directory,
+`TANKAI_TEST_PYTHON` to the project Python executable, and `TANKAI_TEST_EDGE` to
+the Edge executable, then run `node scripts/test-browser-auth.mjs`. It creates a
+temporary local database and isolated browser context, then removes them. Packages
+installed in a temporary directory may need to be restored before a later run.

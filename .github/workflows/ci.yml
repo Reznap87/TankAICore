@@ -50,6 +50,10 @@ jobs:
         run: node scripts/test-auth-state.mjs
       - name: Test registration and login UI handlers
         run: node scripts/test-chat-auth.mjs
+      - name: Verify accounts across fresh container replacement
+        run: |
+          git fetch --no-tags --depth=1 origin b9eb349363889efe90e84460258ee19f0892b003
+          python .github/scripts/registration_auth_restart_smoke.py --baseline-commit b9eb349363889efe90e84460258ee19f0892b003 --expected-head "${GITHUB_SHA}"
       - name: Validate local Qwen Compose contract
         run: |
           install -m 600 .env.example .env
