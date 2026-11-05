@@ -48,6 +48,8 @@ jobs:
         run: test -s dist/cloudflare.js
       - name: Test durable auth snapshots in the Worker runtime
         run: node scripts/test-auth-state.mjs
+      - name: Test registration and login UI handlers
+        run: node scripts/test-chat-auth.mjs
       - name: Validate local Qwen Compose contract
         run: |
           install -m 600 .env.example .env

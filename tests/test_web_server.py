@@ -630,6 +630,32 @@ def test_registration_disabled_and_public_auth_disable_blocked(tmp_path, monkeyp
         web_server.AppContext.from_env("0.0.0.0")
 
 
+def test_registration_creates_account_and_allows_later_login(tmp_path, monkeypatch) -> None:
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("TANKAI_ALLOW_REGISTRATION", "1")
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        client = Client(base)
+        assert client.get("/api/health")[2]["registration_enabled"] is True
+        status, _, payload = client.post("/api/auth/register", {
+            "email": "new@example.com", "password": "Registration-password-123",
+            "display_name": "New", "tenant_name": "New Tenant",
+        })
+        assert status == 201
+        assert payload["user"]["email"] == "new@example.com"
+        assert client.get("/api/auth/me")[0] == 200
+        later = Client(base)
+        assert later.post("/api/auth/login", {"email": "new@example.com", "password": "Registration-password-123"})[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_hsts_is_bound_to_secure_cookie_mode(tmp_path, monkeypatch) -> None:
     _configure(monkeypatch, tmp_path)
     monkeypatch.setenv("TANKAI_COOKIE_SECURE", "1")

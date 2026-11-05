@@ -7,6 +7,7 @@
   let currentUser = null;
   let epoch = 0;
   let busy = false;
+  let registering = false;
   let historyItems = [];
   let selectedResult = null;
   let selectedIndex = -1;
@@ -44,6 +45,7 @@
   }
   function showLogin() {
     epoch += 1; csrf = ''; currentUser = null; busy = false;
+    setRegistration(false);
     resetWorkspace(); byId('workspace').replaceChildren(); byId('profile-name').textContent = 'Dein Konto'; byId('profile-workspace').textContent = 'Geschützter Arbeitsraum';
     document.querySelectorAll('dialog[open]').forEach(d => d.close());
     byId('appView').hidden = true; byId('loginView').hidden = false; sidebar(false); setBusy(false);
@@ -69,6 +71,8 @@
     try {
       const data = await jsonFetch('/api/health'); if (requestEpoch !== epoch) return;
       byId('login-health').textContent = data.ok ? 'TankAI-Core erreichbar' : 'Core nicht erreichbar';
+      byId('registration-toggle').hidden = data.registration_enabled !== true;
+      if (data.registration_enabled !== true && registering) setRegistration(false);
       if (!currentUser) return;
       const mode = data.execution_mode || 'unknown';
       const label = mode === 'live' ? 'Core verbunden' : mode === 'simulation' ? 'Simulation' : mode === 'mixed' ? 'Teilweise Simulation' : 'Modellstatus unbekannt';
@@ -80,15 +84,28 @@
   async function loadMe() {
     const requestEpoch = epoch;
     try { const data = await jsonFetch('/api/auth/me'); if (requestEpoch !== epoch) return; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); }
-    catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('loginStatus').textContent = String(error.message || error); }
+    catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) { showLogin(); await refreshHealth(); } else byId('loginStatus').textContent = String(error.message || error); }
   }
   async function login(event) {
-    event.preventDefault(); const btn = byId('loginBtn'); btn.disabled = true; const requestEpoch = epoch;
+    event.preventDefault(); const btn = byId('loginBtn'); const toggle = byId('registration-toggle'); if (btn.disabled) return; btn.disabled = true; toggle.disabled = true; const requestEpoch = epoch; const isRegistration = registering;
     const email = byId('email').value.trim(); const password = byId('password').value;
-    byId('loginStatus').textContent = 'Anmeldung wird geprüft …';
-    try { const data = await jsonFetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (requestEpoch !== epoch) return; byId('password').value = ''; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); byId('loginStatus').textContent = ''; }
+    byId('loginStatus').textContent = isRegistration ? 'Konto wird erstellt …' : 'Anmeldung wird geprüft …';
+    const payload = isRegistration ? { email, password, display_name: byId('display-name').value.trim(), tenant_name: byId('tenant-name').value.trim() } : { email, password };
+    try { const data = await jsonFetch(isRegistration ? '/api/auth/register' : '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (requestEpoch !== epoch) return; byId('password').value = ''; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); byId('loginStatus').textContent = ''; }
     catch (error) { if (requestEpoch === epoch) byId('loginStatus').textContent = String(error.message || error); }
-    finally { btn.disabled = false; }
+    finally { btn.disabled = false; toggle.disabled = false; }
+  }
+  function setRegistration(value) {
+    registering = value;
+    byId('registration-fields').hidden = !value;
+    byId('registration-toggle').setAttribute('aria-expanded', String(value));
+    byId('login-intro').textContent = value ? 'Erstelle dein TankAI-Konto und deinen Arbeitsraum.' : 'Melde dich mit deinem TankAI-Konto an.';
+    byId('display-name').required = value; byId('tenant-name').required = value;
+    byId('password').minLength = value ? 12 : 0;
+    byId('password').autocomplete = value ? 'new-password' : 'current-password';
+    byId('loginBtn').textContent = value ? 'Konto erstellen' : 'Anmelden';
+    byId('registration-toggle').textContent = value ? 'Bereits ein Konto? Anmelden' : 'Konto erstellen';
+    byId('loginStatus').textContent = '';
   }
   async function logout() {
     const requestEpoch = epoch;
@@ -156,7 +173,7 @@
     matches.forEach(({ item, index }) => { const button = element('button', 'search-result'); button.type = 'button'; button.disabled = busy; button.append(icon('chat')); const text = element('div'); text.append(element('strong', '', String(item.goal || 'Ohne Titel').slice(0, 90)), element('p', '', String(item.final_answer || '').slice(0, 120))); button.append(text); button.addEventListener('click', () => { byId('search-dialog').close(); selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
   }
   function exportChat() { if (!selectedResult) return; const data = selectedResult; const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nStatus: ' + String(data.status || 'unbekannt') + '\nFreigegeben: ' + (data.release_ready ? 'Ja' : 'Nein') + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
-  byId('login-form').addEventListener('submit', login); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
+  byId('login-form').addEventListener('submit', login); byId('registration-toggle').addEventListener('click', () => setRegistration(!registering)); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
   byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
   byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });
   byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEventListener('click', exportChat);
