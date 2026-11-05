@@ -974,6 +974,15 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/"):
             self._do_agent_post(path)
             return
+        if path in ("/api/auth/login", "/api/auth/register"):
+            content_types = self.headers.get_all("Content-Type", [])
+            if len(content_types) != 1 or content_types[0].split(";", 1)[0].strip().lower() != "application/json":
+                self._json({"error": "Content-Type application/json erforderlich"}, 415)
+                return
+            fetch_sites = self.headers.get_all("Sec-Fetch-Site", [])
+            if len(fetch_sites) > 1 or any(value.strip().lower() == "cross-site" for value in fetch_sites):
+                self._json({"error": "Seitenübergreifende Authentifizierung nicht erlaubt"}, 403)
+                return
         if path == "/api/auth/login":
             self._login()
             return

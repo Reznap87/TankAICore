@@ -11,6 +11,11 @@ not stored by this limiter. Hourly shards have bounded capacity and may reject n
 clients when full. Explicit application rejections release their daily reservation;
 successful responses and uncertain failures retain it. Limits survive restarts.
 
+Login and registration accept `application/json` (including charset parameters)
+and reject browser requests marked `Sec-Fetch-Site: cross-site`. Non-browser
+clients may omit Fetch Metadata; they still need the JSON content type. Other
+application endpoints retain their existing request handling.
+
 The existing auth snapshot transport and its 8 MiB cap remain in use. This is a
 bounded initial release, not an unlimited account service. There is currently no
 email ownership verification. Keep these constraints visible in release review.
