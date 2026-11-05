@@ -5,6 +5,7 @@ import { timingSafeEqual } from "node:crypto";
 type TankAIRuntimeEnv = Env & {
   TANKAI_AUTH_STATE_TOKEN?: string;
   TANKAI_BOOTSTRAP_OWNER?: string;
+  TANKAI_ALLOW_REGISTRATION?: string;
   TANKAI_LIVE_PROVIDER_ENABLED?: string;
   TANKAI_LLM?: string;
   OPENAI_API_KEY?: string;
@@ -51,6 +52,7 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     TANKAI_AUTH_STATE_URL: clean(this.env.TANKAI_AUTH_STATE_TOKEN) ? "https://tankai-core.reznaplecram.workers.dev/_tankai/auth-state" : "",
     TANKAI_AUTH_STATE_TOKEN: clean(this.env.TANKAI_AUTH_STATE_TOKEN),
     TANKAI_BOOTSTRAP_OWNER: clean(this.env.TANKAI_BOOTSTRAP_OWNER),
+    TANKAI_ALLOW_REGISTRATION: enabled(this.env.TANKAI_ALLOW_REGISTRATION) ? "1" : "0",
     TANKAI_HOST: "0.0.0.0",
     TANKAI_PORT: "8765",
     TANKAI_LIVE_PROVIDER_ENABLED: this.liveProviderEnabled ? "1" : "0",
@@ -105,6 +107,41 @@ export class TankAIAuthState extends DurableObject<TankAIRuntimeEnv> {
   async fetch(request: Request): Promise<Response> {
     const headers = { "Cache-Control": "no-store" };
     if (!authorizedState(request, this.env)) return new Response(null, { status: 403, headers });
+    const path = new URL(request.url).pathname;
+    if ((path === "/registration-limit" || path === "/registration-resolve") && request.method === "POST") {
+      const id = request.headers.get("X-Registration-Id") ?? "";
+      const bucket = request.headers.get("X-Registration-Bucket") ?? "";
+      if (!/^[0-9a-f]{32}$/.test(bucket) || !/^[0-9a-f-]{36}$/.test(id)) return new Response(null, { status: 400, headers });
+      return this.ctx.storage.transaction(async storage => {
+        const now = Date.now();
+        const day = Math.floor(now / 86400000);
+        const hour = Math.floor(now / 3600000);
+        const globalKey = `registration-day-v2:${day % 2}`;
+        const current = await storage.get<{ period: number; count: number; pending: Record<string, boolean> }>(globalKey);
+        const global = current?.period === day ? current : { period: day, count: 0, pending: {} };
+        if (path === "/registration-resolve") {
+          if (global.pending[id]) {
+            delete global.pending[id];
+            if (request.headers.get("X-Registration-Outcome") === "rejected") global.count--;
+            await storage.put(globalKey, global);
+          }
+          return new Response(null, { status: 204, headers });
+        }
+        // A bounded set of shards prevents unbounded durable storage even if an
+        // attacker presents many IPs. Distinct clients never share a counter.
+        const clientKey = `registration-shard-v2:${bucket.slice(0, 2)}`;
+        const previous = await storage.get<{ period: number; counts: Record<string, number> }>(clientKey);
+        const shard = previous?.period === hour ? previous : { period: hour, counts: {} };
+        const clientCount = shard.counts[bucket] ?? 0;
+        if (global.count >= 50 || clientCount >= 3 || (!clientCount && Object.keys(shard.counts).length >= 64)) return new Response(null, { status: 429, headers });
+        shard.counts[bucket] = clientCount + 1;
+        global.count++;
+        global.pending[id] = true;
+        await storage.put(clientKey, shard);
+        await storage.put(globalKey, global);
+        return new Response(null, { status: 204, headers });
+      });
+    }
     if (request.method === "GET") {
       return this.ctx.storage.transaction(async storage => {
         const meta = await storage.get<{ revision: number; count: number; size: number }>("meta");
@@ -143,6 +180,26 @@ export default {
       if (!authorizedState(request, env)) return new Response(null, { status: 403, headers: { "Cache-Control": "no-store" } });
       return env.TANKAI_AUTH_STATE.getByName("singleton").fetch(request);
     }
+    let registration: { bucket: string; id: string; token: string } | undefined;
+    if (url.pathname === "/api/auth/register" && request.method === "POST") {
+      if (!enabled((env as TankAIRuntimeEnv).TANKAI_ALLOW_REGISTRATION)) return Response.json({ error: "Registrierung ist deaktiviert" }, { status: 403 });
+      const ip = request.headers.get("CF-Connecting-IP");
+      const token = clean((env as TankAIRuntimeEnv).TANKAI_AUTH_STATE_TOKEN);
+      if (!ip || !/^[A-Za-z0-9_-]{43,128}$/.test(token)) return Response.json({ error: "Registrierung vorübergehend nicht verfügbar" }, { status: 503 });
+      const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const hash = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(ip)));
+      const bucket = Array.from(hash.slice(0, 16), byte => byte.toString(16).padStart(2, "0")).join("");
+      const id = crypto.randomUUID();
+      try {
+        const limit = await env.TANKAI_AUTH_STATE.getByName("singleton").fetch(new Request("https://tankai.internal/registration-limit", {
+          method: "POST", headers: { Authorization: `Bearer ${token}`, "X-Registration-Bucket": bucket, "X-Registration-Id": id }
+        }));
+        if (limit.status !== 204) return Response.json({ error: limit.status === 429 ? "Zu viele Registrierungsversuche. Bitte später erneut versuchen." : "Registrierung vorübergehend nicht verfügbar" }, { status: limit.status === 429 ? 429 : 503 });
+      } catch {
+        return Response.json({ error: "Registrierung vorübergehend nicht verfügbar" }, { status: 503 });
+      }
+      registration = { bucket, id, token };
+    }
     console.log(JSON.stringify({
       message: "request",
       method: request.method,
@@ -152,7 +209,20 @@ export default {
     try {
       const container = env.TANKAI_CONTAINER.getByName("singleton");
       await container.startAndWaitForPorts();
-      return await container.fetch(request);
+      const response = await container.fetch(request);
+      if (registration) {
+        // Only an explicit application rejection proves no account was created.
+        // On timeouts, 5xx, or uncertain outcomes the reservation remains held.
+        const outcome = response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429 ? "rejected" : "committed";
+        try {
+          if (outcome === "rejected" || response.status === 201) {
+            await env.TANKAI_AUTH_STATE.getByName("singleton").fetch(new Request("https://tankai.internal/registration-resolve", {
+              method: "POST", headers: { Authorization: `Bearer ${registration.token}`, "X-Registration-Bucket": registration.bucket, "X-Registration-Id": registration.id, "X-Registration-Outcome": outcome }
+            }));
+          }
+        } catch { /* retain the durable reservation on uncertainty */ }
+      }
+      return response;
     } catch (error) {
       console.error(JSON.stringify({
         message: "container request failed",
