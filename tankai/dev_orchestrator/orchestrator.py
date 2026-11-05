@@ -763,6 +763,7 @@ class DevelopmentOrchestrator:
                 raise TransitionError("Geprüfter Implementierungs-Commit fehlt oder stimmt nicht überein")
             run.state = WorkerRunState.INTEGRATING
             run.phase = WorkerPhase.REBASE
+            run.finished_at = None
             run.status_messages.append(WorkerStatusMessage(
                 sequence=len(run.status_messages) + 1,
                 phase=WorkerPhase.REBASE,
@@ -944,11 +945,13 @@ class DevelopmentOrchestrator:
                 raise TransitionError("Unterbrochene Integration kann nicht sicher zurückgesetzt werden")
             run.state = WorkerRunState.READY_TO_INTEGRATE
             run.phase = WorkerPhase.COMPLETE
-            run.status_messages.append(WorkerStatusMessage(
+            recovered_status = WorkerStatusMessage(
                 sequence=len(run.status_messages) + 1,
                 phase=WorkerPhase.COMPLETE,
                 message=f"Unterbrochene Integration zurückgesetzt: {reason}",
-            ))
+            )
+            run.status_messages.append(recovered_status)
+            run.finished_at = recovered_status.created_at
             state.release_status = "development"
             self._event(state, "worker_integration_recovered", "TECH_AI_ORCHESTRATOR", {
                 "run_id": run_id,

@@ -616,6 +616,7 @@ def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) 
         pipeline.run.run_id,
         expected_project_commit=previous,
     )
+    assert orchestrator.state().worker_runs[pipeline.run.run_id].finished_at is None
     merged = manager.fast_forward_repository(
         branch="main",
         source_branch=pipeline.workspace.branch,
@@ -639,7 +640,9 @@ def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) 
     state = orchestrator.state()
     assert manager.repository_head() == previous
     assert state.current_commit == previous
-    assert state.worker_runs[pipeline.run.run_id].state == WorkerRunState.READY_TO_INTEGRATE
+    recovered = state.worker_runs[pipeline.run.run_id]
+    assert recovered.state == WorkerRunState.READY_TO_INTEGRATE
+    assert recovered.finished_at == recovered.status_messages[-1].created_at
     assert state.tasks["AUTH-001"].state == TaskState.READY_TO_INTEGRATE
     assert not runner.journal.path.exists()
 

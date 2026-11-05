@@ -657,3 +657,10 @@ a separate earlier clock sample. Regressions cover both an ordinary failed run a
 a policy-blocked run, and first reproduce the former microsecond-level mismatch.
 This gives each terminal run one canonical completion receipt without claiming a
 trusted clock, production execution or remote attestation.
+
+An integration retry no longer retains the earlier `complete` timestamp while it
+is actively rebasing and testing. Starting integration clears `finished_at`; if
+crash recovery safely returns the run to `ready_to_integrate`, the new recovery
+`complete` status supplies the replacement terminal timestamp. A journal-recovery
+regression covers both transitions. This is local state-machine and synthetic Git
+evidence, not a production merge, trusted clock or deployment receipt.

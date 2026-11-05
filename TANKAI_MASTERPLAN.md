@@ -4740,3 +4740,14 @@ zuerst fehlschlagender Regressionstest für `failed` und `blocked` verlangt jetz
 Zeitstempelgleichheit. Der letzte Fehlerstatus ist damit der eindeutige terminale
 Beleg; eine vertrauenswürdige Host-Uhr, Produktionsausführung oder Remote-
 Attestierung wird nicht behauptet.
+
+
+## Entwurfsnachweis: korrekter Abschlusszeitpunkt bei Integrations-Retry
+
+Beim Start einer realen Integration wird der frühere Abschlusszeitpunkt des
+Zustands `ready_to_integrate` nun gelöscht, solange der Run aktiv rebased und
+geprüft wird. Setzt die Journal-Recovery einen unterbrochenen Versuch sicher
+zurück, übernimmt der neue `complete`-Recovery-Status seinen Erstellungszeitpunkt
+als neuen Abschlusszeitpunkt. Ein zunächst fehlschlagender Recovery-Test belegt
+beide Übergänge. Dies ist Zustandsmaschinen- und synthetische Git-Evidenz, kein
+produktiver Merge, keine vertrauenswürdige Uhr und kein Deployment-Nachweis.
