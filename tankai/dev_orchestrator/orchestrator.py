@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import re
 from collections import defaultdict, deque
+from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Callable, Iterable
 
@@ -50,6 +51,149 @@ class ConflictError(OrchestrationError):
 
 class TransitionError(OrchestrationError):
     pass
+
+
+def require_coherent_worker_timeline(run: WorkerRunRecord) -> None:
+    """Reject a persisted worker chronology that cannot support its receipts."""
+
+    start = run.started_at
+    finish = run.finished_at
+    if start.utcoffset() is None or (finish is not None and finish.utcoffset() is None):
+        raise ValidationError("Gespeicherte Worker-Zeitachse benötigt Zeitzonenbezug")
+    if finish is not None and finish < start:
+        raise ValidationError("Gespeicherte Worker-Zeitachse endet vor ihrem Start")
+
+    executions = (
+        run.implementation_executions
+        + run.test_executions
+        + run.review_executions
+        + run.security_executions
+        + run.qa_executions
+    )
+    execution_timestamps = []
+    for execution in executions:
+        timestamp = execution.executed_at
+        if (
+            timestamp.utcoffset() is None
+            or timestamp < start
+            or (finish is not None and timestamp > finish)
+        ):
+            raise ValidationError(
+                "Gespeicherte Worker-Zeitachse enthält ungültige Befehlsbelege"
+            )
+        execution_timestamps.append(timestamp)
+    if any(
+        current < previous
+        for previous, current in zip(execution_timestamps, execution_timestamps[1:])
+    ):
+        raise ValidationError(
+            "Gespeicherte Worker-Zeitachse enthält ungeordnete Befehlsbelege"
+        )
+
+    resumable_phase_order = {
+        phase: index
+        for index, phase in enumerate(
+            (
+                WorkerPhase.PREPARE,
+                WorkerPhase.IMPLEMENT,
+                WorkerPhase.VALIDATE_SCOPE,
+                WorkerPhase.COMMIT,
+                WorkerPhase.TEST,
+                WorkerPhase.SUBMIT,
+                WorkerPhase.REVIEW,
+                WorkerPhase.SECURITY,
+                WorkerPhase.QA,
+                WorkerPhase.COMPLETE,
+            )
+        )
+    }
+    status_timestamps = []
+    status_phase_positions = []
+    latest_status_by_phase: dict[WorkerPhase, datetime] = {}
+    for expected_sequence, status in enumerate(run.status_messages, start=1):
+        if status.sequence != expected_sequence:
+            raise ValidationError("Gespeicherte Worker-Statusfolge ist nicht lückenlos")
+        phase_position = resumable_phase_order.get(status.phase)
+        if phase_position is None or (
+            status.phase == WorkerPhase.COMPLETE
+            and expected_sequence != len(run.status_messages)
+        ):
+            raise ValidationError("Gespeicherte Worker-Phasenfolge ist ungültig")
+        timestamp = status.created_at
+        if (
+            timestamp.utcoffset() is None
+            or timestamp < start
+            or (finish is not None and timestamp > finish)
+        ):
+            raise ValidationError(
+                "Gespeicherte Worker-Zeitachse enthält ungültige Statusbelege"
+            )
+        status_timestamps.append(timestamp)
+        status_phase_positions.append(phase_position)
+        latest_status_by_phase[status.phase] = timestamp
+    if any(
+        current < previous
+        for previous, current in zip(status_phase_positions, status_phase_positions[1:])
+    ):
+        raise ValidationError("Gespeicherte Worker-Phasenfolge läuft rückwärts")
+    if not run.status_messages or run.status_messages[-1].phase != run.phase:
+        raise ValidationError(
+            "Gespeicherte Worker-Phasenfolge endet nicht in der aktuellen Phase"
+        )
+    if any(
+        current < previous
+        for previous, current in zip(status_timestamps, status_timestamps[1:])
+    ):
+        raise ValidationError(
+            "Gespeicherte Worker-Zeitachse enthält ungeordnete Statusbelege"
+        )
+
+    review_preceding_phase = (
+        WorkerPhase.SUBMIT
+        if WorkerPhase.SUBMIT in latest_status_by_phase
+        else WorkerPhase.TEST
+    )
+    execution_phase_bounds = (
+        (WorkerPhase.IMPLEMENT, run.implementation_executions, WorkerPhase.PREPARE),
+        (WorkerPhase.TEST, run.test_executions, WorkerPhase.COMMIT),
+        (WorkerPhase.REVIEW, run.review_executions, review_preceding_phase),
+        (WorkerPhase.SECURITY, run.security_executions, WorkerPhase.REVIEW),
+        (
+            WorkerPhase.QA,
+            run.qa_executions,
+            (
+                WorkerPhase.SECURITY
+                if WorkerPhase.SECURITY in latest_status_by_phase
+                else WorkerPhase.REVIEW
+            ),
+        ),
+    )
+    for phase, phase_executions, preceding_phase in execution_phase_bounds:
+        if not phase_executions:
+            continue
+        phase_started_at = latest_status_by_phase.get(preceding_phase)
+        phase_finished_at = latest_status_by_phase.get(phase)
+        if (
+            phase_started_at is None
+            or phase_finished_at is None
+            or any(
+                execution.executed_at < phase_started_at
+                or execution.executed_at > phase_finished_at
+                for execution in phase_executions
+            )
+        ):
+            raise ValidationError(
+                "Gespeicherte Worker-Zeitachse enthält Befehlsbelege außerhalb "
+                f"ihrer Phase ({phase.value})"
+            )
+    if finish is not None and (
+        not run.status_messages
+        or run.status_messages[-1].phase != WorkerPhase.COMPLETE
+        or run.status_messages[-1].created_at != finish
+    ):
+        raise ValidationError(
+            "Gespeicherte Worker-Zeitachse besitzt keinen exakten Abschlussstatus"
+        )
 
 
 def normalize_repo_path(value: str) -> str:
@@ -737,7 +881,6 @@ class DevelopmentOrchestrator:
         run_id: str,
         *,
         expected_project_commit: str,
-        state_validator: Callable[[ProjectState], None],
     ) -> WorkerRunRecord:
         """Reserve a ready run for one serialized, real Git integration attempt."""
 
@@ -767,7 +910,7 @@ class DevelopmentOrchestrator:
                 raise TransitionError(
                     "Worker-Run besitzt keinen gebundenen Abschlussbeleg"
                 )
-            state_validator(state)
+            require_coherent_worker_timeline(run)
             if task.worker_run_id != run_id:
                 raise ValidationError("Task verweist nicht auf den zu integrierenden Worker-Run")
             if not run.implementation_commit or task.implementation_commit != run.implementation_commit:

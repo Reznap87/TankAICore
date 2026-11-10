@@ -4773,3 +4773,16 @@ mehr auslösen. Die Regression behält den terminalen Beleg bei, dupliziert jedo
 eine frühere Sequenznummer; Repository-HEAD und bereiter Run bleiben unverändert.
 Dies ist persistierte Zustands- und synthetische Git-Evidenz, keine produktive
 Integration, vertrauenswürdige Speicherung oder Remote-Attestierung.
+
+
+## Entwurfsnachweis: unveränderliche Zeitachsenprüfung bei Integrationszulassung
+
+Die vollständige Zeitachsenprüfung ist nun eine feste Invariante der
+Integrationszulassung und kein vom Aufrufer bereitgestellter Callback mehr.
+Wiederaufnahme, Worker-Abschluss und Integrationszulassung verwenden denselben
+Validator; ein direkter interner Aufrufer kann ihn nicht mehr durch eine
+wirkunglose Funktion ersetzen. Die Regression belegte zunächst, dass ein solcher
+Callback-Bypass eine beschädigte Statusfolge zuließ. Nun ruft sie die Zulassung
+direkt auf und verlangt die atomare Ablehnung bei unverändert bereitem Run. Dies
+ist Code- und synthetische Zustandsübergangsevidenz, keine produktive Integration,
+vertrauenswürdige Speicherung oder Remote-Attestierung.

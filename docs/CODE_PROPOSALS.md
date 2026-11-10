@@ -679,3 +679,11 @@ Git or ProjectState can advance. The regression preserves the final receipt whil
 duplicating an earlier sequence number and verifies that both repository HEAD and
 the ready run remain unchanged. This is persisted-state and synthetic Git evidence,
 not a production integration, trusted storage, or remote-attestation claim.
+
+Timeline validation is now an invariant of integration admission rather than a
+callback supplied by its caller. Resume, completion, and integration admission all
+use the same validator, while direct callers can no longer replace it with a no-op.
+The regression first demonstrated that such a callback bypass admitted a corrupted
+status sequence; it now calls admission directly and requires atomic rejection with
+the run still ready. This is code and synthetic state-transition evidence, not a
+production integration, trusted-storage, or remote-attestation claim.

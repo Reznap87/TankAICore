@@ -42,6 +42,7 @@ from .orchestrator import (
     OrchestrationError,
     TransitionError,
     ValidationError,
+    require_coherent_worker_timeline,
 )
 
 
@@ -322,7 +323,7 @@ class WorkerPipelineRunner:
                     raise ValidationError("Gespeicherter Worker-Abschlussbeleg ist inkonsistent")
             elif run.finished_at is not None or run.error:
                 raise ValidationError("Unfertiger Worker-Run trägt einen Abschlussbeleg")
-            self._require_coherent_timeline(run)
+            require_coherent_worker_timeline(run)
             workspace = self.workspace_manager.workspace_from_binding(
                 agent_id=run.agent_id, branch=run.branch, workspace_path=run.workspace_path,
                 base_commit=run.base_commit,
@@ -436,114 +437,6 @@ class WorkerPipelineRunner:
                 "Gespeicherte Befehlsbelege sind unvollständig, widersprüchlich oder fehlgeschlagen"
             )
 
-    @staticmethod
-    def _require_coherent_timeline(run: WorkerRunRecord) -> None:
-        start = run.started_at
-        finish = run.finished_at
-        if start.utcoffset() is None or (finish is not None and finish.utcoffset() is None):
-            raise ValidationError("Gespeicherte Worker-Zeitachse benötigt Zeitzonenbezug")
-        if finish is not None and finish < start:
-            raise ValidationError("Gespeicherte Worker-Zeitachse endet vor ihrem Start")
-
-        executions = (
-            run.implementation_executions
-            + run.test_executions
-            + run.review_executions
-            + run.security_executions
-            + run.qa_executions
-        )
-        execution_timestamps = []
-        for execution in executions:
-            timestamp = execution.executed_at
-            if (timestamp.utcoffset() is None or timestamp < start
-                    or (finish is not None and timestamp > finish)):
-                raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Befehlsbelege")
-            execution_timestamps.append(timestamp)
-        if any(current < previous for previous, current in zip(
-                execution_timestamps, execution_timestamps[1:])):
-            raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungeordnete Befehlsbelege")
-
-        resumable_phase_order = {
-            phase: index for index, phase in enumerate((
-                WorkerPhase.PREPARE,
-                WorkerPhase.IMPLEMENT,
-                WorkerPhase.VALIDATE_SCOPE,
-                WorkerPhase.COMMIT,
-                WorkerPhase.TEST,
-                WorkerPhase.SUBMIT,
-                WorkerPhase.REVIEW,
-                WorkerPhase.SECURITY,
-                WorkerPhase.QA,
-                WorkerPhase.COMPLETE,
-            ))
-        }
-        status_timestamps = []
-        status_phase_positions = []
-        latest_status_by_phase: dict[WorkerPhase, datetime] = {}
-        for expected_sequence, status in enumerate(run.status_messages, start=1):
-            if status.sequence != expected_sequence:
-                raise ValidationError("Gespeicherte Worker-Statusfolge ist nicht lückenlos")
-            phase_position = resumable_phase_order.get(status.phase)
-            if (phase_position is None
-                    or (status.phase == WorkerPhase.COMPLETE
-                        and expected_sequence != len(run.status_messages))):
-                raise ValidationError("Gespeicherte Worker-Phasenfolge ist ungültig")
-            timestamp = status.created_at
-            if (timestamp.utcoffset() is None or timestamp < start
-                    or (finish is not None and timestamp > finish)):
-                raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungültige Statusbelege")
-            status_timestamps.append(timestamp)
-            status_phase_positions.append(phase_position)
-            latest_status_by_phase[status.phase] = timestamp
-        if any(current < previous for previous, current in zip(
-                status_phase_positions, status_phase_positions[1:])):
-            raise ValidationError("Gespeicherte Worker-Phasenfolge läuft rückwärts")
-        if not run.status_messages or run.status_messages[-1].phase != run.phase:
-            raise ValidationError(
-                "Gespeicherte Worker-Phasenfolge endet nicht in der aktuellen Phase"
-            )
-        if any(current < previous for previous, current in zip(
-                status_timestamps, status_timestamps[1:])):
-            raise ValidationError("Gespeicherte Worker-Zeitachse enthält ungeordnete Statusbelege")
-
-        review_preceding_phase = (
-            WorkerPhase.SUBMIT
-            if WorkerPhase.SUBMIT in latest_status_by_phase
-            else WorkerPhase.TEST
-        )
-        execution_phase_bounds = (
-            (WorkerPhase.IMPLEMENT, run.implementation_executions, WorkerPhase.PREPARE),
-            (WorkerPhase.TEST, run.test_executions, WorkerPhase.COMMIT),
-            (WorkerPhase.REVIEW, run.review_executions, review_preceding_phase),
-            (WorkerPhase.SECURITY, run.security_executions, WorkerPhase.REVIEW),
-            (
-                WorkerPhase.QA,
-                run.qa_executions,
-                (
-                    WorkerPhase.SECURITY
-                    if WorkerPhase.SECURITY in latest_status_by_phase
-                    else WorkerPhase.REVIEW
-                ),
-            ),
-        )
-        for phase, phase_executions, preceding_phase in execution_phase_bounds:
-            if not phase_executions:
-                continue
-            phase_started_at = latest_status_by_phase.get(preceding_phase)
-            phase_finished_at = latest_status_by_phase.get(phase)
-            if phase_started_at is None or phase_finished_at is None or any(
-                    execution.executed_at < phase_started_at
-                    or execution.executed_at > phase_finished_at
-                    for execution in phase_executions):
-                raise ValidationError(
-                    "Gespeicherte Worker-Zeitachse enthält Befehlsbelege außerhalb "
-                    f"ihrer Phase ({phase.value})"
-                )
-        if (finish is not None and (not run.status_messages
-                or run.status_messages[-1].phase != WorkerPhase.COMPLETE
-                or run.status_messages[-1].created_at != finish)):
-            raise ValidationError("Gespeicherte Worker-Zeitachse besitzt keinen exakten Abschlussstatus")
-
     def _finish_committed_run(
         self, run_id: str, workspace: Workspace, job: WorkerPipelineJob,
     ) -> WorkerPipelineResult:
@@ -602,7 +495,7 @@ class WorkerPipelineRunner:
         self._guard("complete_worker_run")
         completed = self.orchestrator.complete_worker_run(
             run_id,
-            state_validator=lambda state: self._require_coherent_timeline(
+            state_validator=lambda state: require_coherent_worker_timeline(
                 state.worker_runs[run_id]
             ),
         )
