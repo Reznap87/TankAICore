@@ -19,6 +19,8 @@ from tankai.dev_orchestrator import (
     IntegrationExecutionError,
     IntegrationJob,
     ProjectStateStore,
+    QAStatus,
+    ReviewDecision,
     TaskSpec,
     TaskState,
     TestExecution,
@@ -1169,6 +1171,67 @@ def test_integration_finalization_does_not_revive_rejected_agent(tmp_path: Path)
     assert persisted.state == WorkerRunState.INTEGRATING
     assert persisted.phase == WorkerPhase.INTEGRATION_TEST
     assert state.agents[pipeline.run.agent_id].status == AgentStatus.REJECTED
+
+
+@pytest.mark.parametrize(
+    ("field", "revoked_value"),
+    [
+        ("review_decision", ReviewDecision.REJECTED),
+        ("qa_status", QAStatus.FAILED),
+        ("security_approved", False),
+    ],
+)
+def test_integration_finalization_revalidates_task_gates(
+    tmp_path: Path,
+    field: str,
+    revoked_value: object,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path, security=True)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def revoke_gate(state):
+        setattr(state.tasks[pipeline.run.task_id], field, revoked_value)
+
+    orchestrator.store.transaction(revoke_gate)
+    with pytest.raises(ValidationError, match="Gate-Freigabe"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+    assert getattr(state.tasks[pipeline.run.task_id], field) == revoked_value
 
 
 def test_integration_journal_rejects_workspace_outside_managed_root(tmp_path: Path) -> None:

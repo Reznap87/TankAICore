@@ -4870,3 +4870,14 @@ Abschluss bewahrt diese Ablehnung, den integrierenden Run und den bisherigen
 Projektcommit, statt den Agenten wieder als `merged` zu markieren. Dies ist
 persistierte Zustands- und synthetische Testevidenz, keine produktive Review-,
 Identitäts- oder Speicherattestierung.
+
+
+## Entwurfsnachweis: erneute Gate-Freigaben beim Integrationsabschluss
+
+Review-Entscheidung, QA-Status und jede erforderliche Security-Freigabe werden nun
+in derselben finalen Zustandstransaktion erneut geprüft. Drei synthetische
+Mutationen widerrufen jeweils ein Gate nach den grünen Post-Merge-Belegen, während
+der Task-Zustand unverändert integrationsbereit bleibt. Alle drei Abschlüsse
+werden abgewiesen, ohne den Run zu integrieren oder den Projektcommit
+fortzuschreiben. Dies ist persistierte Zustands- und synthetische Testevidenz,
+keine unabhängige Review-, produktive Freigabe- oder Speicherattestierung.

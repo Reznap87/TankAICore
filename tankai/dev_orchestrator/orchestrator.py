@@ -1120,6 +1120,18 @@ class DevelopmentOrchestrator:
                 raise ValidationError(
                     "Integrationsabschluss darf den aktuellen Agent-Status nicht überschreiben"
                 )
+            security_ok = (
+                not task.requires_security_review
+                or task.security_approved is True
+            )
+            if (
+                task.review_decision != ReviewDecision.APPROVED
+                or task.qa_status != QAStatus.PASSED
+                or not security_ok
+            ):
+                raise ValidationError(
+                    "Integrationsabschluss besitzt keine unveränderte Gate-Freigabe"
+                )
             if (
                 run.phase != WorkerPhase.INTEGRATION_TEST
                 or not run.status_messages

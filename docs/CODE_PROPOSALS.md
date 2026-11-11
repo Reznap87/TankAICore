@@ -742,3 +742,10 @@ expected `waiting_for_review` lifecycle state. A synthetic mutation marks the ag
 that rejection, the integrating run, and the previous project commit instead of
 reviving the agent as `merged`. This is persisted-state and synthetic-test
 evidence, not a production review, identity, or trusted-storage attestation.
+
+Review, QA, and any required security approval are now revalidated in that same
+final transaction as well. Three synthetic mutations revoke each gate separately
+after green post-merge evidence is stored while leaving the task state ready. All
+three are rejected without integrating the run or advancing the project commit.
+This is persisted-state and synthetic-test evidence, not an independent review,
+production approval, or trusted-storage attestation.
