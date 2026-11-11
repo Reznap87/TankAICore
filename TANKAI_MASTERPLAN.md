@@ -4836,3 +4836,14 @@ Die Regression ersetzt den gespeicherten Integrationsstart durch einen zweiten
 unverändert. Der Abschluss weist diese Chronologie ab, ohne ProjectState
 vorzurücken. Dies ist synthetische Zustandsübergangsevidenz, keine produktive
 Integration, vertrauenswürdige Speicherung oder Remote-Attestierung.
+
+
+## Entwurfsnachweis: erneute Task-Bindung beim Integrationsabschluss
+
+Die finale Zustandstransaktion prüft nun erneut, dass der persistierte Task noch
+auf exakt den abzuschließenden Worker-Run und dessen geprüften
+Implementierungscommit verweist. Zwei Regressionen verändern jeweils eine dieser
+Bindungen nach der Speicherung der grünen Integrationstest-Belege; beide werden
+abgewiesen, ohne den Projektcommit oder den Run auf `integrated` zu setzen. Dies
+ist persistierte Zustands- und synthetische Testevidenz, keine produktive
+Integration, vertrauenswürdige Speicherung oder Remote-Attestierung.

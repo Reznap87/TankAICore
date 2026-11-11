@@ -1103,6 +1103,13 @@ class DevelopmentOrchestrator:
                     "Fast-Forward-Ziel entspricht nicht dem geprüften Worker-Commit"
                 )
             if (
+                task.worker_run_id != run_id
+                or task.implementation_commit != normalized_commit
+            ):
+                raise ValidationError(
+                    "Integrationsabschluss besitzt keine konsistente Task-Bindung"
+                )
+            if (
                 run.phase != WorkerPhase.INTEGRATION_TEST
                 or not run.status_messages
                 or run.status_messages[-1].phase != WorkerPhase.INTEGRATION_TEST

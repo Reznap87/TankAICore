@@ -721,3 +721,10 @@ leaving the green receipt and its valid merge window unchanged; finalization now
 rejects that chronology without advancing ProjectState. This remains synthetic
 state-transition evidence, not trusted storage, production integration, or remote
 attestation.
+
+The same final transaction now revalidates the persisted Task-to-Worker binding.
+The task must still name the run being finalized and the exact implementation
+commit that is about to become stable. Two synthetic regressions change each field
+after integration-test evidence is stored; both are rejected without advancing the
+project commit or integrating the run. This is persisted-state and synthetic-test
+evidence, not trusted storage, production integration, or remote attestation.
