@@ -1062,9 +1062,11 @@ def test_integration_finalization_revalidates_persisted_phase_sequence(
     [
         ("worker_run_id", "RUN-FORGED"),
         ("implementation_commit", "f" * 40),
+        ("assigned_agent_id", "AGENT-FORGED"),
+        ("agent.task_id", "TASK-FORGED"),
     ],
 )
-def test_integration_finalization_revalidates_task_binding(
+def test_integration_finalization_revalidates_cross_object_binding(
     tmp_path: Path,
     field: str,
     forged_value: str,
@@ -1098,10 +1100,13 @@ def test_integration_finalization_revalidates_task_binding(
     )
 
     def corrupt(state):
-        setattr(state.tasks[pipeline.run.task_id], field, forged_value)
+        if field == "agent.task_id":
+            state.agents[pipeline.run.agent_id].task_id = forged_value
+        else:
+            setattr(state.tasks[pipeline.run.task_id], field, forged_value)
 
     orchestrator.store.transaction(corrupt)
-    with pytest.raises(ValidationError, match="Task-Bindung"):
+    with pytest.raises(ValidationError, match="Bindung"):
         orchestrator.finalize_worker_integration(
             pipeline.run.run_id,
             expected_previous_commit=previous,

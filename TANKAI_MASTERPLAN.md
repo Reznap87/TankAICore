@@ -4847,3 +4847,15 @@ Bindungen nach der Speicherung der grünen Integrationstest-Belege; beide werden
 abgewiesen, ohne den Projektcommit oder den Run auf `integrated` zu setzen. Dies
 ist persistierte Zustands- und synthetische Testevidenz, keine produktive
 Integration, vertrauenswürdige Speicherung oder Remote-Attestierung.
+
+
+## Entwurfsnachweis: erneute Agent-Bindung beim Integrationsabschluss
+
+Der Integrationsabschluss prüft nun außerdem beide Seiten der persistierten
+Task-Agent-Zuordnung: Der Task muss weiterhin dem Agenten des Worker-Runs
+zugewiesen sein, und dieser Agent muss weiterhin auf denselben Task verweisen.
+Zwei synthetische Regressionen hängen jeweils eine Seite nach der Speicherung der
+grünen Integrationstest-Belege um. Beide werden abgewiesen, bevor der Agent als
+gemergt markiert oder ProjectState vorgerückt wird. Dies ist persistierte Zustands-
+und synthetische Testevidenz, keine produktive Identitäts- oder
+Speicherattestierung.

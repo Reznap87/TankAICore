@@ -1110,6 +1110,13 @@ class DevelopmentOrchestrator:
                     "Integrationsabschluss besitzt keine konsistente Task-Bindung"
                 )
             if (
+                task.assigned_agent_id != run.agent_id
+                or agent.task_id != task.task_id
+            ):
+                raise ValidationError(
+                    "Integrationsabschluss besitzt keine konsistente Agent-Bindung"
+                )
+            if (
                 run.phase != WorkerPhase.INTEGRATION_TEST
                 or not run.status_messages
                 or run.status_messages[-1].phase != WorkerPhase.INTEGRATION_TEST

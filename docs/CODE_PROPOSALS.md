@@ -728,3 +728,10 @@ commit that is about to become stable. Two synthetic regressions change each fie
 after integration-test evidence is stored; both are rejected without advancing the
 project commit or integrating the run. This is persisted-state and synthetic-test
 evidence, not trusted storage, production integration, or remote attestation.
+
+It also revalidates the matching Task-to-Agent relation. The task must still be
+assigned to the run's agent, and that agent must still point back to the same task.
+Two further synthetic mutations previously allowed the original worker to finalize
+an integration after either side was reassigned; they now fail closed before the
+agent is marked merged or ProjectState advances. This is persisted-state and
+synthetic-test evidence, not production identity or trusted-storage attestation.
