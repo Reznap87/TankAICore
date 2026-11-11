@@ -26,7 +26,11 @@ Standardmäßig sendet die Oberfläche eine Nachricht an das konfigurierte echte
 Jede Nachricht startet einen einzelnen Core-Run. Der Entwurf implementiert
 keine zusätzlichen mehrteiligen Chat-Sessions, Dateiuploads oder Sprachaufnahme.
 Die Suche umfasst die letzten 20 Aufgaben des aktiven Workspace. Der Export
-enthält das ausgewählte Ergebnis und dessen Prüfstatus.
+enthält das ausgewählte Ergebnis, dessen Ausführungsmodus sowie die vom jeweiligen
+Run gemeldete Identität von Haupt- und Prüfmodell. Fehlende Herkunftsdaten werden
+als `nicht belegt` angezeigt; insbesondere gilt die Health-Anzeige nicht als
+Nachweis dafür, welches Modell eine einzelne Antwort erzeugt hat. Gemischte
+Ausführung wird ausdrücklich als nicht verifizierte Live-Antwort markiert.
 
 `Core verbunden` bestätigt eine erfolgreiche Health-Antwort mit dem vom Core
 gemeldeten Live-Modus. Es ersetzt keinen erfolgreichen Modellaufruf.

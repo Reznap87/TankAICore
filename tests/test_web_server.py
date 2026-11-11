@@ -630,6 +630,81 @@ def test_registration_disabled_and_public_auth_disable_blocked(tmp_path, monkeyp
         web_server.AppContext.from_env("0.0.0.0")
 
 
+def test_registration_creates_account_and_allows_later_login(tmp_path, monkeypatch) -> None:
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("TANKAI_ALLOW_REGISTRATION", "1")
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        client = Client(base)
+        assert client.get("/api/health")[2]["registration_enabled"] is True
+        status, _, payload = client.post("/api/auth/register", {
+            "email": "new@example.com", "password": "Registration-password-123",
+            "display_name": "New", "tenant_name": "New Tenant",
+        })
+        assert status == 201
+        assert payload["user"]["email"] == "new@example.com"
+        assert client.get("/api/auth/me")[0] == 200
+        later = Client(base)
+        assert later.post("/api/auth/login", {"email": "new@example.com", "password": "Registration-password-123"})[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_anonymous_auth_rejects_simple_cross_site_posts_without_mutation(tmp_path, monkeypatch) -> None:
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("TANKAI_ALLOW_REGISTRATION", "1")
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    payload = {"email": "new@example.com", "password": "Registration-password-123", "display_name": "New", "tenant_name": "New Tenant"}
+    def post(client, path, content_type, site=None):
+        headers = {"Content-Type": content_type}
+        if site is not None:
+            headers["Sec-Fetch-Site"] = site
+        request = Request(base + path, data=json.dumps(payload).encode(), method="POST", headers=headers)
+        try:
+            with client.opener.open(request, timeout=30) as response:
+                response.read()
+                return response.status, dict(response.headers)
+        except HTTPError as exc:
+            exc.read()
+            return exc.code, dict(exc.headers)
+    def count(table):
+        with sqlite3.connect(tmp_path / "data" / "auth.db") as db:
+            return db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    try:
+        client = Client(base)
+        users_before, sessions_before = count("users"), count("sessions")
+        for content_type, site, expected in [("text/plain", None, 415), ("application/json", "cross-site", 403)]:
+            status, headers = post(client, "/api/auth/register", content_type, site)
+            assert status == expected
+            assert "Set-Cookie" not in headers
+        assert (count("users"), count("sessions")) == (users_before, sessions_before)
+        assert post(client, "/api/auth/register", "application/json; charset=UTF-8", "same-origin")[0] == 201
+        assert count("users") == users_before + 1
+        sessions_before = count("sessions")
+        fresh = Client(base)
+        for content_type, site, expected in [("text/plain", None, 415), ("application/json", "cross-site", 403)]:
+            status, headers = post(fresh, "/api/auth/login", content_type, site)
+            assert status == expected
+            assert "Set-Cookie" not in headers
+        assert count("sessions") == sessions_before
+        assert post(fresh, "/api/auth/login", "application/json")[0] == 200
+        assert count("sessions") == sessions_before + 1
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_hsts_is_bound_to_secure_cookie_mode(tmp_path, monkeypatch) -> None:
     _configure(monkeypatch, tmp_path)
     monkeypatch.setenv("TANKAI_COOKIE_SECURE", "1")
