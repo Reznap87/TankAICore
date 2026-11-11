@@ -20,6 +20,7 @@ from tankai.dev_orchestrator import (
     ProjectStateStore,
     TaskSpec,
     TaskState,
+    TestExecution,
     TransitionError,
     ValidationError,
     WorkerExecutionError,
@@ -1084,6 +1085,43 @@ def test_integration_rejects_receipt_before_merge_phase_atomically(
         text=True,
         stdout=subprocess.PIPE,
     ).stdout.strip() == previous
+
+
+def test_integration_receipt_window_cannot_be_bypassed_by_direct_caller(
+    tmp_path: Path,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    early = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=pipeline.run.started_at,
+    )
+
+    with pytest.raises(ValidationError, match="Integrationsfensters"):
+        orchestrator.update_worker_run(
+            pipeline.run.run_id,
+            phase=WorkerPhase.INTEGRATION_TEST,
+            message="Synthetic post-merge check completed.",
+            integration_executions=[early],
+            integration_commit=pipeline.run.implementation_commit,
+        )
+
+    persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
+    assert persisted.phase == WorkerPhase.MERGE
+    assert persisted.integration_executions == []
+    assert persisted.integration_commit is None
 
 
 def test_integration_revalidates_repository_diff_receipt_before_persistence(

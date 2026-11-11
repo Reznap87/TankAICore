@@ -695,3 +695,11 @@ a no-op. The regression first reproduced that bypass and now requires rejection
 before the terminal status, state, or timestamp can be stored. This remains code
 and synthetic state-transition evidence, not production execution, trusted
 storage, or remote attestation.
+
+Post-merge receipt timing is now likewise enforced by the orchestrator whenever an
+`integration_test` status is written. The generic update method no longer accepts a
+caller-controlled validator, so a direct caller cannot persist a receipt from
+before the merge phase by replacing the window check with a no-op. A regression
+first reproduced that bypass and now requires atomic rejection with the prior merge
+status and empty integration evidence preserved. This is code and synthetic
+state-transition evidence, not production integration or trusted-clock evidence.

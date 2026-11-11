@@ -4798,3 +4798,16 @@ speichern. Die Regression reproduzierte zunächst diesen Bypass und verlangt nun
 Ablehnung, bevor Abschlussstatus, Zustand oder Zeitstempel persistiert werden. Dies
 ist Code- und synthetische Zustandsübergangsevidenz, keine Produktionsausführung,
 vertrauenswürdige Speicherung oder Remote-Attestierung.
+
+
+## Entwurfsnachweis: unveränderliche Post-Merge-Zeitfensterprüfung
+
+Beim Schreiben eines `integration_test`-Status erzwingt der Orchestrator nun selbst
+die Bindung aller Post-Merge-Belege an das gespeicherte Integrationsphasenfenster.
+Die generische Aktualisierungsmethode akzeptiert keinen aufrufergesteuerten
+Validator mehr. Ein direkter Aufrufer kann dadurch keinen Beleg von vor der
+Merge-Phase mit einer wirkungslosen Prüffunktion persistieren. Die Regression
+reproduzierte zunächst diesen Bypass und verlangt nun die atomare Ablehnung bei
+unverändertem Merge-Status und leerer Integrationsevidenz. Dies ist Code- und
+synthetische Zustandsübergangsevidenz, keine produktive Integration oder
+vertrauenswürdige Uhr-Attestierung.

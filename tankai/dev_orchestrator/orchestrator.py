@@ -196,6 +196,37 @@ def require_coherent_worker_timeline(run: WorkerRunRecord) -> None:
         )
 
 
+def require_integration_execution_window(run: WorkerRunRecord) -> None:
+    """Bind persisted post-merge receipts to their integration phase window."""
+
+    merge_statuses = [
+        status for status in run.status_messages if status.phase == WorkerPhase.MERGE
+    ]
+    integration_statuses = [
+        status
+        for status in run.status_messages
+        if status.phase == WorkerPhase.INTEGRATION_TEST
+    ]
+    if (
+        not merge_statuses
+        or not integration_statuses
+        or run.status_messages[-1].phase != WorkerPhase.INTEGRATION_TEST
+    ):
+        raise ValidationError(
+            "Integrationszeitachse besitzt kein eindeutiges Phasenfenster"
+        )
+    phase_started_at = merge_statuses[-1].created_at
+    phase_finished_at = integration_statuses[-1].created_at
+    if not run.integration_executions or any(
+        execution.executed_at < phase_started_at
+        or execution.executed_at > phase_finished_at
+        for execution in run.integration_executions
+    ):
+        raise ValidationError(
+            "Post-Merge-Belege liegen außerhalb ihres Integrationsfensters"
+        )
+
+
 def normalize_repo_path(value: str) -> str:
     if not isinstance(value, str):
         raise ValidationError("Repository-Pfad muss Text sein")
@@ -706,7 +737,6 @@ class DevelopmentOrchestrator:
         *,
         phase: WorkerPhase,
         message: str,
-        state_validator: Callable[[ProjectState], None] | None = None,
         implementation_executions: list[TestExecution] | None = None,
         test_executions: list[TestExecution] | None = None,
         review_executions: list[TestExecution] | None = None,
@@ -774,8 +804,8 @@ class DevelopmentOrchestrator:
                 run.integration_isolation = integration_isolation.model_copy(deep=True)
             if state_value is not None:
                 run.state = state_value
-            if state_validator is not None:
-                state_validator(state)
+            if phase == WorkerPhase.INTEGRATION_TEST:
+                require_integration_execution_window(run)
             self._event(state, "worker_run_updated", run.agent_id, {
                 "run_id": run_id,
                 "phase": phase.value,
