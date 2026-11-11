@@ -711,3 +711,13 @@ transaction while keeping the same green receipt list. The regression moves the
 stored merge boundary past an otherwise unchanged successful receipt and requires
 the final transaction to preserve the integrating run and previous project commit.
 This remains synthetic state-transition evidence, not trusted storage or time.
+
+That final check now also revalidates the complete persisted integration-phase
+sequence. The last worker `complete` receipt must be followed by one or more
+`rebase` statuses and exactly one `merge` plus one `integration_test` status, with
+continuous sequence numbers and nondecreasing timezone-aware timestamps. A
+regression changes the stored integration-start status into a second `merge` while
+leaving the green receipt and its valid merge window unchanged; finalization now
+rejects that chronology without advancing ProjectState. This remains synthetic
+state-transition evidence, not trusted storage, production integration, or remote
+attestation.

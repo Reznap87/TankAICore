@@ -4823,3 +4823,16 @@ bleibt. Die Regression verschiebt die gespeicherte Merge-Grenze hinter einen
 ansonsten unveränderten Erfolgsbeleg und verlangt, dass der integrierende Run sowie
 der frühere Projektcommit unverändert bleiben. Dies ist synthetische Zustands-
 übergangsevidenz, keine vertrauenswürdige Speicher- oder Uhr-Attestierung.
+
+
+## Entwurfsnachweis: erneute Phasenfolgenprüfung beim Integrationsabschluss
+
+Der Integrationsabschluss prüft nun zusätzlich die vollständige gespeicherte
+Integrationsphasenfolge. Auf den letzten `complete`-Beleg müssen lückenlos ein oder
+mehrere `rebase`-Status und danach genau ein `merge`- sowie ein
+`integration_test`-Status mit geordneten, zeitzonenbezogenen Zeitstempeln folgen.
+Die Regression ersetzt den gespeicherten Integrationsstart durch einen zweiten
+`merge`-Status, lässt aber den grünen Beleg und sein gültiges Merge-Zeitfenster
+unverändert. Der Abschluss weist diese Chronologie ab, ohne ProjectState
+vorzurücken. Dies ist synthetische Zustandsübergangsevidenz, keine produktive
+Integration, vertrauenswürdige Speicherung oder Remote-Attestierung.

@@ -199,24 +199,71 @@ def require_coherent_worker_timeline(run: WorkerRunRecord) -> None:
 def require_integration_execution_window(run: WorkerRunRecord) -> None:
     """Bind persisted post-merge receipts to their integration phase window."""
 
+    complete_indexes = [
+        index
+        for index, status in enumerate(run.status_messages)
+        if status.phase == WorkerPhase.COMPLETE
+    ]
+    if not complete_indexes:
+        raise ValidationError(
+            "Integrationsphasenfolge besitzt keinen vorherigen Abschlussbeleg"
+        )
+    complete_index = complete_indexes[-1]
+    complete_status = run.status_messages[complete_index]
+    require_coherent_worker_timeline(run.model_copy(update={
+        "phase": WorkerPhase.COMPLETE,
+        "finished_at": complete_status.created_at,
+        "status_messages": run.status_messages[: complete_index + 1],
+    }))
+    integration_statuses = run.status_messages[complete_index + 1 :]
+    integration_phases = [status.phase for status in integration_statuses]
+    rebase_count = 0
+    while (
+        rebase_count < len(integration_phases)
+        and integration_phases[rebase_count] == WorkerPhase.REBASE
+    ):
+        rebase_count += 1
+    if (
+        rebase_count == 0
+        or integration_phases[rebase_count:]
+        != [WorkerPhase.MERGE, WorkerPhase.INTEGRATION_TEST]
+    ):
+        raise ValidationError(
+            "Integrationsphasenfolge muss auf Rebase, Merge und Integrationstest enden"
+        )
+    expected_sequence = complete_status.sequence + 1
+    previous_timestamp = complete_status.created_at
+    for status in integration_statuses:
+        if status.sequence != expected_sequence:
+            raise ValidationError("Integrationsphasenfolge ist nicht lückenlos")
+        if (
+            status.created_at.utcoffset() is None
+            or status.created_at < previous_timestamp
+        ):
+            raise ValidationError(
+                "Integrationsphasenfolge besitzt ungültige Zeitbelege des Integrationsfensters"
+            )
+        expected_sequence += 1
+        previous_timestamp = status.created_at
+
     merge_statuses = [
         status for status in run.status_messages if status.phase == WorkerPhase.MERGE
     ]
-    integration_statuses = [
+    integration_test_statuses = [
         status
         for status in run.status_messages
         if status.phase == WorkerPhase.INTEGRATION_TEST
     ]
     if (
         not merge_statuses
-        or not integration_statuses
+        or not integration_test_statuses
         or run.status_messages[-1].phase != WorkerPhase.INTEGRATION_TEST
     ):
         raise ValidationError(
             "Integrationszeitachse besitzt kein eindeutiges Phasenfenster"
         )
     phase_started_at = merge_statuses[-1].created_at
-    phase_finished_at = integration_statuses[-1].created_at
+    phase_finished_at = integration_test_statuses[-1].created_at
     if not run.integration_executions or any(
         execution.executed_at < phase_started_at
         or execution.executed_at > phase_finished_at

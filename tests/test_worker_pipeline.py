@@ -1001,6 +1001,62 @@ def test_integration_finalization_revalidates_persisted_receipt_window(
     assert persisted.phase == WorkerPhase.INTEGRATION_TEST
 
 
+def test_integration_finalization_revalidates_persisted_phase_sequence(
+    tmp_path: Path,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        integration_start = next(
+            status
+            for status in run.status_messages
+            if status.phase == WorkerPhase.REBASE
+        )
+        integration_start.phase = WorkerPhase.MERGE
+
+    orchestrator.store.transaction(corrupt)
+    with pytest.raises(ValidationError, match="Integrationsphasenfolge"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+
+
 def test_integration_journal_rejects_workspace_outside_managed_root(tmp_path: Path) -> None:
     repository, orchestrator, manager, job = make_pipeline(tmp_path)
     pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
