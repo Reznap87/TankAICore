@@ -735,3 +735,10 @@ Two further synthetic mutations previously allowed the original worker to finali
 an integration after either side was reassigned; they now fail closed before the
 agent is marked merged or ProjectState advances. This is persisted-state and
 synthetic-test evidence, not production identity or trusted-storage attestation.
+
+The final transaction also requires the implementation agent to remain in its
+expected `waiting_for_review` lifecycle state. A synthetic mutation marks the agent
+`rejected` after green post-merge evidence is stored; finalization now preserves
+that rejection, the integrating run, and the previous project commit instead of
+reviving the agent as `merged`. This is persisted-state and synthetic-test
+evidence, not a production review, identity, or trusted-storage attestation.

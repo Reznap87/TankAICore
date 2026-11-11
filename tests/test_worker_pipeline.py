@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from tankai.dev_orchestrator import (
+    AgentStatus,
     CommandSpec,
     DevelopmentOrchestrator,
     DevelopmentRole,
@@ -1119,6 +1120,55 @@ def test_integration_finalization_revalidates_cross_object_binding(
     assert state.current_commit == previous
     assert persisted.state == WorkerRunState.INTEGRATING
     assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+
+
+def test_integration_finalization_does_not_revive_rejected_agent(tmp_path: Path) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def reject_agent(state):
+        state.agents[pipeline.run.agent_id].status = AgentStatus.REJECTED
+
+    orchestrator.store.transaction(reject_agent)
+    with pytest.raises(ValidationError, match="Agent-Status"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+    assert state.agents[pipeline.run.agent_id].status == AgentStatus.REJECTED
 
 
 def test_integration_journal_rejects_workspace_outside_managed_root(tmp_path: Path) -> None:

@@ -1116,6 +1116,10 @@ class DevelopmentOrchestrator:
                 raise ValidationError(
                     "Integrationsabschluss besitzt keine konsistente Agent-Bindung"
                 )
+            if agent.status != AgentStatus.WAITING_FOR_REVIEW:
+                raise ValidationError(
+                    "Integrationsabschluss darf den aktuellen Agent-Status nicht überschreiben"
+                )
             if (
                 run.phase != WorkerPhase.INTEGRATION_TEST
                 or not run.status_messages

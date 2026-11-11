@@ -4859,3 +4859,14 @@ grünen Integrationstest-Belege um. Beide werden abgewiesen, bevor der Agent als
 gemergt markiert oder ProjectState vorgerückt wird. Dies ist persistierte Zustands-
 und synthetische Testevidenz, keine produktive Identitäts- oder
 Speicherattestierung.
+
+
+## Entwurfsnachweis: erneuter Agent-Status beim Integrationsabschluss
+
+Die finale Zustandstransaktion verlangt nun zusätzlich, dass der implementierende
+Agent weiterhin im erwarteten Zustand `waiting_for_review` steht. Eine synthetische
+Mutation setzt den Agenten nach den grünen Post-Merge-Belegen auf `rejected`. Der
+Abschluss bewahrt diese Ablehnung, den integrierenden Run und den bisherigen
+Projektcommit, statt den Agenten wieder als `merged` zu markieren. Dies ist
+persistierte Zustands- und synthetische Testevidenz, keine produktive Review-,
+Identitäts- oder Speicherattestierung.
