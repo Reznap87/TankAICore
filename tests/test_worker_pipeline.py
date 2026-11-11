@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from tankai.dev_orchestrator import (
+    AgentStatus,
     CommandSpec,
     DevelopmentOrchestrator,
     DevelopmentRole,
@@ -17,9 +19,13 @@ from tankai.dev_orchestrator import (
     IntegrationExecutionError,
     IntegrationJob,
     ProjectStateStore,
+    QAStatus,
+    ReviewDecision,
     TaskSpec,
     TaskState,
+    TestExecution,
     TransitionError,
+    ValidationError,
     WorkerExecutionError,
     WorkerIntegrationRunner,
     WorkerExecutionBackend,
@@ -27,6 +33,7 @@ from tankai.dev_orchestrator import (
     WorkerJob,
     WorkerPipelineJob,
     WorkerPipelineRunner,
+    WorkerPhase,
     WorkerRunRecord,
     WorkerRunState,
     render_command,
@@ -243,6 +250,7 @@ def test_worker_pipeline_blocks_out_of_scope_change_and_persists_error(tmp_path:
     run = state.worker_runs[captured.value.run_id]
     assert run.state == WorkerRunState.BLOCKED
     assert run.phase.value == "failed"
+    assert run.finished_at == run.status_messages[-1].created_at
     assert "außerhalb" in run.error
     assert state.tasks["AUTH-001"].state == TaskState.BLOCKED
     assert not Path(run.workspace_path).exists()
@@ -478,6 +486,7 @@ def test_worker_integration_fast_forwards_main_and_finalizes_state(tmp_path: Pat
 
     state = orchestrator.state()
     assert result.run.state == WorkerRunState.INTEGRATED
+    assert result.run.finished_at == result.run.status_messages[-1].created_at
     assert result.run.integration_commit == result.integration_commit
     assert result.integration_commit != previous
     assert state.current_commit == result.integration_commit
@@ -604,6 +613,124 @@ def test_worker_integration_rejects_dirty_main_before_state_transition(tmp_path:
     assert (repository / "local-note.txt").exists()
 
 
+@pytest.mark.parametrize("tamper", ["phase", "status", "timestamp"])
+def test_worker_integration_rejects_unbound_completion_receipt(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        if tamper == "phase":
+            run.phase = WorkerPhase.QA
+        elif tamper == "status":
+            run.status_messages.pop()
+        else:
+            assert run.finished_at is not None
+            run.finished_at += timedelta(microseconds=1)
+
+    orchestrator.store.transaction(corrupt)
+
+    with pytest.raises(TransitionError, match="Abschlussbeleg"):
+        orchestrator.begin_worker_integration(
+            pipeline.run.run_id,
+            expected_project_commit=orchestrator.state().current_commit,
+        )
+
+    persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
+    assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
+
+
+@pytest.mark.parametrize(
+    ("field", "revoked_value"),
+    [
+        ("review_decision", ReviewDecision.REJECTED),
+        ("qa_status", QAStatus.FAILED),
+        ("security_approved", False),
+    ],
+)
+def test_worker_integration_admission_revalidates_task_gates(
+    tmp_path: Path,
+    field: str,
+    revoked_value: object,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path, security=True)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+
+    def revoke_gate(state):
+        setattr(state.tasks[pipeline.run.task_id], field, revoked_value)
+
+    orchestrator.store.transaction(revoke_gate)
+    with pytest.raises(ValidationError, match="Gate-Freigabe"):
+        orchestrator.begin_worker_integration(
+            pipeline.run.run_id,
+            expected_project_commit=previous,
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
+    assert persisted.phase == WorkerPhase.COMPLETE
+    assert persisted.finished_at == persisted.status_messages[-1].created_at
+    assert getattr(state.tasks[pipeline.run.task_id], field) == revoked_value
+
+
+def test_worker_integration_revalidates_completed_run_timeline(
+    tmp_path: Path,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        run.status_messages[1].sequence = run.status_messages[0].sequence
+
+    orchestrator.store.transaction(corrupt)
+
+    with pytest.raises(IntegrationExecutionError, match="Statusfolge"):
+        WorkerIntegrationRunner(orchestrator, manager).run(
+            integration_job_for(pipeline, job)
+        )
+
+    persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
+    assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
+    assert orchestrator.state().current_commit == previous
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
+
+
+def test_worker_integration_cannot_bypass_timeline_validation(
+    tmp_path: Path,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        run.status_messages[1].sequence = run.status_messages[0].sequence
+
+    orchestrator.store.transaction(corrupt)
+
+    with pytest.raises(ValidationError, match="Statusfolge"):
+        orchestrator.begin_worker_integration(
+            pipeline.run.run_id,
+            expected_project_commit=orchestrator.state().current_commit,
+        )
+
+    persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
+    assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
+
+
 def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) -> None:
     repository, orchestrator, manager, job = make_pipeline(tmp_path)
     pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
@@ -613,6 +740,7 @@ def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) 
         pipeline.run.run_id,
         expected_project_commit=previous,
     )
+    assert orchestrator.state().worker_runs[pipeline.run.run_id].finished_at is None
     merged = manager.fast_forward_repository(
         branch="main",
         source_branch=pipeline.workspace.branch,
@@ -636,7 +764,9 @@ def test_integration_journal_recovers_merge_before_state_commit(tmp_path: Path) 
     state = orchestrator.state()
     assert manager.repository_head() == previous
     assert state.current_commit == previous
-    assert state.worker_runs[pipeline.run.run_id].state == WorkerRunState.READY_TO_INTEGRATE
+    recovered = state.worker_runs[pipeline.run.run_id]
+    assert recovered.state == WorkerRunState.READY_TO_INTEGRATE
+    assert recovered.finished_at == recovered.status_messages[-1].created_at
     assert state.tasks["AUTH-001"].state == TaskState.READY_TO_INTEGRATE
     assert not runner.journal.path.exists()
 
@@ -822,6 +952,324 @@ def test_worker_integration_rolls_back_when_state_commit_fails(
     assert not (manager.common_git_dir / "tankai-integration-journal.json").exists()
 
 
+def test_worker_integration_cannot_replace_validated_receipts_at_finalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    finalize = orchestrator.finalize_worker_integration
+
+    def replace_receipts(run_id, **kwargs):
+        forged = list(kwargs["executions"])
+        forged[0] = forged[0].model_copy(update={"command": "forged-success"})
+        return finalize(run_id, **{**kwargs, "executions": forged})
+
+    monkeypatch.setattr(orchestrator, "finalize_worker_integration", replace_receipts)
+
+    with pytest.raises(IntegrationExecutionError, match="nicht ersetzen"):
+        WorkerIntegrationRunner(orchestrator, manager).run(
+            integration_job_for(pipeline, job)
+        )
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert manager.repository_head() == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions
+    assert run.integration_executions[0].command.startswith("git diff --check ")
+    assert all(item.command != "forged-success" for item in run.integration_executions)
+    assert not (manager.common_git_dir / "tankai-integration-journal.json").exists()
+
+
+def test_integration_finalization_revalidates_persisted_receipt_window(
+    tmp_path: Path,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        merge_status = next(
+            status
+            for status in reversed(run.status_messages)
+            if status.phase == WorkerPhase.MERGE
+        )
+        merge_status.created_at = execution.executed_at + timedelta(seconds=1)
+
+    orchestrator.store.transaction(corrupt)
+    with pytest.raises(ValidationError, match="Integrationsfensters"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+
+
+def test_integration_finalization_revalidates_persisted_phase_sequence(
+    tmp_path: Path,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        integration_start = next(
+            status
+            for status in run.status_messages
+            if status.phase == WorkerPhase.REBASE
+        )
+        integration_start.phase = WorkerPhase.MERGE
+
+    orchestrator.store.transaction(corrupt)
+    with pytest.raises(ValidationError, match="Integrationsphasenfolge"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+
+
+@pytest.mark.parametrize(
+    ("field", "forged_value"),
+    [
+        ("worker_run_id", "RUN-FORGED"),
+        ("implementation_commit", "f" * 40),
+        ("assigned_agent_id", "AGENT-FORGED"),
+        ("agent.task_id", "TASK-FORGED"),
+    ],
+)
+def test_integration_finalization_revalidates_cross_object_binding(
+    tmp_path: Path,
+    field: str,
+    forged_value: str,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def corrupt(state):
+        if field == "agent.task_id":
+            state.agents[pipeline.run.agent_id].task_id = forged_value
+        else:
+            setattr(state.tasks[pipeline.run.task_id], field, forged_value)
+
+    orchestrator.store.transaction(corrupt)
+    with pytest.raises(ValidationError, match="Bindung"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+
+
+def test_integration_finalization_does_not_revive_rejected_agent(tmp_path: Path) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def reject_agent(state):
+        state.agents[pipeline.run.agent_id].status = AgentStatus.REJECTED
+
+    orchestrator.store.transaction(reject_agent)
+    with pytest.raises(ValidationError, match="Agent-Status"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+    assert state.agents[pipeline.run.agent_id].status == AgentStatus.REJECTED
+
+
+@pytest.mark.parametrize(
+    ("field", "revoked_value"),
+    [
+        ("review_decision", ReviewDecision.REJECTED),
+        ("qa_status", QAStatus.FAILED),
+        ("security_approved", False),
+    ],
+)
+def test_integration_finalization_revalidates_task_gates(
+    tmp_path: Path,
+    field: str,
+    revoked_value: object,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path, security=True)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def revoke_gate(state):
+        setattr(state.tasks[pipeline.run.task_id], field, revoked_value)
+
+    orchestrator.store.transaction(revoke_gate)
+    with pytest.raises(ValidationError, match="Gate-Freigabe"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
+    assert getattr(state.tasks[pipeline.run.task_id], field) == revoked_value
+
+
 def test_integration_journal_rejects_workspace_outside_managed_root(tmp_path: Path) -> None:
     repository, orchestrator, manager, job = make_pipeline(tmp_path)
     pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
@@ -891,6 +1339,193 @@ class LocalRecordingContainerExecutor:
             timeout_seconds=command.timeout_seconds,
             env=command.env,
         )
+
+
+class InvalidIntegrationReceiptExecutor(LocalRecordingContainerExecutor):
+    """Returns an unvalidated outcome only for the post-merge command."""
+
+    def execute(self, *args, **kwargs):
+        result = super().execute(*args, **kwargs)
+        if kwargs["phase"] == "integration_test":
+            return result.model_copy(update={"passed": 1})
+        return result
+
+
+class EarlyIntegrationReceiptExecutor(LocalRecordingContainerExecutor):
+    """Returns an invocation-plausible receipt from before the merge phase."""
+
+    def __init__(self, manager: GitWorkspaceManager, orchestrator) -> None:
+        super().__init__(manager)
+        self.orchestrator = orchestrator
+
+    def execute(self, *args, **kwargs):
+        result = super().execute(*args, **kwargs)
+        if kwargs["phase"] == "integration_test":
+            run = self.orchestrator.state().worker_runs[kwargs["run_id"]]
+            merge_started_at = next(
+                status.created_at
+                for status in reversed(run.status_messages)
+                if status.phase == "merge"
+            )
+            return result.model_copy(
+                update={"executed_at": merge_started_at - timedelta(microseconds=1)}
+            )
+        return result
+
+
+def test_integration_rejects_receipt_before_merge_phase_atomically(
+    tmp_path: Path,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    isolation = WorkerIsolationSpec(
+        image="tankai-worker@sha256:" + "e" * 64,
+        user="10001:10001",
+    )
+
+    with pytest.raises(IntegrationExecutionError, match="Integrationsfensters"):
+        WorkerIntegrationRunner(
+            orchestrator,
+            manager,
+            container_executor=EarlyIntegrationReceiptExecutor(manager, orchestrator),
+        ).run(IntegrationJob(
+            run_id=pipeline.run.run_id,
+            test_commands=job.worker.test_commands,
+            isolation=isolation,
+        ))
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions == []
+    assert not any(
+        status.phase == "integration_test" for status in run.status_messages
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
+
+
+def test_integration_receipt_window_cannot_be_bypassed_by_direct_caller(
+    tmp_path: Path,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    early = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=pipeline.run.started_at,
+    )
+
+    with pytest.raises(ValidationError, match="Integrationsfensters"):
+        orchestrator.update_worker_run(
+            pipeline.run.run_id,
+            phase=WorkerPhase.INTEGRATION_TEST,
+            message="Synthetic post-merge check completed.",
+            integration_executions=[early],
+            integration_commit=pipeline.run.implementation_commit,
+        )
+
+    persisted = orchestrator.state().worker_runs[pipeline.run.run_id]
+    assert persisted.phase == WorkerPhase.MERGE
+    assert persisted.integration_executions == []
+    assert persisted.integration_commit is None
+
+
+def test_integration_revalidates_repository_diff_receipt_before_persistence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    run_repository_command = manager.run_repository_command
+
+    def invalid_diff_receipt(command, **kwargs):
+        result = run_repository_command(command, **kwargs)
+        if list(command[:3]) == ["git", "diff", "--check"]:
+            return result.model_copy(update={"passed": 1})
+        return result
+
+    monkeypatch.setattr(manager, "run_repository_command", invalid_diff_receipt)
+
+    with pytest.raises(IntegrationExecutionError, match="Input should be a valid boolean"):
+        WorkerIntegrationRunner(orchestrator, manager).run(
+            integration_job_for(pipeline, job)
+        )
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions == []
+    assert not any(
+        status.phase == "integration_test" for status in run.status_messages
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
+
+
+def test_integration_revalidates_container_executor_receipt_before_persistence(
+    tmp_path: Path,
+) -> None:
+    repository, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    isolation = WorkerIsolationSpec(
+        image="tankai-worker@sha256:" + "d" * 64,
+        user="10001:10001",
+    )
+    executor = InvalidIntegrationReceiptExecutor(manager)
+
+    with pytest.raises(IntegrationExecutionError, match="Input should be a valid boolean"):
+        WorkerIntegrationRunner(
+            orchestrator,
+            manager,
+            container_executor=executor,
+        ).run(IntegrationJob(
+            run_id=pipeline.run.run_id,
+            test_commands=job.worker.test_commands,
+            isolation=isolation,
+        ))
+
+    state = orchestrator.state()
+    run = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert run.state == WorkerRunState.BLOCKED
+    assert run.integration_executions == []
+    assert not any(
+        status.phase == "integration_test" for status in run.status_messages
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip() == previous
 
 
 def test_container_policy_covers_worker_gates_and_post_merge_tests(tmp_path: Path) -> None:
