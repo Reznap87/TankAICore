@@ -4881,3 +4881,14 @@ der Task-Zustand unverändert integrationsbereit bleibt. Alle drei Abschlüsse
 werden abgewiesen, ohne den Run zu integrieren oder den Projektcommit
 fortzuschreiben. Dies ist persistierte Zustands- und synthetische Testevidenz,
 keine unabhängige Review-, produktive Freigabe- oder Speicherattestierung.
+
+
+## Entwurfsnachweis: erneute Gate-Freigaben vor Integrationsbeginn
+
+Die Integrationszulassung verwendet nun dieselbe zentral definierte Gate-Prüfung
+wie Bereitschaftsbildung und finaler Abschluss. Je eine synthetische Mutation
+widerruft Review, QA oder eine erforderliche Security-Freigabe nach dem
+Abschlussbeleg. Jeder Integrationsbeginn wird abgewiesen; Run, gebundener
+Abschlussbeleg und Projektcommit bleiben unverändert. Dies verhindert unnötige
+Git-Integrationsarbeit, ist aber weiterhin nur persistierte Zustands- und
+synthetische Testevidenz, keine produktive oder unabhängige Review-Attestierung.

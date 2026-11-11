@@ -975,6 +975,10 @@ class DevelopmentOrchestrator:
                 )
             if task.state != TaskState.READY_TO_INTEGRATE:
                 raise TransitionError(f"Task ist nicht integrationsbereit: {task.state.value}")
+            if not self._task_gates_passed(task):
+                raise ValidationError(
+                    "Integrationsbeginn besitzt keine unveränderte Gate-Freigabe"
+                )
             if (
                 run.phase != WorkerPhase.COMPLETE
                 or not run.status_messages
@@ -1120,15 +1124,7 @@ class DevelopmentOrchestrator:
                 raise ValidationError(
                     "Integrationsabschluss darf den aktuellen Agent-Status nicht überschreiben"
                 )
-            security_ok = (
-                not task.requires_security_review
-                or task.security_approved is True
-            )
-            if (
-                task.review_decision != ReviewDecision.APPROVED
-                or task.qa_status != QAStatus.PASSED
-                or not security_ok
-            ):
+            if not self._task_gates_passed(task):
                 raise ValidationError(
                     "Integrationsabschluss besitzt keine unveränderte Gate-Freigabe"
                 )
@@ -1639,13 +1635,19 @@ class DevelopmentOrchestrator:
     def graph_order(self) -> list[str]:
         return task_graph_order(self.state().tasks)
 
-    def _refresh_ready_state(self, task: TaskSpec) -> None:
-        security_ok = not task.requires_security_review or task.security_approved is True
-        if (
+    @staticmethod
+    def _task_gates_passed(task: TaskSpec) -> bool:
+        return (
             task.review_decision == ReviewDecision.APPROVED
             and task.qa_status == QAStatus.PASSED
-            and security_ok
-        ):
+            and (
+                not task.requires_security_review
+                or task.security_approved is True
+            )
+        )
+
+    def _refresh_ready_state(self, task: TaskSpec) -> None:
+        if self._task_gates_passed(task):
             task.state = TaskState.READY_TO_INTEGRATE
 
 

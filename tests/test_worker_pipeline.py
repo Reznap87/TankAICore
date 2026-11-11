@@ -643,6 +643,42 @@ def test_worker_integration_rejects_unbound_completion_receipt(
     assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
 
 
+@pytest.mark.parametrize(
+    ("field", "revoked_value"),
+    [
+        ("review_decision", ReviewDecision.REJECTED),
+        ("qa_status", QAStatus.FAILED),
+        ("security_approved", False),
+    ],
+)
+def test_worker_integration_admission_revalidates_task_gates(
+    tmp_path: Path,
+    field: str,
+    revoked_value: object,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path, security=True)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+
+    def revoke_gate(state):
+        setattr(state.tasks[pipeline.run.task_id], field, revoked_value)
+
+    orchestrator.store.transaction(revoke_gate)
+    with pytest.raises(ValidationError, match="Gate-Freigabe"):
+        orchestrator.begin_worker_integration(
+            pipeline.run.run_id,
+            expected_project_commit=previous,
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.READY_TO_INTEGRATE
+    assert persisted.phase == WorkerPhase.COMPLETE
+    assert persisted.finished_at == persisted.status_messages[-1].created_at
+    assert getattr(state.tasks[pipeline.run.task_id], field) == revoked_value
+
+
 def test_worker_integration_revalidates_completed_run_timeline(
     tmp_path: Path,
 ) -> None:

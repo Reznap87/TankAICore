@@ -749,3 +749,10 @@ after green post-merge evidence is stored while leaving the task state ready. Al
 three are rejected without integrating the run or advancing the project commit.
 This is persisted-state and synthetic-test evidence, not an independent review,
 production approval, or trusted-storage attestation.
+
+Integration admission now applies the same centralized gate predicate before it
+changes the ready run to `integrating`. Three additional synthetic mutations
+revoke review, QA, or required security approval after completion; each is
+rejected while the run, completion receipt, and project commit remain unchanged.
+This prevents avoidable Git integration work but remains persisted-state and
+synthetic-test evidence, not production or independent-review evidence.
