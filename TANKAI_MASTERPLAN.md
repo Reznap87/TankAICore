@@ -4811,3 +4811,15 @@ reproduzierte zunächst diesen Bypass und verlangt nun die atomare Ablehnung bei
 unverändertem Merge-Status und leerer Integrationsevidenz. Dies ist Code- und
 synthetische Zustandsübergangsevidenz, keine produktive Integration oder
 vertrauenswürdige Uhr-Attestierung.
+
+
+## Entwurfsnachweis: erneute Zeitfensterprüfung beim Integrationsabschluss
+
+Unmittelbar vor dem stabilen ProjectState-Übergang prüft der Integrationsabschluss
+das gespeicherte Post-Merge-Zeitfenster erneut. Eine bei der Belegpersistenz gültige
+Chronologie kann dadurch nicht zwischen Integrations-Testtransaktion und
+Abschlusstransaktion verändert werden, während dieselbe grüne Belegliste erhalten
+bleibt. Die Regression verschiebt die gespeicherte Merge-Grenze hinter einen
+ansonsten unveränderten Erfolgsbeleg und verlangt, dass der integrierende Run sowie
+der frühere Projektcommit unverändert bleiben. Dies ist synthetische Zustands-
+übergangsevidenz, keine vertrauenswürdige Speicher- oder Uhr-Attestierung.

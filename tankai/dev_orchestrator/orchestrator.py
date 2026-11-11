@@ -1068,6 +1068,7 @@ class DevelopmentOrchestrator:
                 raise ValidationError(
                     "Integrationsabschluss darf gespeicherte Post-Merge-Belege nicht ersetzen"
                 )
+            require_integration_execution_window(run)
             if not executions or not all(execution.passed for execution in executions):
                 raise TransitionError("Post-Merge-Gesamttests sind nicht vollständig bestanden")
             run.state = WorkerRunState.INTEGRATED

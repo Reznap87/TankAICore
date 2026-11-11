@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -943,6 +943,62 @@ def test_worker_integration_cannot_replace_validated_receipts_at_finalization(
     assert run.integration_executions[0].command.startswith("git diff --check ")
     assert all(item.command != "forged-success" for item in run.integration_executions)
     assert not (manager.common_git_dir / "tankai-integration-journal.json").exists()
+
+
+def test_integration_finalization_revalidates_persisted_receipt_window(
+    tmp_path: Path,
+) -> None:
+    _, orchestrator, manager, job = make_pipeline(tmp_path)
+    pipeline = WorkerPipelineRunner(orchestrator, manager).run(job)
+    previous = orchestrator.state().current_commit
+    integration_commit = pipeline.run.implementation_commit
+    assert integration_commit is not None
+    orchestrator.begin_worker_integration(
+        pipeline.run.run_id,
+        expected_project_commit=previous,
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.MERGE,
+        message="Synthetic merge phase started.",
+    )
+    execution = TestExecution(
+        command="synthetic post-merge check",
+        passed=True,
+        exit_code=0,
+        executed_at=datetime.now(timezone.utc),
+    )
+    orchestrator.update_worker_run(
+        pipeline.run.run_id,
+        phase=WorkerPhase.INTEGRATION_TEST,
+        message="Synthetic post-merge check completed.",
+        integration_executions=[execution],
+        integration_commit=integration_commit,
+    )
+
+    def corrupt(state):
+        run = state.worker_runs[pipeline.run.run_id]
+        merge_status = next(
+            status
+            for status in reversed(run.status_messages)
+            if status.phase == WorkerPhase.MERGE
+        )
+        merge_status.created_at = execution.executed_at + timedelta(seconds=1)
+
+    orchestrator.store.transaction(corrupt)
+    with pytest.raises(ValidationError, match="Integrationsfensters"):
+        orchestrator.finalize_worker_integration(
+            pipeline.run.run_id,
+            expected_previous_commit=previous,
+            integration_commit=integration_commit,
+            executions=[execution],
+        )
+
+    state = orchestrator.state()
+    persisted = state.worker_runs[pipeline.run.run_id]
+    assert state.current_commit == previous
+    assert persisted.state == WorkerRunState.INTEGRATING
+    assert persisted.phase == WorkerPhase.INTEGRATION_TEST
 
 
 def test_integration_journal_rejects_workspace_outside_managed_root(tmp_path: Path) -> None:

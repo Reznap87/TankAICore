@@ -703,3 +703,11 @@ before the merge phase by replacing the window check with a no-op. A regression
 first reproduced that bypass and now requires atomic rejection with the prior merge
 status and empty integration evidence preserved. This is code and synthetic
 state-transition evidence, not production integration or trusted-clock evidence.
+
+Final integration revalidates that persisted window once more immediately before
+advancing ProjectState. A chronology that was valid when its receipts were stored
+cannot therefore be altered between the integration-test transaction and the final
+transaction while keeping the same green receipt list. The regression moves the
+stored merge boundary past an otherwise unchanged successful receipt and requires
+the final transaction to preserve the integrating run and previous project commit.
+This remains synthetic state-transition evidence, not trusted storage or time.
