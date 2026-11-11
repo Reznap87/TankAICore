@@ -67,6 +67,7 @@ private readonly liveProviderEnabled = enabled(this.env.TANKAI_LIVE_PROVIDER_ENA
 TANKAI_LLM: this.liveProviderEnabled ? clean(this.env.TANKAI_LLM) : "mock",
 OPENAI_API_KEY: this.liveProviderEnabled ? clean(this.env.OPENAI_API_KEY) : "",
 ANTHROPIC_API_KEY: this.liveProviderEnabled ? clean(this.env.ANTHROPIC_API_KEY) : "",
+TANKAI_CRITIC_API_KEY: this.liveProviderEnabled ? clean(this.env.TANKAI_CRITIC_API_KEY) : "",
 TANKAI_CRITIC_LLM: this.liveProviderEnabled ? clean(this.env.TANKAI_CRITIC_LLM) : "",
 TANKAI_REQUIRE_INDEPENDENT_CRITIC: this.liveProviderEnabled ? "1" : "0",
 TANKAI_SEARCH_PROVIDER: this.liveProviderEnabled ? clean(this.env.TANKAI_SEARCH_PROVIDER) : "",
@@ -120,7 +121,7 @@ def test_fully_wired_explicit_independent_target_can_be_ready(tmp_path: Path) ->
         critic_provider="anthropic",
         critic_model="critic-model",
         search_provider="brave",
-        present_secrets={"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "BRAVE_SEARCH_API_KEY"},
+        present_secrets={"OPENAI_API_KEY", "TANKAI_CRITIC_API_KEY", "BRAVE_SEARCH_API_KEY"},
     )
     assert result["overall"] == "READY"
     assert all(item["status"] == "PASS" for item in result["checks"])
@@ -153,12 +154,46 @@ def test_secret_check_uses_names_only_and_reports_missing_name(tmp_path: Path) -
         critic_provider="openai",
         critic_model="critic-model",
         search_provider="brave",
-        present_secrets={"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+        present_secrets={"ANTHROPIC_API_KEY", "TANKAI_CRITIC_API_KEY"},
     )
     secret_check = _check(result, "required_secret_presence")
     assert secret_check["status"] == "FAIL"
     assert "BRAVE_SEARCH_API_KEY" in secret_check["detail"]
     assert fake_secret_value not in repr(result)
+
+
+def test_dedicated_critic_secret_is_required_even_when_provider_keys_exist(tmp_path: Path) -> None:
+    _fixture(tmp_path, wired=True)
+    result = evaluate(
+        tmp_path,
+        main_provider="openai",
+        main_model="main-model",
+        critic_provider="anthropic",
+        critic_model="critic-model",
+        search_provider="tavily",
+        present_secrets={"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TAVILY_API_KEY"},
+    )
+    secret_check = _check(result, "required_secret_presence")
+    assert secret_check["status"] == "FAIL"
+    assert secret_check["detail"] == "missing secret names: TANKAI_CRITIC_API_KEY"
+    assert result["overall"] == "NOT_READY"
+
+
+def test_reverse_provider_pair_uses_main_provider_and_dedicated_critic_names(
+    tmp_path: Path,
+) -> None:
+    _fixture(tmp_path, wired=True)
+    result = evaluate(
+        tmp_path,
+        main_provider="anthropic",
+        main_model="main-model",
+        critic_provider="openai",
+        critic_model="critic-model",
+        search_provider="tavily",
+        present_secrets={"ANTHROPIC_API_KEY", "TANKAI_CRITIC_API_KEY", "TAVILY_API_KEY"},
+    )
+    assert result["overall"] == "READY"
+    assert _check(result, "required_secret_presence")["status"] == "PASS"
 
 
 def test_repository_run_without_target_selection_is_unknown_only_for_target_metadata(tmp_path: Path) -> None:

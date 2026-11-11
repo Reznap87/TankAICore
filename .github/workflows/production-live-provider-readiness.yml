@@ -54,6 +54,7 @@ jobs:
         env:
           OPENAI_PRESENT: ${{ secrets.OPENAI_API_KEY != '' }}
           ANTHROPIC_PRESENT: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          CRITIC_PRESENT: ${{ secrets.TANKAI_CRITIC_API_KEY != '' }}
           BRAVE_PRESENT: ${{ secrets.BRAVE_SEARCH_API_KEY != '' }}
           TAVILY_PRESENT: ${{ secrets.TAVILY_API_KEY != '' }}
         run: |
@@ -70,6 +71,7 @@ jobs:
 
           [[ "${OPENAI_PRESENT}" == "true" ]] && args+=(--present-secret OPENAI_API_KEY)
           [[ "${ANTHROPIC_PRESENT}" == "true" ]] && args+=(--present-secret ANTHROPIC_API_KEY)
+          [[ "${CRITIC_PRESENT}" == "true" ]] && args+=(--present-secret TANKAI_CRITIC_API_KEY)
           [[ "${BRAVE_PRESENT}" == "true" ]] && args+=(--present-secret BRAVE_SEARCH_API_KEY)
           [[ "${TAVILY_PRESENT}" == "true" ]] && args+=(--present-secret TAVILY_API_KEY)
 
