@@ -687,3 +687,11 @@ The regression first demonstrated that such a callback bypass admitted a corrupt
 status sequence; it now calls admission directly and requires atomic rejection with
 the run still ready. This is code and synthetic state-transition evidence, not a
 production integration, trusted-storage, or remote-attestation claim.
+
+Worker completion now enforces the same invariant internally as well. Its public
+method no longer accepts a caller-controlled state validator, so a direct caller
+cannot append a terminal `complete` receipt to a corrupted chronology by supplying
+a no-op. The regression first reproduced that bypass and now requires rejection
+before the terminal status, state, or timestamp can be stored. This remains code
+and synthetic state-transition evidence, not production execution, trusted
+storage, or remote attestation.

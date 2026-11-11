@@ -12,7 +12,7 @@ import pytest
 from test_code_request import SOURCE, FIXED, prepare, request, response_for, source_contract
 from tankai.dev_orchestrator import (
     DevelopmentOrchestrator, GitWorkspaceError, ProjectStateStore, TaskState, TestExecution,
-    WorkerExecutionError, WorkerPhase, WorkerPipelineRunner, WorkerRunState,
+    ValidationError, WorkerExecutionError, WorkerPhase, WorkerPipelineRunner, WorkerRunState,
 )
 
 
@@ -289,6 +289,23 @@ def test_fresh_completion_rejects_execution_after_its_phase_status(
     assert run.phase == WorkerPhase.FAILED
     assert run.implementation_commit is not None
     assert not any(status.phase == WorkerPhase.COMPLETE for status in run.status_messages)
+
+
+def test_fresh_completion_cannot_bypass_timeline_validation(source_contract):
+    _, saved, restarted, _ = interrupt(source_contract, "complete_worker_run")
+
+    def corrupt(state):
+        run = state.worker_runs[saved.run_id]
+        run.status_messages[1].sequence = run.status_messages[0].sequence
+
+    restarted.store.transaction(corrupt)
+    with pytest.raises(ValidationError, match="Statusfolge"):
+        restarted.complete_worker_run(saved.run_id)
+
+    persisted = restarted.state().worker_runs[saved.run_id]
+    assert persisted.state == WorkerRunState.SUBMITTED
+    assert persisted.phase == WorkerPhase.QA
+    assert not any(status.phase == WorkerPhase.COMPLETE for status in persisted.status_messages)
 
 
 class AbruptExit(BaseException):

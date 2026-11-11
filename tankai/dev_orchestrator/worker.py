@@ -493,12 +493,7 @@ class WorkerPipelineRunner:
         self._guard("begin_independent_gates")
         self._run_gates(run_id, workspace, job.gates, job.isolation)
         self._guard("complete_worker_run")
-        completed = self.orchestrator.complete_worker_run(
-            run_id,
-            state_validator=lambda state: require_coherent_worker_timeline(
-                state.worker_runs[run_id]
-            ),
-        )
+        completed = self.orchestrator.complete_worker_run(run_id)
         return WorkerPipelineResult(run=completed, workspace=workspace)
 
     def _run_gates(

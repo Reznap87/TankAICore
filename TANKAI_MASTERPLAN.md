@@ -4786,3 +4786,15 @@ Callback-Bypass eine beschädigte Statusfolge zuließ. Nun ruft sie die Zulassun
 direkt auf und verlangt die atomare Ablehnung bei unverändert bereitem Run. Dies
 ist Code- und synthetische Zustandsübergangsevidenz, keine produktive Integration,
 vertrauenswürdige Speicherung oder Remote-Attestierung.
+
+
+## Entwurfsnachweis: unveränderliche Zeitachsenprüfung beim Worker-Abschluss
+
+Auch der Worker-Abschluss erzwingt die gemeinsame Zeitachsenprüfung nun intern.
+Seine öffentliche Methode akzeptiert keinen aufrufergesteuerten Zustandsvalidator
+mehr. Ein direkter Aufrufer kann daher keine beschädigte Chronologie mit einer
+wirkungslosen Funktion versehen und anschließend einen terminalen `complete`-Beleg
+speichern. Die Regression reproduzierte zunächst diesen Bypass und verlangt nun die
+Ablehnung, bevor Abschlussstatus, Zustand oder Zeitstempel persistiert werden. Dies
+ist Code- und synthetische Zustandsübergangsevidenz, keine Produktionsausführung,
+vertrauenswürdige Speicherung oder Remote-Attestierung.
