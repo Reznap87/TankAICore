@@ -865,6 +865,7 @@ class Handler(BaseHTTPRequestHandler):
                             "web_research": web_status,
                             "execution_mode": mode,
                             "live_provider": mode == "live",
+                            "direct_chat_available": not main_sim,
                             "verification_ready": mode == "live" and tank.critic_independent and web_status != "disabled",
                             "tenant_isolation": True,
                             "ltm": tank.ltm.summary() if tank.ltm else "",
@@ -1229,6 +1230,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(exc)}, 403)
             except (QueueError, ValueError) as exc:
                 self._json({"error": str(exc)}, 409)
+            return
+        if path == "/api/chat":
+            self._chat(context)
             return
         if path == "/api/run":
             self._run(context)
@@ -1989,6 +1993,101 @@ class Handler(BaseHTTPRequestHandler):
             return
         remaining = max(1, int((session.context.expires_at.timestamp() - time.time())))
         self._json(self._me_payload(session.context), 201, set_cookie=self._session_cookie(session.token, remaining))
+
+    def _chat(self, context: AuthContext) -> None:
+        """One live-model answer for ordinary chat; never mislabel it as verified."""
+        data = self._read_json(max_bytes=22_000)
+        if data is None:
+            return
+        if set(data) != {"message"} or not isinstance(data["message"], str):
+            self._json({"error": "Genau ein Textfeld 'message' erforderlich"}, 400)
+            return
+        message = data["message"].strip()
+        if not message or len(message) > 20_000:
+            self._json({"error": "Nachricht fehlt oder ist zu lang"}, 400)
+            return
+        try:
+            with self.app.runtimes.acquire(
+                tenant_id=context.tenant_id, workspace_id=context.workspace_id
+            ) as runtime:
+                tank = runtime.tank
+                if tank.llm.is_simulation:
+                    self._json(
+                        {"error": "Kein echtes KI-Modell verbunden. Der Simulationsmodus liefert keine Chatantwort."},
+                        503,
+                    )
+                    return
+                tank.llm_call_budget.reset()
+                tank.llm_call_budget.set_call_guard(
+                    lambda identity: self.app.provider_limiter.consume(
+                        context.user_id, identity
+                    )
+                )
+                started = time.monotonic()
+                try:
+                    answer = tank.llm.complete(
+                        message,
+                        system=(
+                            "Du bist TankAI, ein hilfreicher KI-Assistent. "
+                            "Antworte klar, direkt und in der Sprache des Nutzers. "
+                            "Dieser direkte Chatmodus hat keine Websuche, keine Tools "
+                            "und keine unabhängige Faktenprüfung. "
+                            "Behaupte keine ausgeführten Aktionen oder geprüften "
+                            "aktuellen Quellen. Kennzeichne Unsicherheit."
+                        ),
+                    )
+                finally:
+                    tank.llm_call_budget.set_call_guard(None)
+                if not isinstance(answer, str) or not answer.strip():
+                    self._json({"error": "Das KI-Modell hat keine Antwort geliefert"}, 502)
+                    return
+                payload = {
+                    "run_id": secrets.token_hex(16),
+                    "workspace_id": context.workspace_id,
+                    "goal": message,
+                    "final_answer": answer.strip(),
+                    "status": "unverified",
+                    "answer_mode": "direct",
+                    "execution_mode": "live",
+                    "duration_seconds": round(time.monotonic() - started, 2),
+                    "receipts_count": 0,
+                    "receipts": [],
+                    "plan": None,
+                    "main_llm": tank.main_llm_identity,
+                    "critic_llm": tank.critic_llm_identity,
+                    "critic_independent": tank.critic_independent,
+                    "verification_passed": False,
+                    "release_ready": False,
+                    "plan_gate_passed": False,
+                    "failed_step_ids": [],
+                    "web_research": "not_used",
+                    "source_ids": [],
+                    "source_urls": [],
+                }
+                runtime.history.append(payload)
+            self.app.auth.audit(
+                "chat", user_id=context.user_id,
+                workspace_id=context.workspace_id, success=True,
+                details=json.dumps({"run_id": payload["run_id"], "mode": "direct"}),
+            )
+            self._json(payload)
+        except LLMRateLimitExceeded as exc:
+            self._json(
+                {
+                    "error": "Provider-Rate-Limit erreicht. Später erneut versuchen.",
+                    "retry_after_seconds": exc.retry_after_seconds,
+                },
+                429,
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            )
+        except WorkspaceRuntimeUnavailable:
+            self._runtime_unavailable()
+        except Exception:
+            self.app.auth.audit(
+                "chat", user_id=context.user_id,
+                workspace_id=context.workspace_id, success=False,
+            )
+            self._internal_error("chat")
 
     def _run(self, context: AuthContext) -> None:
         data = self._read_json()

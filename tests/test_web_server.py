@@ -2127,3 +2127,125 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_direct_chat_rejects_mock_and_requires_auth_and_csrf(tmp_path, monkeypatch) -> None:
+    store = _configure(monkeypatch, tmp_path)
+    store.create_user_with_tenant(
+        email="direct-mock@example.com",
+        password="Direct-mock-password-123",
+        display_name="Direct Mock",
+        tenant_name="Direct Mock Tenant",
+    )
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, _, denied = client.post("/api/chat", {"message": "Hallo"})
+        assert status == 401
+        assert denied["error"] == "Nicht angemeldet"
+
+        status, _, login = client.post(
+            "/api/auth/login",
+            {"email": "direct-mock@example.com", "password": "Direct-mock-password-123"},
+        )
+        assert status == 200
+        csrf = login["csrf_token"]
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["direct_chat_available"] is False
+
+        status, _, denied = client.post("/api/chat", {"message": "Hallo"})
+        assert status == 403
+        assert "CSRF" in denied["error"]
+
+        for bad in ({}, {"message": ""}, {"message": 7}, {"message": "x", "extra": True}):
+            status, _, _ = client.post("/api/chat", bad, csrf=csrf)
+            assert status == 400
+
+        status, _, mock = client.post("/api/chat", {"message": "Hallo"}, csrf=csrf)
+        assert status == 503
+        assert "Kein echtes KI-Modell" in mock["error"]
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_direct_chat_one_live_call_unverified_and_workspace_scoped(
+    tmp_path, monkeypatch
+) -> None:
+    store = _configure(monkeypatch, tmp_path)
+    _, tenant, workspace = store.create_user_with_tenant(
+        email="direct-live@example.com",
+        password="Direct-live-password-123",
+        display_name="Direct Live",
+        tenant_name="Direct Live Tenant",
+    )
+    app = web_server.AppContext.from_env("127.0.0.1")
+    calls = []
+
+    class FakeLive:
+        is_simulation = False
+        provider_name = "fake-live"
+        model_name = "test-only"
+
+        def complete(self, prompt, *, system="", **kwargs):
+            calls.append((prompt, system))
+            return "Antwort vom Testmodell"
+
+    with app.runtimes.acquire(tenant_id=tenant, workspace_id=workspace) as runtime:
+        runtime.tank.llm.delegate = FakeLive()
+        runtime.tank.llm.is_simulation = False
+        runtime.tank.llm.provider_name = "fake-live"
+        runtime.tank.llm.model_name = "test-only"
+
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, _, login = client.post(
+            "/api/auth/login",
+            {"email": "direct-live@example.com", "password": "Direct-live-password-123"},
+        )
+        assert status == 200
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["direct_chat_available"] is True
+
+        status, _, response = client.post(
+            "/api/chat", {"message": "  Hallo, TankAI!  "},
+            csrf=login["csrf_token"],
+        )
+        assert status == 200
+        assert response["workspace_id"] == workspace
+        assert response["goal"] == "Hallo, TankAI!"
+        assert response["final_answer"] == "Antwort vom Testmodell"
+        assert response["answer_mode"] == "direct"
+        assert response["status"] == "unverified"
+        assert response["execution_mode"] == "live"
+        assert response["release_ready"] is False
+        assert response["verification_passed"] is False
+        assert len(calls) == 1
+        assert calls[0][0] == "Hallo, TankAI!"
+        assert "keine unabhängige Faktenprüfung" in calls[0][1]
+
+        with app.runtimes.acquire(tenant_id=tenant, workspace_id=workspace) as runtime:
+            assert runtime.tank.llm_call_budget.snapshot()["used"] == 1
+        status, _, history = client.get("/api/history")
+        assert status == 200
+        assert len(history) == 1
+        assert history[0]["run_id"] == response["run_id"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
