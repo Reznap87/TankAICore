@@ -18,6 +18,7 @@ let exportedText = '';
 let registered = false;
 let session = false;
 let healthCalls = 0;
+let directCalls = 0;
 let releaseInitialHealth;
 const delayedHealth = new Promise(resolve => { releaseInitialHealth = resolve; });
 const user = { user: { display_name: 'Test' }, workspace: { id: 'synthetic', name: 'Test' }, workspaces: [], csrf_token: 'synthetic' };
@@ -34,8 +35,8 @@ async function fetch(url, options = {}) {
   else if (url === '/api/auth/logout') { assert.equal(session, true); session = false; }
   else if (url === '/api/auth/login') { assert.equal(registered, true); session = true; data = user; }
   else if (url === '/api/history') data = [];
-  else if (url === '/api/chat') { assert.equal(JSON.parse(options.body).message, 'Direkte Frage'); data = { goal: 'Direkte Frage', final_answer: 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1 }; }
-  else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; }
+  else if (url === '/api/chat') { assert.equal(JSON.parse(options.body).message, 'Direkte Frage'); data = { workspace_id: directCalls++ === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1 }; }
+  else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { workspace_id: 'synthetic', goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; }
   else throw new Error('Unexpected endpoint: ' + url);
   return { ok: status < 400, status, json: async () => data };
 }
@@ -67,6 +68,10 @@ await byId('login-form').handlers.submit({ preventDefault() {} });
 assert.equal(byId('appView').hidden, false);
 assert.deepEqual(calls.filter(c => c.url.startsWith('/api/auth/') && c.url !== '/api/auth/me').map(c => c.url), ['/api/auth/register', '/api/auth/logout', '/api/auth/login']);
 byId('goal').value = 'Direkte Frage'; byId('advanced').checked = false;
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('outCard').hidden, true, 'wrong-workspace answer must not be displayed');
+assert.match(byId('status').textContent, /aktiven Workspace/);
+byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
 byId('export-chat').handlers.click();
