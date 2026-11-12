@@ -2310,6 +2310,9 @@ def test_direct_chat_one_live_call_unverified_and_workspace_scoped(
         assert response["execution_mode"] == "live"
         assert response["release_ready"] is False
         assert response["verification_passed"] is False
+        assert response["critic_used"] is False
+        assert response["critic_llm"] is None
+        assert response["critic_independent"] is None
         assert len(calls) == 1
         assert calls[0][0] == "Hallo, TankAI!"
         assert "keine unabhängige Faktenprüfung" in calls[0][1]

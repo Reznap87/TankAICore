@@ -2063,8 +2063,12 @@ class Handler(BaseHTTPRequestHandler):
                     "receipts": [],
                     "plan": None,
                     "main_llm": tank.main_llm_identity,
-                    "critic_llm": tank.critic_llm_identity,
-                    "critic_independent": tank.critic_independent,
+                    # The direct path performs exactly one main-model call. Do
+                    # not attach the configured critic's identity to a result
+                    # that the critic never inspected.
+                    "critic_used": False,
+                    "critic_llm": None,
+                    "critic_independent": None,
                     "verification_passed": False,
                     "release_ready": False,
                     "plan_gate_passed": False,

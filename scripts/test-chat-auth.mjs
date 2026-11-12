@@ -8,12 +8,13 @@ class Element {
   constructor() { this.hidden = false; this.disabled = false; this.required = false; this.checked = false; this.value = ''; this.textContent = ''; this.children = []; this.dataset = {}; this.handlers = {}; this.attrs = {}; this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } }; }
   addEventListener(type, fn) { this.handlers[type] = fn; }
   setAttribute(key, value) { this.attrs[key] = value; }
-  replaceChildren(...children) { this.children = children; } append(...children) { this.children.push(...children); } focus() {} querySelectorAll() { return []; }
+  replaceChildren(...children) { this.children = children; } append(...children) { this.children.push(...children); } focus() {} click() {} querySelectorAll() { return []; }
 }
 const elements = new Map();
 const byId = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
 const document = { getElementById: byId, documentElement: { dataset: {} }, querySelectorAll: () => [], querySelector: () => ({ content: '' }), addEventListener() {}, createElement: () => new Element(), createElementNS: () => new Element() };
 const calls = [];
+let exportedText = '';
 let registered = false;
 let session = false;
 let healthCalls = 0;
@@ -33,13 +34,14 @@ async function fetch(url, options = {}) {
   else if (url === '/api/auth/logout') { assert.equal(session, true); session = false; }
   else if (url === '/api/auth/login') { assert.equal(registered, true); session = true; data = user; }
   else if (url === '/api/history') data = [];
-  else if (url === '/api/chat') { assert.equal(JSON.parse(options.body).message, 'Direkte Frage'); data = { goal: 'Direkte Frage', final_answer: 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', critic_independent: true, release_ready: false, duration_seconds: 1 }; }
+  else if (url === '/api/chat') { assert.equal(JSON.parse(options.body).message, 'Direkte Frage'); data = { goal: 'Direkte Frage', final_answer: 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1 }; }
   else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; }
   else throw new Error('Unexpected endpoint: ' + url);
   return { ok: status < 400, status, json: async () => data };
 }
 const media = () => ({ matches: false, addEventListener() {} });
-const context = { document, fetch, matchMedia: media, localStorage: { getItem() { return null; }, setItem() {} }, setInterval() {}, setTimeout() {}, clearTimeout() {}, console, requestAnimationFrame() {} };
+class Blob { constructor(parts) { this.parts = parts; } }
+const context = { document, fetch, Blob, URL: { createObjectURL(blob) { exportedText = blob.parts.join(''); return 'blob:synthetic'; }, revokeObjectURL() {} }, matchMedia: media, localStorage: { getItem() { return null; }, setItem() {} }, setInterval() {}, setTimeout() {}, clearTimeout() {}, console, requestAnimationFrame() {} };
 vm.runInNewContext(await readFile(new URL('../tankai/web/chat.js', import.meta.url), 'utf8'), context);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 await flush(); await flush();
@@ -66,7 +68,10 @@ assert.equal(byId('appView').hidden, false);
 assert.deepEqual(calls.filter(c => c.url.startsWith('/api/auth/') && c.url !== '/api/auth/me').map(c => c.url), ['/api/auth/register', '/api/auth/logout', '/api/auth/login']);
 byId('goal').value = 'Direkte Frage'; byId('advanced').checked = false;
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: anthropic:synthetic-critic', 'Prüfmodell unabhängig', '1 s']);
+assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
+byId('export-chat').handlers.click();
+assert.match(exportedText, /Prüfmodell: nicht verwendet/);
+assert.match(exportedText, /Prüfmodell unabhängig: Nicht geprüft/);
 byId('goal').value = 'Geprüfte Frage'; byId('advanced').checked = true;
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.deepEqual(byId('badges').children.map(child => child.textContent), ['Teilweise Simulation · keine verifizierte Live-Antwort', 'Hauptmodell: nicht belegt', 'Prüfmodell: nicht belegt', 'Prüfmodell-Unabhängigkeit nicht belegt', '2 s']);
