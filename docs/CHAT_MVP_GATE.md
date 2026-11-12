@@ -17,7 +17,9 @@ nachvollziehbaren Modellidentitäten.
 3. Separat autorisierter `/api/run`: `status=completed`,
    `execution_mode=live`, `release_ready=true`,
    `verification_passed=true`, nichtleere Antwort und unveränderte
-   Modellidentitäten.
+   Modellidentitäten. Die Antwort muss außerdem dieselbe Workspace-ID wie
+   die Login-Sitzung tragen; ein Ergebnis aus einem anderen Workspace ist
+   kein gültiger E2E-Nachweis.
 4. Anschließend im realen Browser prüfen, dass genau diese Antwort im Chat
    lesbar erscheint. Das CLI-Skript beweist **nicht** die Browser-Darstellung.
 

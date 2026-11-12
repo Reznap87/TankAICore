@@ -30,6 +30,7 @@ def live_health():
 
 def live_result():
     return {
+        "workspace_id": "workspace-id",
         "status": "completed",
         "execution_mode": "live",
         "release_ready": True,
@@ -86,12 +87,17 @@ def test_login_must_be_bound_to_requested_account_and_workspace(delta):
     {"critic_llm": None},
     {"user": "other@example.test"},
     {"workspace": ""},
+    {"workspace": "Other workspace"},
     {"ok": False},
 ])
 def test_readiness_fails_closed(delta):
     data = live_health() | delta
     with pytest.raises(probe.ProbeError):
-        probe.checked_health(data, expected_email="synthetic@example.test")
+        probe.checked_health(
+            data,
+            expected_email="synthetic@example.test",
+            expected_workspace_name="Synthetic workspace",
+        )
 
 
 @pytest.mark.parametrize("delta", [
@@ -103,16 +109,17 @@ def test_readiness_fails_closed(delta):
     {"critic_independent": False},
     {"main_llm": "other"},
     {"critic_llm": "other"},
+    {"workspace_id": "other-workspace-id"},
     {"final_answer": "  "},
 ])
 def test_result_fails_closed(delta):
-    models = probe.checked_health(live_health())
+    models = probe.checked_health(live_health(), expected_workspace_id="workspace-id")
     with pytest.raises(probe.ProbeError):
         probe.checked_result(live_result() | delta, models)
 
 
 def test_offline_contract_succeeds_for_valid_live_response():
-    models = probe.checked_health(live_health())
+    models = probe.checked_health(live_health(), expected_workspace_id="workspace-id")
     assert probe.checked_result(live_result(), models)["live_answer_verified"] is True
 
 
