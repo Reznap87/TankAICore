@@ -32,7 +32,7 @@ def checked_origin(url: str) -> str:
     return url.rstrip("/")
 
 
-def checked_login(data: dict, expected_email: str) -> str:
+def checked_login(data: dict, expected_email: str) -> dict:
     token = data.get("csrf_token")
     user = data.get("user")
     workspace = data.get("workspace")
@@ -52,10 +52,20 @@ def checked_login(data: dict, expected_email: str) -> str:
         or not workspace["name"].strip()
     ):
         raise ProbeError("Login response has no usable workspace")
-    return token
+    return {
+        "csrf_token": token,
+        "workspace_id": workspace["id"].strip(),
+        "workspace_name": workspace["name"].strip(),
+    }
 
 
-def checked_health(data: dict, *, expected_email: str = "") -> dict:
+def checked_health(
+    data: dict,
+    *,
+    expected_email: str = "",
+    expected_workspace_id: str = "",
+    expected_workspace_name: str = "",
+) -> dict:
     if data.get("ok") is not True:
         raise ProbeError("Core health check failed")
     if data.get("execution_mode") != "live" or data.get("live_provider") is not True:
@@ -74,10 +84,18 @@ def checked_health(data: dict, *, expected_email: str = "") -> dict:
         raise ProbeError("Health response is not bound to an authenticated workspace")
     if expected_email and user.strip().casefold() != expected_email.strip().casefold():
         raise ProbeError("Health response is bound to a different account")
+    if expected_workspace_name and workspace.strip() != expected_workspace_name.strip():
+        raise ProbeError("Health response is bound to a different workspace")
     main, critic = data.get("llm"), data.get("critic_llm")
     if not isinstance(main, str) or not main.strip() or not isinstance(critic, str) or not critic.strip():
         raise ProbeError("Main or critic model identity is missing")
-    return {"main_llm": main, "critic_llm": critic, "mode": "live", "configured": True}
+    return {
+        "main_llm": main,
+        "critic_llm": critic,
+        "workspace_id": expected_workspace_id,
+        "mode": "live",
+        "configured": True,
+    }
 
 
 def checked_result(data: dict, models: dict) -> dict:
@@ -89,6 +107,8 @@ def checked_result(data: dict, models: dict) -> dict:
         raise ProbeError("Run did not use an independent critic")
     if data.get("main_llm") != models["main_llm"] or data.get("critic_llm") != models["critic_llm"]:
         raise ProbeError("Model identity changed between readiness and run")
+    if not models.get("workspace_id") or data.get("workspace_id") != models["workspace_id"]:
+        raise ProbeError("Run response is bound to a different workspace")
     answer = data.get("final_answer")
     if not isinstance(answer, str) or not answer.strip():
         raise ProbeError("No answer was returned")
@@ -140,16 +160,18 @@ def main(argv: list[str] | None = None) -> int:
             raise ProbeError("TANKAI_SMOKE_EMAIL and TANKAI_SMOKE_PASSWORD must be set privately")
         opener = build_opener(HTTPCookieProcessor(CookieJar()))
         login = request_json(opener, origin, "/api/auth/login", body={"email": email, "password": password})
-        token = checked_login(login, email)
+        session = checked_login(login, email)
         models = checked_health(
             request_json(opener, origin, "/api/health"),
             expected_email=email,
+            expected_workspace_id=session["workspace_id"],
+            expected_workspace_name=session["workspace_name"],
         )
         receipt = {"gate": "chat_mvp", "readiness": "passed", **models, "live_answer_verified": False}
         if args.run:
             # This application-level check cannot enforce provider-side billing.
             result = request_json(
-                opener, origin, "/api/run", csrf=token,
+                opener, origin, "/api/run", csrf=session["csrf_token"],
                 body={"goal": "Antworte in genau einem kurzen deutschen Satz: Ist TankAI erreichbar?",
                       "definition_of_done": "Ein geprüfter deutscher Satz, ohne erfundene Quellen.",
                       "parallel": False},
