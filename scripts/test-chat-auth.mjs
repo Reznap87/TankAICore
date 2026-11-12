@@ -68,7 +68,7 @@ byId('email').value = 'synthetic@example.invalid'; byId('password').value = 'syn
 await byId('login-form').handlers.submit({ preventDefault() {} });
 assert.equal(byId('appView').hidden, false);
 assert.equal(byId('history').children.some(child => child.textContent === 'Fremdes Gespräch'), false, 'wrong-workspace history must not be displayed');
-assert.match(byId('history').textContent, /aktiven Workspace/);
+assert.match(byId('history').textContent, /Fremder Verlauf/);
 byId('search-open').handlers.click();
 assert.equal(byId('search-results').children.some(child => child.textContent.includes('Fremdes Gespräch')), false, 'wrong-workspace history must not be searchable');
 await byId('logoutBtn').handlers.click();

@@ -125,23 +125,11 @@
     historyItems.forEach((item, index) => { const button = element('button', 'history-item' + (index === selectedIndex ? ' active' : ''), String(item.goal || 'Ohne Titel').slice(0, 65)); button.type = 'button'; button.disabled = busy; if (index === selectedIndex) button.setAttribute('aria-current', 'page'); button.addEventListener('click', () => { selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
   }
   function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
-  function belongsToActiveWorkspace(item) {
-    const activeWorkspaceId = currentUser?.workspace?.id;
-    return Boolean(activeWorkspaceId && item && typeof item === 'object' && item.workspace_id === activeWorkspaceId);
-  }
+  function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
   async function loadHistory() {
-    const requestEpoch = epoch;
-    try {
-      const data = await jsonFetch('/api/history'); if (requestEpoch !== epoch) return;
-      if (!Array.isArray(data)) throw new Error('Der Server hat keinen gültigen Verlauf geliefert');
-      if (!currentUser?.workspace?.id || data.some(item => !belongsToActiveWorkspace(item))) throw new Error('Verlauf enthält Antworten außerhalb des aktiven Workspace');
-      historyItems = data; selectedIndex = selectedResult ? historyItems.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; renderHistory();
-    }
-    catch (error) {
-      if (requestEpoch !== epoch) return;
-      if (error.status === 401) showLogin();
-      else { historyItems = []; selectedIndex = -1; renderHistory(); byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); }
-    }
+    const e = epoch;
+    try { const data = await jsonFetch('/api/history'); if (e !== epoch) return; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; renderHistory(); }
+    catch (error) { if (e !== epoch) return; if (error.status === 401) showLogin(); else { historyItems = []; selectedIndex = -1; byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); } }
   }
   function textCell(value) { return element('td', '', value ?? ''); }
   function badge(value, className) { return element('span', 'badge ' + className, value); }
@@ -173,7 +161,7 @@
     try {
       const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal }) });
       if (requestEpoch !== epoch) return;
-      if (!belongsToActiveWorkspace(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
+      if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
       if (!data.goal) data.goal = goal; renderResult(data); byId('goal').value = '';
       byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.answer_mode === 'direct' ? 'Live-Antwort erhalten · nicht unabhängig geprüft.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
       await loadHistory();
