@@ -34,10 +34,16 @@
 <main id="loginView" class="login-view">
   <form id="login-form" class="login-card">
     <a href="/" class="brand"><img src="/favicon.png" width="42" height="42" alt=""><span>Tank<span class="brand-ai">AI</span></span></a>
-    <h1>Dein Arbeitsraum.</h1><p>Melde dich mit deinem TankAI-Konto an.</p>
+    <h1>Dein Arbeitsraum.</h1><p id="login-intro">Melde dich mit deinem TankAI-Konto an.</p>
     <label for="email">E-Mail</label><input id="email" name="email" type="email" autocomplete="username" maxlength="254" required>
     <label for="password">Passwort</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+    <div id="registration-fields" hidden>
+      <label for="display-name">Dein Name</label><input id="display-name" name="display_name" autocomplete="name" maxlength="100">
+      <label for="tenant-name">Name deines Arbeitsraums</label><input id="tenant-name" name="tenant_name" maxlength="100">
+      <p>Das Passwort muss mindestens 12 Zeichen lang sein.</p>
+    </div>
     <button class="primary-button" id="loginBtn" type="submit">Anmelden</button>
+    <button id="registration-toggle" class="registration-toggle" type="button" aria-controls="registration-fields" aria-expanded="false" hidden>Konto erstellen</button>
     <p id="loginStatus" role="status" aria-live="polite"></p><div id="login-health" class="muted">Core wird geprüft …</div>
   </form>
 </main>

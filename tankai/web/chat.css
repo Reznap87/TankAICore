@@ -11,3 +11,4 @@ dialog{background:var(--surface);color:var(--text);border:1px solid var(--border
 @media(max-width:390px){.topbar{padding:0 10px}.topbar-title{max-width:105px;font-size:14px}.connection-badge{max-width:135px;font-size:8px}.model-label{max-width:175px}.welcome h1{font-size:28px}}
 @media(max-height:670px){.welcome{padding-top:10px;margin-bottom:23px}.welcome-mark{margin-bottom:18px}.welcome h1{font-size:29px}.suggestions{margin-top:18px;padding-bottom:17px}.app-footer{padding:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+.login-card .registration-toggle{display:block;width:100%;margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:9px;color:var(--text)}.login-card .registration-toggle:hover:not(:disabled){background:var(--hover)}

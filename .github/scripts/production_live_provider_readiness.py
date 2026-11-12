@@ -58,6 +58,12 @@ def _provider_secret(provider: str) -> str:
     raise ValueError(f"unsupported live provider: {provider}")
 
 
+def _critic_secret(provider: str) -> str:
+    if provider not in LIVE_PROVIDERS:
+        raise ValueError(f"unsupported live provider: {provider}")
+    return "TANKAI_CRITIC_API_KEY"
+
+
 def _search_secret(provider: str) -> str:
     if provider == "brave":
         return "BRAVE_SEARCH_API_KEY"
@@ -139,15 +145,19 @@ def evaluate(
 
     secret_forwarding_ok = all(
         _dynamic_container_value(cloudflare, name)
-        for name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+        for name in (
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "TANKAI_CRITIC_API_KEY",
+        )
     )
     checks.append(
         Check(
             "provider_secret_forwarding",
             "PASS" if secret_forwarding_ok else "FAIL",
-            "provider secret bindings are forwarded to the container"
+            "main-provider and dedicated critic secret bindings are forwarded to the container"
             if secret_forwarding_ok
-            else "Worker-to-container forwarding for both supported live-provider secret names is incomplete",
+            else "Worker-to-container forwarding for main-provider and dedicated critic secret names is incomplete",
         )
     )
 
@@ -301,7 +311,7 @@ def evaluate(
     elif all((main_provider, critic_provider, search_provider)):
         required = {
             _provider_secret(main_provider),
-            _provider_secret(critic_provider),
+            _critic_secret(critic_provider),
             _search_secret(search_provider),
         }
         missing = sorted(required - present_secrets)

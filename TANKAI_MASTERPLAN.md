@@ -1,11 +1,27 @@
 TANKAI – VERBINDLICHER MASTERPLAN
 
-Version: 5.7.53
+Version: 5.7.55
 Projektlinie: TankAI Web → TankAI Core → TankAI-Modellfamilie → TankBot/TankStation
-Statusdatum: 23. Oktober 2026
+Statusdatum: 11. November 2026
 Leitentscheidung: Webprodukt zuerst, eigener Modellstack schrittweise, jede Überlegenheit messbar
 
-0. Verifizierter Projektstand und Ausführungsvertrag am 23. Oktober 2026
+0. Verifizierter Projektstand und Ausführungsvertrag am 11. November 2026
+
+5.7.55: Der rein lesende Produktions-Readiness-Vertrag und die Betriebsdokumentation
+verwenden für den unabhängigen Critic nun durchgängig den bereits vom Laufzeitadapter
+unterstützten Namen `TANKAI_CRITIC_API_KEY`. Das Gate akzeptiert nicht länger einen
+zweiten generischen Provider-Schlüssel als vermeintlichen Critic-Nachweis und prüft
+beide zulässigen Provider-Richtungen reproduzierbar. Es wurden keine Secret-Werte
+gelesen oder geändert, kein Provider aktiviert, kein bezahlter Modellaufruf und kein
+Deployment ausgeführt; die Nachweise bleiben synthetische Code- und Mock-Tests.
+
+5.7.54: Der Entwurf PR #105 ist auf den durch PR #107 aktualisierten `main`-Baum
+91f906886e053b29c4f69b08135ffee79ceecb59 übertragen. Registrierung und direkte
+Chatantwort bleiben dabei zusammen testbar. Jede dargestellte Antwort nennt nun
+ihren eigenen Ausführungsmodus sowie die vom Run gemeldeten Identitäten von Haupt-
+und Prüfmodell; fehlende Herkunft wird fail-closed als `nicht belegt` angezeigt.
+Die Nachweise sind synthetische Code- und Mock-Tests, kein produktiver Modellaufruf,
+kein Deployment und keine Änderung an Provider-, Secret- oder Berechtigungsdaten.
 
 5.7.53: Der Restore-Vertrag akzeptiert erforderliche Auth-Objekte nur noch als
 gewöhnliche SQLite-Tabellen und weist Trigger auf diesen Tabellen zurück. Views mit
