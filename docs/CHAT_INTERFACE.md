@@ -22,7 +22,10 @@ Session werden nicht in die neue Ansicht übernommen. Texte aus dem Core werden
 als Text ausgegeben. Eine neue Chat- oder Run-Antwort wird nur dargestellt, wenn
 ihre `workspace_id` exakt zum aktiven angemeldeten Workspace passt; fehlende oder
 abweichende Workspace-Herkunft wird fail-closed als Fehler angezeigt. Im Browser
-wird nur das Erscheinungsbild gespeichert.
+wird nur das Erscheinungsbild gespeichert. Auch der vom Server geladene Verlauf
+wird vollständig verworfen, sobald ein Eintrag keine exakt passende
+`workspace_id` trägt; solche Einträge gelangen damit weder in die Seitenleiste
+noch in Suche oder Ergebnisansicht.
 
 Standardmäßig sendet die Oberfläche eine Nachricht an das konfigurierte echte Hauptmodell. `/api/chat` führt genau einen Modellaufruf aus und kennzeichnet das Ergebnis als **nicht unabhängig geprüft**. Bei Mock-/Echo-Konfiguration verweigert der Endpunkt mit HTTP 503 die Antwort, statt eine Simulation als KI auszugeben. Session, CSRF, Workspace-Isolation, Provider-Limit und Verlauf werden weiterverwendet. Die Einstellungen erlauben alternativ den bestehenden mehrstufigen `/api/run`-Pfad. Ohne tatsächlich angeschlossenes Live-Modell funktioniert auch der neue Direktchat nicht.
 
