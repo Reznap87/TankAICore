@@ -130,6 +130,7 @@ def _configure(monkeypatch, tmp_path) -> AuthStore:
     monkeypatch.setenv("TANKAI_AUTH_MODE", "session")
     monkeypatch.setenv("TANKAI_COOKIE_SECURE", "0")
     monkeypatch.setenv("TANKAI_ALLOW_REGISTRATION", "0")
+    monkeypatch.setenv("TANKAI_EXTERNAL_EXECUTION_ENABLED", "1")
     monkeypatch.setenv("TANKAI_DATA_ROOT", str(tmp_path / "data"))
     monkeypatch.setenv("TANKAI_AUTH_DB", str(tmp_path / "data" / "auth.db"))
     monkeypatch.setenv("TANKAI_LTM_MEMORY", "0")
@@ -1112,6 +1113,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "job_cancel_conflict",
                 "method_not_allowed",
                 "endpoint_not_found",
+                "execution_not_enabled",
             ],
         }
         assert capabilities["agent"]["agent_id"] == agent_id
@@ -2332,6 +2334,91 @@ def test_slow_client_connection_is_closed_after_timeout(tmp_path, monkeypatch) -
             sock.sendall(b"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n")
             sock.settimeout(10)
             assert sock.recv(65536) == b""
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_external_agent_submission_requires_explicit_execution_opt_in(
+    tmp_path, monkeypatch
+) -> None:
+    """Fail-closed: ohne TANKAI_EXTERNAL_EXECUTION_ENABLED wird nichts eingequeuet."""
+    store = _configure(monkeypatch, tmp_path)
+    monkeypatch.delenv("TANKAI_EXTERNAL_EXECUTION_ENABLED")
+    owner, tenant, workspace = store.create_user_with_tenant(
+        email="gated-owner@example.com",
+        password="Gated-owner-password-123",
+        display_name="Gated Owner",
+        tenant_name="Gated Tenant",
+    )
+    repo_base = tmp_path / "repositories"
+    work_base = tmp_path / "worktrees"
+    state_base = tmp_path / "states"
+    allowed_repo = repo_base / "allowed"
+    _init_web_queue_repo(allowed_repo)
+    monkeypatch.setenv("TANKAI_DEV_QUEUE_ENABLED", "1")
+    monkeypatch.setenv("TANKAI_REPOSITORY_BASE", str(repo_base))
+    monkeypatch.setenv("TANKAI_WORKTREE_BASE", str(work_base))
+    monkeypatch.setenv("TANKAI_STATE_BASE", str(state_base))
+
+    image = "tankai-worker@sha256:" + "d" * 64
+    app = web_server.AppContext.from_env("127.0.0.1")
+    assert app.job_queue is not None
+    app.job_queue.set_policy(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        policy=WorkspaceQueuePolicy(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            allowed_images=[image],
+        ),
+    )
+    repository = app.job_queue.register_repository(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        name="Allowed",
+        repository_path=allowed_repo,
+        workspace_root=work_base / "allowed",
+        state_path=state_base / "allowed.json",
+    )
+    session = store.authenticate(
+        email="gated-owner@example.com", password="Gated-owner-password-123"
+    )
+    assert session is not None
+    agent = store.create_service_agent(actor=session.context, name="Gated Agent")
+    token = store.create_agent_token(
+        actor=session.context,
+        agent_id=agent.agent_id,
+        scopes=["jobs:read", "jobs:submit"],
+        repository_ids=[repository.repository_id],
+    )
+
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    payload = {
+        "repository_id": repository.repository_id,
+        "idempotency_key": "gated-job",
+        "pipeline": _web_queue_pipeline(image),
+    }
+    try:
+        status, _, preflight = client.post(
+            "/api/v1/jobs/preflight", payload, bearer=token.token
+        )
+        assert status == 403
+        _assert_external_error(preflight, "execution_not_enabled")
+        status, _, rejected = client.post(
+            "/api/v1/jobs", payload, bearer=token.token
+        )
+        assert status == 403
+        _assert_external_error(rejected, "execution_not_enabled")
+        assert app.job_queue.list_jobs(
+            actor_user_id=owner, workspace_id=workspace
+        ) == []
     finally:
         server.shutdown()
         server.server_close()

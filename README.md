@@ -753,3 +753,4 @@ tankai/
 - Das Development-Audit ist persistent, aber noch nicht kryptografisch verkettet oder extern unveränderbar gespeichert.
 - Der befehlsbasierte Worker-Runner und echte Git-Integration sind vorhanden; ein autonomer LLM-Code-Worker, der selbst Änderungen plant, ist noch nicht eingebaut.
 - JSONL-Run-Historie, SQLite-LTM und Vector-Datei bilden kein vollständig transaktionales Gesamtsystem.
+- Das External Agent Gateway v1 weist Submits mit `execution_not_enabled` zurück, solange der Betreiber keine ausführbare Agenten-/Task-Identität provisioniert hat (`TANKAI_EXTERNAL_EXECUTION_ENABLED`). Ein stilles Annehmen mit späterem Scheitern am Worker existiert damit nicht mehr.
