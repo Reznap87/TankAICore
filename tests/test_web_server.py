@@ -1113,6 +1113,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "job_cancel_conflict",
                 "method_not_allowed",
                 "endpoint_not_found",
+                "execution_not_enabled",
             ],
         }
         assert capabilities["agent"]["agent_id"] == agent_id
