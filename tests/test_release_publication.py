@@ -35,8 +35,8 @@ def targets() -> list[PublicationTarget]:
     ]
 
 
-def md5(path: Path) -> str:
-    return hashlib.md5(path.read_bytes(), usedforsecurity=False).hexdigest()
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def record_drive_file(ledger: Path, release: Path, artifact: str, remote_id: str) -> None:
@@ -49,8 +49,8 @@ def record_drive_file(ledger: Path, release: Path, artifact: str, remote_id: str
         remote_id=remote_id,
         remote_url=f"https://drive.google.com/file/d/{remote_id}/view",
         remote_size=path.stat().st_size,
-        remote_digest_algorithm="md5",
-        remote_digest=md5(path),
+        remote_digest_algorithm="sha256",
+        remote_digest=sha256(path),
         recorded_at_utc="2026-07-29T10:01:00Z",
     )
 
@@ -141,8 +141,8 @@ def test_wrong_remote_checksum_is_rejected(tmp_path: Path) -> None:
             remote_id="1RemoteZipId",
             remote_url="https://drive.google.com/file/d/1RemoteZipId/view",
             remote_size=(release / "project.zip").stat().st_size,
-            remote_digest_algorithm="md5",
-            remote_digest="0" * 32,
+            remote_digest_algorithm="sha256",
+            remote_digest="0" * 64,
         )
 
 
@@ -167,8 +167,8 @@ def test_foreign_drive_domain_is_rejected(tmp_path: Path) -> None:
             remote_id="1RemoteZipId",
             remote_url="https://example.com/file/d/1RemoteZipId/view",
             remote_size=path.stat().st_size,
-            remote_digest_algorithm="md5",
-            remote_digest=md5(path),
+            remote_digest_algorithm="sha256",
+            remote_digest=sha256(path),
         )
 
 
@@ -272,8 +272,8 @@ def test_cli_plan_record_and_status(tmp_path: Path, capsys) -> None:
         "--remote-id", "1RemoteZipId",
         "--remote-url", "https://drive.google.com/file/d/1RemoteZipId/view",
         "--remote-size", str(artifact.stat().st_size),
-        "--remote-digest-algorithm", "md5",
-        "--remote-digest", md5(artifact),
+        "--remote-digest-algorithm", "sha256",
+        "--remote-digest", sha256(artifact),
     ]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
     assert publication_cli_main([
