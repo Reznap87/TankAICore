@@ -80,6 +80,7 @@ _EXTERNAL_ERROR_CODES = (
     "job_cancel_conflict",
     "method_not_allowed",
     "endpoint_not_found",
+    "execution_not_enabled",
 )
 _EXTERNAL_JOB_LIST_DEFAULT_LIMIT = 100
 _EXTERNAL_JOB_LIST_MAX_LIMIT = 100
