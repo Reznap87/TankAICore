@@ -206,24 +206,26 @@ class LoginRateLimiter:
         self._blocked_until: dict[str, float] = {}
 
     def allowed(self, key: str) -> bool:
+        """Prüft und zählt einen Versuch atomar (behebt den Check-Then-Act-Race)."""
         now = time.monotonic()
         with self._lock:
-            blocked = self._blocked_until.get(key, 0.0)
-            if blocked > now:
+            if self._blocked_until.get(key, 0.0) > now:
                 return False
             cutoff = now - self.window_seconds
             current = [ts for ts in self._attempts.get(key, []) if ts >= cutoff]
+            current.append(now)
             self._attempts[key] = current
-            return len(current) < self.limit
+            if len(current) > self.limit:
+                self._blocked_until[key] = now + self.block_seconds
+                return False
+            return True
 
     def failure(self, key: str) -> None:
         now = time.monotonic()
         with self._lock:
             cutoff = now - self.window_seconds
             current = [ts for ts in self._attempts.get(key, []) if ts >= cutoff]
-            current.append(now)
-            self._attempts[key] = current
-            if len(current) >= self.limit:
+            if len(current) >= self.limit and self._blocked_until.get(key, 0.0) <= now:
                 self._blocked_until[key] = now + self.block_seconds
 
     def success(self, key: str) -> None:
@@ -345,6 +347,7 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 class Handler(BaseHTTPRequestHandler):
     server_version = "TankAI"
     sys_version = ""
+    timeout = 15
 
     def handle_one_request(self) -> None:
         self._tankai_request_id = secrets.token_hex(12)
@@ -1969,6 +1972,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.app.auth_mode == "disabled" or not self.app.allow_registration:
             self._json({"error": "Registrierung ist deaktiviert"}, 403)
             return
+        key = f"{self.client_address[0]}:register"
+        if not self.app.login_limiter.allowed(key):
+            self._json({"error": "Zu viele Registrierungsversuche. Später erneut versuchen."}, 429)
+            return
         data = self._read_json(max_bytes=20_000)
         if data is None:
             return
@@ -1985,6 +1992,7 @@ class Handler(BaseHTTPRequestHandler):
                 workspace_name=values["workspace_name"] if isinstance(values["workspace_name"], str) else "Standard",
             )
         except ValueError as exc:
+            self.app.login_limiter.failure(key)
             self._json({"error": str(exc)}, 400)
             return
         session = self.app.auth.authenticate(email=values["email"], password=values["password"], user_agent=self.headers.get("User-Agent", "")[:500], client_ip=self.client_address[0])

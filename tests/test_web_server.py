@@ -2249,3 +2249,90 @@ def test_direct_chat_one_live_call_unverified_and_workspace_scoped(
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_login_rate_limiter_is_atomic_and_blocks() -> None:
+    """Regression: die Prüfung darf nicht check-then-act sein (Parallelzugriff)."""
+    limiter = web_server.LoginRateLimiter(limit=5, window_seconds=300, block_seconds=900)
+    results: list[bool] = []
+    barrier = threading.Barrier(20)
+
+    def attempt() -> None:
+        barrier.wait()
+        results.append(limiter.allowed("127.0.0.1:a@example.com"))
+
+    threads = [threading.Thread(target=attempt) for _ in range(20)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert sum(results) == 5
+    assert limiter.allowed("127.0.0.1:a@example.com") is False
+    limiter.success("127.0.0.1:a@example.com")
+    assert limiter.allowed("127.0.0.1:a@example.com") is True
+
+
+def test_registration_is_rate_limited(tmp_path, monkeypatch) -> None:
+    """Regression: Registrierungen werden zähllimitiert."""
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("TANKAI_ALLOW_REGISTRATION", "1")
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        for index in range(5):
+            status, _, payload = client.post(
+                "/api/auth/register",
+                {
+                    "email": f"rated-{index}@example.com",
+                    "password": "Registration-password-123",
+                    "display_name": "Rated",
+                    "tenant_name": f"Tenant {index}",
+                },
+            )
+            assert status == 201, payload
+        status, _, payload = client.post(
+            "/api/auth/register",
+            {
+                "email": "rated-6@example.com",
+                "password": "Registration-password-123",
+                "display_name": "Rated",
+                "tenant_name": "Tenant 6",
+            },
+        )
+        assert status == 429
+        assert payload["error"].startswith("Zu viele Registrierungsversuche")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_handler_declares_socket_timeout() -> None:
+    """Regression: der Handler braucht eine Standard-Socket-Timeout-Grenze."""
+    assert isinstance(web_server.Handler.timeout, (int, float))
+    assert 0 < web_server.Handler.timeout <= 60
+
+
+def test_slow_client_connection_is_closed_after_timeout(tmp_path, monkeypatch) -> None:
+    """Regression: ohne Socket-Timeout können Clients Verbindungen hängen halten."""
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setattr(web_server.Handler, "timeout", 1)
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with socket.create_connection(
+            ("127.0.0.1", server.server_address[1]), timeout=5
+        ) as sock:
+            sock.sendall(b"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+            sock.settimeout(10)
+            assert sock.recv(65536) == b""
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
