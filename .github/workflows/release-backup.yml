@@ -19,6 +19,9 @@ jobs:
   build-backup:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      DRIVE_FOLDER_ID: ${{ inputs.drive_folder_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,9 +43,9 @@ jobs:
           python -m tankai.dev_orchestrator.release_cli build \
             --project-root . \
             --output-directory "$RUNNER_TEMP/tankai-release" \
-            --version "${{ inputs.version }}" \
-            --commit "${{ github.sha }}" \
-            --branch "${{ github.ref_name }}"
+            --version "$RELEASE_VERSION" \
+            --commit "$GITHUB_SHA" \
+            --branch "$GITHUB_REF_NAME"
       - name: Verify backup
         run: |
           ARCHIVE="$(find "$RUNNER_TEMP/tankai-release" -maxdepth 1 -name '*.zip' -print -quit)"
@@ -51,17 +54,15 @@ jobs:
             --archive "$ARCHIVE" \
             --checksums "$SUMS"
       - name: Build publication ledger
-        env:
-          DRIVE_FOLDER_ID: ${{ inputs.drive_folder_id }}
         run: |
           ARGS=(
             plan
             --release-directory "$RUNNER_TEMP/tankai-release"
             --ledger "$RUNNER_TEMP/tankai-release/publication-ledger.json"
-            --version "${{ inputs.version }}"
-            --commit "${{ github.sha }}"
-            --branch "${{ github.ref_name }}"
-            --github-target "github-main=${{ github.repository }}"
+            --version "$RELEASE_VERSION"
+            --commit "$GITHUB_SHA"
+            --branch "$GITHUB_REF_NAME"
+            --github-target "github-main=$GITHUB_REPOSITORY"
           )
           if [ -n "$DRIVE_FOLDER_ID" ]; then
             ARGS+=(--drive-target "drive-main=$DRIVE_FOLDER_ID")
@@ -70,15 +71,15 @@ jobs:
           python -m tankai.dev_orchestrator.publication_cli record-source \
             --ledger "$RUNNER_TEMP/tankai-release/publication-ledger.json" \
             --target-id github-main \
-            --commit "${{ github.sha }}" \
-            --branch "${{ github.ref_name }}" \
-            --remote-url "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
+            --commit "$GITHUB_SHA" \
+            --branch "$GITHUB_REF_NAME" \
+            --remote-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA"
           python -m tankai.dev_orchestrator.publication_cli status \
             --ledger "$RUNNER_TEMP/tankai-release/publication-ledger.json" \
             --release-directory "$RUNNER_TEMP/tankai-release"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: tankai-core-${{ inputs.version }}
+          name: tankai-core-${RELEASE_VERSION}
           path: ${{ runner.temp }}/tankai-release/*
           if-no-files-found: error
           retention-days: 90

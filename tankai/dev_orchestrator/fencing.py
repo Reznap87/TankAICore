@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
 import sqlite3
 import threading
@@ -18,6 +19,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -86,8 +89,8 @@ class LeaseFenceStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.path.parent, 0o700)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path.parent, exc)
         self._lock = threading.RLock()
         self._init_schema()
 
@@ -136,8 +139,8 @@ class LeaseFenceStore:
             )
         try:
             os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path, exc)
 
     @staticmethod
     def _validate_identifier(value: str, label: str) -> str:

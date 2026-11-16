@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import re
@@ -19,6 +20,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Protocol
+
+logger = logging.getLogger(__name__)
 
 from tankai.core.llm import LLMRateLimitExceeded
 from uuid import UUID, uuid4
@@ -227,8 +230,8 @@ class AuthStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.path.parent, 0o700)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path.parent, exc)
         self.session_hours = max(1, min(int(session_hours), 24 * 30))
         self._lock = threading.RLock()
         self._init_schema()
@@ -361,8 +364,8 @@ class AuthStore:
             )
         try:
             os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path, exc)
 
     def user_count(self) -> int:
         with self._connect() as conn:
