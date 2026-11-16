@@ -243,6 +243,7 @@ class AppContext:
     cookie_secure: bool
     hsts_seconds: int
     allow_registration: bool
+    allow_external_execution: bool
     login_limiter: LoginRateLimiter
     provider_limiter: ProviderCallRateLimiter
     auth_state: AuthState | None = None
@@ -298,6 +299,7 @@ class AppContext:
                 "TANKAI_HSTS_SECONDS", 31_536_000, 0, 63_072_000
             ),
             allow_registration=_env_bool("TANKAI_ALLOW_REGISTRATION", False),
+            allow_external_execution=_env_bool("TANKAI_EXTERNAL_EXECUTION_ENABLED", False),
             login_limiter=LoginRateLimiter(
                 limit=_safe_int("TANKAI_LOGIN_ATTEMPTS", 5, 3, 20),
                 window_seconds=_safe_int("TANKAI_LOGIN_WINDOW", 300, 60, 3600),
@@ -1788,6 +1790,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._agent_error(
                     "repository_not_allowed",
                     "Repository ist für diesen KI-Agenten nicht freigegeben",
+                    403,
+                )
+                return
+            if not self.app.allow_external_execution:
+                self._audit_agent(
+                    context,
+                    audit_event,
+                    success=False,
+                    details={"reason": "execution_not_enabled"},
+                )
+                self._agent_error(
+                    "execution_not_enabled",
+                    "Externe Jobausführung ist für diesen Betrieb nicht freigegeben",
                     403,
                 )
                 return
