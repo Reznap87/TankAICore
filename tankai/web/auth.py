@@ -688,6 +688,15 @@ class AuthStore:
             cursor = conn.execute("DELETE FROM sessions WHERE expires_at<=? OR revoked_at IS NOT NULL", (_iso(_utcnow()),))
             return int(cursor.rowcount)
 
+    def prune_audit_events(self, older_than_days: int) -> int:
+        days = max(1, min(int(older_than_days), 3650))
+        cutoff = _iso(_utcnow() - timedelta(days=days))
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM audit_events WHERE created_at < ?", (cutoff,)
+            )
+            return int(cursor.rowcount)
+
     def audit(
         self,
         event_type: str,
