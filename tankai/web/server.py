@@ -245,6 +245,7 @@ class AppContext:
     hsts_seconds: int
     allow_registration: bool
     allow_external_execution: bool
+    audit_retention_days: int
     login_limiter: LoginRateLimiter
     provider_limiter: ProviderCallRateLimiter
     auth_state: AuthState | None = None
@@ -301,6 +302,7 @@ class AppContext:
             ),
             allow_registration=_env_bool("TANKAI_ALLOW_REGISTRATION", False),
             allow_external_execution=_env_bool("TANKAI_EXTERNAL_EXECUTION_ENABLED", False),
+            audit_retention_days=_safe_int("TANKAI_AUDIT_RETENTION_DAYS", 90, 1, 3650),
             login_limiter=LoginRateLimiter(
                 limit=_safe_int("TANKAI_LOGIN_ATTEMPTS", 5, 3, 20),
                 window_seconds=_safe_int("TANKAI_LOGIN_WINDOW", 300, 60, 3600),
@@ -1954,10 +1956,24 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._agent_error("endpoint_not_found", "Nicht gefunden", 404)
 
+    def _maintain_auth_store(self) -> None:
+        """Räumt abgelaufene Sessions und alte Audit-Ereignisse auf.
+
+        Ohne diese Bereinigung wächst der Auth-State bis zur fail-closed
+        8-MiB-Grenze und alle Zustands-Requests antworten dann mit 503.
+        """
+
+        try:
+            self.app.auth.cleanup_expired_sessions()
+            self.app.auth.prune_audit_events(self.app.audit_retention_days)
+        except Exception:
+            print(f"[web] auth maintenance unavailable request_id={self.request_id}")
+
     def _login(self) -> None:
         if self.app.auth_mode == "disabled":
             self._json(self._me_payload(self._local_context()))
             return
+        self._maintain_auth_store()
         data = self._read_json(max_bytes=10_000)
         if data is None:
             return
@@ -1992,6 +2008,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.app.login_limiter.allowed(key):
             self._json({"error": "Zu viele Registrierungsversuche. Später erneut versuchen."}, 429)
             return
+        self._maintain_auth_store()
         data = self._read_json(max_bytes=20_000)
         if data is None:
             return

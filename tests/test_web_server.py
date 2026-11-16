@@ -2423,3 +2423,68 @@ def test_external_agent_submission_requires_explicit_execution_opt_in(
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_auth_store_prunes_expired_sessions_and_old_audit_events(tmp_path) -> None:
+    store = AuthStore(tmp_path / "auth.db")
+    user_id, _tenant_id, workspace_id = store.create_user_with_tenant(
+        email="prune@example.com",
+        password="Prune-password-123",
+        display_name="Prune",
+        tenant_name="Prune Tenant",
+    )
+    session = store.authenticate(
+        email="prune@example.com", password="Prune-password-123"
+    )
+    assert session is not None
+    store.audit("login", user_id=user_id, workspace_id=workspace_id, success=True)
+    with sqlite3.connect(store.path) as conn:
+        conn.execute("UPDATE sessions SET expires_at='2000-01-01T00:00:00+00:00'")
+        conn.execute("UPDATE audit_events SET created_at='2000-01-01T00:00:00+00:00'")
+
+    assert store.cleanup_expired_sessions() == 1
+    assert store.resolve_session(session.token) is None
+    assert store.prune_audit_events(90) >= 1
+    store.audit("recent", user_id=user_id, workspace_id=workspace_id, success=True)
+    assert store.prune_audit_events(90) == 0
+
+
+class _FailingAuthState:
+    def save(self, auth) -> None:
+        raise RuntimeError("Snapshot voll")
+
+
+def test_post_fails_closed_when_auth_state_persistierung_fehlschlaegt(
+    tmp_path, monkeypatch
+) -> None:
+    """Fail-closed: wenn der Auth-State nicht persistert werden kann, kein 200."""
+    store = _configure(monkeypatch, tmp_path)
+    store.create_user_with_tenant(
+        email="durable-owner@example.com",
+        password="Durable-password-123",
+        display_name="Durable",
+        tenant_name="Durable Tenant",
+    )
+    app = web_server.AppContext.from_env("127.0.0.1")
+    app.auth_state = _FailingAuthState()
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, headers, payload = client.post(
+            "/api/auth/login",
+            {
+                "email": "durable-owner@example.com",
+                "password": "Durable-password-123",
+            },
+        )
+        assert status == 503
+        assert payload["error"] == "Kontospeicher vorübergehend nicht verfügbar"
+        assert headers.get("Set-Cookie") is None
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
