@@ -12,13 +12,16 @@ IP-Bereiche geprüft.
 from __future__ import annotations
 
 import copy
+import errno
 import hashlib
 import html
+import http.client
 import ipaddress
 import json
 import os
 import re
 import socket
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -26,7 +29,7 @@ from html.parser import HTMLParser
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit, urlunsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPHandler, HTTPSHandler, HTTPRedirectHandler, Request, build_opener
 
 
 DEFAULT_USER_AGENT = "TankAI/0.7 (+local research agent)"
@@ -334,7 +337,12 @@ def _normalize_public_url(url: str) -> str:
     return urlunsplit((parsed.scheme.lower(), netloc, parsed.path or "/", parsed.query, ""))
 
 
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_forbidden_ip(ip: ipaddress._BaseAddress) -> bool:
+    if ip.version == 4 and ip in _CGNAT:
+        return True
     return any(
         (
             ip.is_private,
@@ -347,25 +355,34 @@ def _is_forbidden_ip(ip: ipaddress._BaseAddress) -> bool:
     )
 
 
-def assert_public_url(url: str, *, resolver=socket.getaddrinfo) -> str:
-    """Validiert Schema, Host und alle aktuell aufgelösten IP-Adressen."""
+def _resolve_public_url(url: str, *, resolver=socket.getaddrinfo) -> tuple[str, str]:
+    """Validiert Schema, Host und alle aufgelösten IPs; liefert (URL, gewählte IP)."""
     normalized = _normalize_public_url(url)
     parsed = urlsplit(normalized)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
-        infos = resolver(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        infos = resolver(parsed.hostname, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise WebResearchError("Host konnte nicht aufgelöst werden") from exc
-    addresses = {item[4][0] for item in infos}
-    if not addresses:
-        raise WebResearchError("Host lieferte keine IP-Adresse")
-    for address in addresses:
+    addresses: list[str] = []
+    for item in infos:
+        address = item[4][0]
         try:
             ip = ipaddress.ip_address(address)
         except ValueError as exc:
             raise WebResearchError("Ungültige Ziel-IP") from exc
         if _is_forbidden_ip(ip):
             raise WebResearchError("Private, lokale oder reservierte Ziel-IP blockiert")
-    return normalized
+        if address not in addresses:
+            addresses.append(address)
+    if not addresses:
+        raise WebResearchError("Host lieferte keine IP-Adresse")
+    return normalized, addresses[0]
+
+
+def assert_public_url(url: str, *, resolver=socket.getaddrinfo) -> str:
+    """Validiert Schema, Host und alle aktuell aufgelösten IP-Adressen."""
+    return _resolve_public_url(url, resolver=resolver)[0]
 
 
 class _SafeRedirectHandler(HTTPRedirectHandler):
@@ -376,6 +393,61 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         validated = self.validator(urljoin(req.full_url, newurl))
         return super().redirect_request(req, fp, code, msg, headers, validated)
+
+
+def _request_host(req) -> str:
+    return (urlsplit(req.full_url).hostname or "").lower()
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """Verbindet mit einer vorab validierten IP; Host-Header bleibt der echte Host."""
+
+    pinned_ip: str | None = None
+
+    def connect(self) -> None:
+        sys.audit("http.client.connect", self, self.host, self.port)
+        target = (self.pinned_ip, self.port) if self.pinned_ip else (self.host, self.port)
+        self.sock = self._create_connection(target, self.timeout, self.source_address)
+        try:
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError as exc:
+            if exc.errno != errno.ENOPROTOOPT:
+                raise
+        if self._tunnel_host:
+            self._tunnel()
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """TLS zum validierten IP; SNI und Zertifikatsprüfung bleiben am echten Hostnamen."""
+
+    pinned_ip: str | None = None
+
+    def connect(self) -> None:
+        _PinnedHTTPConnection.connect(self)
+        server_hostname = self._tunnel_host or self.host
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=server_hostname)
+
+
+class _PinningHTTPHandler(HTTPHandler):
+    def __init__(self, pins: dict[str, str]) -> None:
+        super().__init__()
+        self._pins = pins
+
+    def http_open(self, req):
+        connection = _PinnedHTTPConnection(req.host, timeout=getattr(req, "timeout", None))
+        connection.pinned_ip = self._pins.get(_request_host(req))
+        return self.do_open(lambda *args, **kwargs: connection, req)
+
+
+class _PinningHTTPSHandler(HTTPSHandler):
+    def __init__(self, pins: dict[str, str], *, context=None) -> None:
+        super().__init__(context=context)
+        self._pins = pins
+
+    def https_open(self, req):
+        connection = _PinnedHTTPSConnection(req.host, timeout=getattr(req, "timeout", None), context=self._context)
+        connection.pinned_ip = self._pins.get(_request_host(req))
+        return self.do_open(lambda *args, **kwargs: connection, req)
 
 
 class WebPageFetcher:
@@ -395,24 +467,42 @@ class WebPageFetcher:
         max_bytes: int = 750_000,
         user_agent: str = DEFAULT_USER_AGENT,
         validator=assert_public_url,
+        resolver=socket.getaddrinfo,
     ) -> None:
         self.timeout = max(1.0, min(float(timeout), 60.0))
         self.max_bytes = max(16_384, min(int(max_bytes), 5_000_000))
         self.user_agent = user_agent
         self.validator = validator
-        self.opener = build_opener(_SafeRedirectHandler(self.validator))
+        self.resolver = resolver
 
     def fetch(self, url: str) -> str:
-        validated = self.validator(url)
+        pins: dict[str, str] = {}
+        if self.validator is assert_public_url:
+            normalized, ip = _resolve_public_url(url, resolver=self.resolver)
+            pins[urlsplit(normalized).hostname] = ip
+
+            def validate_and_pin(candidate: str) -> str:
+                candidate_url, candidate_ip = _resolve_public_url(candidate, resolver=self.resolver)
+                pins[urlsplit(candidate_url).hostname] = candidate_ip
+                return candidate_url
+        else:
+            normalized = self.validator(url)
+            validate_and_pin = self.validator
+
+        opener = build_opener(
+            _PinningHTTPHandler(pins),
+            _PinningHTTPSHandler(pins),
+            _SafeRedirectHandler(validate_and_pin),
+        )
         request = Request(
-            validated,
+            normalized,
             headers={
                 "User-Agent": self.user_agent,
                 "Accept": "text/html,text/plain,application/xhtml+xml,application/json;q=0.9",
             },
         )
         try:
-            with self.opener.open(request, timeout=self.timeout) as response:
+            with opener.open(request, timeout=self.timeout) as response:
                 content_type = response.headers.get_content_type().lower()
                 if content_type not in self.allowed_content_types:
                     raise WebResearchError(f"Nicht unterstützter Content-Type: {content_type}")
