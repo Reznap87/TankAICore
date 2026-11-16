@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -11,6 +12,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator
+
+logger = logging.getLogger(__name__)
 
 from tankai import TankAI, get_llm
 from tankai.core.llm import get_critic_llm
@@ -121,8 +124,8 @@ class WorkspaceRuntimeManager:
         self.data_root.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.data_root, 0o700)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.data_root, exc)
         self._lock = threading.RLock()
         self._runtimes: OrderedDict[str, WorkspaceRuntime] = OrderedDict()
         self._last_used: dict[str, float] = {}
@@ -233,8 +236,8 @@ class WorkspaceRuntimeManager:
         root.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(root, 0o700)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", root, exc)
         ltm = tank = None
         try:
             ltm = LongTermMemory(

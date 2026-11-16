@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import secrets
@@ -24,6 +25,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Sequence
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -307,8 +310,8 @@ class DevelopmentJobQueue:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.path.parent, 0o700)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path.parent, exc)
         self.auth = auth_store
         self.repository_base = Path(repository_base).resolve()
         self.workspace_base = Path(workspace_base).resolve()
@@ -483,8 +486,8 @@ class DevelopmentJobQueue:
                 raise
         try:
             os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path, exc)
 
     def _access(self, user_id: str, workspace_id: str) -> WorkspaceAccess:
         if self.auth is None:
