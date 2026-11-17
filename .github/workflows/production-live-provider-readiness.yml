@@ -56,15 +56,20 @@ jobs:
           ANTHROPIC_PRESENT: ${{ secrets.ANTHROPIC_API_KEY != '' }}
           BRAVE_PRESENT: ${{ secrets.BRAVE_SEARCH_API_KEY != '' }}
           TAVILY_PRESENT: ${{ secrets.TAVILY_API_KEY != '' }}
+          MAIN_PROVIDER: ${{ inputs.main_provider }}
+          MAIN_MODEL: ${{ inputs.main_model }}
+          CRITIC_PROVIDER: ${{ inputs.critic_provider }}
+          CRITIC_MODEL: ${{ inputs.critic_model }}
+          SEARCH_PROVIDER: ${{ inputs.search_provider }}
         run: |
           set -euo pipefail
           args=(
             --root .
-            --main-provider "${{ inputs.main_provider }}"
-            --main-model "${{ inputs.main_model }}"
-            --critic-provider "${{ inputs.critic_provider }}"
-            --critic-model "${{ inputs.critic_model }}"
-            --search-provider "${{ inputs.search_provider }}"
+            --main-provider "$MAIN_PROVIDER"
+            --main-model "$MAIN_MODEL"
+            --critic-provider "$CRITIC_PROVIDER"
+            --critic-model "$CRITIC_MODEL"
+            --search-provider "$SEARCH_PROVIDER"
             --output "${RUNNER_TEMP}/live-provider-readiness.json"
           )
 

@@ -73,7 +73,7 @@
       const mode = data.execution_mode || 'unknown';
       const label = mode === 'live' ? 'Core verbunden' : mode === 'simulation' ? 'Simulation' : mode === 'mixed' ? 'Teilweise Simulation' : 'Modellstatus unbekannt';
       byId('health').textContent = label; byId('connection-info').dataset.mode = mode;
-      byId('model-label').textContent = mode === 'live' ? String(data.llm || 'Live-Modell') : mode === 'simulation' ? 'Simulation · kein Live-Modell' : label;
+      byId('model-label').textContent = data.direct_chat_available ? 'Live-Chat · ' + String(data.llm || 'KI-Modell') : 'Kein Live-Modell verbunden';
       byId('sysInfo').textContent = 'Hauptmodell: ' + (data.llm || 'unbekannt') + '\nPrüfmodell: ' + (data.critic_llm || 'unbekannt') + '\nUnabhängige Prüfung: ' + (data.critic_independent ? 'Ja' : 'Nein') + '\nRecherche: ' + (data.web_research || 'disabled') + '\nModus: ' + mode + '\nVersion: ' + String(data.version || '');
     } catch (error) { if (requestEpoch !== epoch) return; byId('login-health').textContent = 'Core momentan nicht erreichbar'; if (currentUser) { byId('health').textContent = 'Verbindung unterbrochen'; byId('connection-info').dataset.mode = 'offline'; byId('model-label').textContent = 'Core momentan nicht erreichbar'; } }
   }
@@ -119,8 +119,8 @@
     selectedResult = data; byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
     byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
     byId('outCard').hidden = false; byId('answer').textContent = String(data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
-    const badges = byId('badges'); badges.replaceChildren(); const simulated = data.status === 'simulated' || data.execution_mode === 'simulation';
-    badges.append(badge(simulated ? 'Simulation · keine verifizierte KI-Antwort' : data.release_ready ? 'Prüfung bestanden' : 'Nicht freigegeben', simulated ? 'b-warn' : data.release_ready ? 'b-ok' : 'b-warn'));
+    const badges = byId('badges'); badges.replaceChildren(); const simulated = data.status === 'simulated' || data.execution_mode === 'simulation'; const direct = data.answer_mode === 'direct';
+    badges.append(badge(simulated ? 'Simulation · keine verifizierte KI-Antwort' : direct ? 'KI-Antwort · ungeprüft' : data.release_ready ? 'Prüfung bestanden' : 'Nicht freigegeben', simulated || direct ? 'b-warn' : data.release_ready ? 'b-ok' : 'b-warn'));
     badges.append(badge(String(data.duration_seconds ?? 0) + ' s', 'b-info'));
     const steps = data.plan?.steps; const planBody = byId('planBody'); planBody.replaceChildren(); byId('planCard').hidden = !Array.isArray(steps) || !steps.length;
     byId('rationale').textContent = String(data.plan?.rationale || '');
@@ -132,15 +132,15 @@
   }
   async function runTank(event) {
     event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
-    const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked;
+    const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked;
     resetResult(); setBusy(true); renderHistory();
     byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
-    byId('status').textContent = 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …';
+    byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : 'TankAI fragt das Live-Modell …';
     try {
-      const data = await jsonFetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal, definition_of_done: definition, parallel }) });
+      const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal }) });
       if (requestEpoch !== epoch) return;
       if (!data.goal) data.goal = goal; renderResult(data); byId('goal').value = '';
-      byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
+      byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.answer_mode === 'direct' ? 'Live-Antwort erhalten · nicht unabhängig geprüft.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
       await loadHistory();
     } catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
     finally { if (requestEpoch === epoch) { setBusy(false); renderHistory(); byId('goal').focus(); } }

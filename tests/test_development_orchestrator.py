@@ -88,6 +88,18 @@ def test_path_scope_matching_and_overlap() -> None:
         path_matches_scope("backend/src/\x00secret", "backend/**")
 
 
+def test_directory_scope_covers_children_and_overlap() -> None:
+    """Regression: eine Verzeichnis-Scope ohne Wildcard muss Kinder abdecken."""
+    assert path_matches_scope("secrets/key.pem", "secrets/")
+    assert path_matches_scope("secrets/key.pem", "secrets")
+    assert path_matches_scope("secrets", "secrets/")
+    assert not path_matches_scope("secrets-other/key.pem", "secrets/")
+    assert not path_matches_scope("secrets", "secrets/key.pem")
+    assert scopes_overlap("secrets/", "secrets/key.pem")
+    assert scopes_overlap("src", "src/a.py")
+    assert not scopes_overlap("src", "lib/a.py")
+
+
 def test_spawn_uses_same_role_commit_and_disjoint_paths(tmp_path) -> None:
     orchestrator = make_orchestrator(tmp_path)
     create_task(orchestrator, "AUTH-001", ["backend/src/auth/**"])

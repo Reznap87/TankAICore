@@ -85,6 +85,7 @@ _EXTERNAL_ERROR_CODES = (
     "job_cancel_conflict",
     "method_not_allowed",
     "endpoint_not_found",
+    "execution_not_enabled",
 )
 _EXTERNAL_JOB_LIST_DEFAULT_LIMIT = 100
 _EXTERNAL_JOB_LIST_MAX_LIMIT = 100
@@ -211,24 +212,26 @@ class LoginRateLimiter:
         self._blocked_until: dict[str, float] = {}
 
     def allowed(self, key: str) -> bool:
+        """Prüft und zählt einen Versuch atomar (behebt den Check-Then-Act-Race)."""
         now = time.monotonic()
         with self._lock:
-            blocked = self._blocked_until.get(key, 0.0)
-            if blocked > now:
+            if self._blocked_until.get(key, 0.0) > now:
                 return False
             cutoff = now - self.window_seconds
             current = [ts for ts in self._attempts.get(key, []) if ts >= cutoff]
+            current.append(now)
             self._attempts[key] = current
-            return len(current) < self.limit
+            if len(current) > self.limit:
+                self._blocked_until[key] = now + self.block_seconds
+                return False
+            return True
 
     def failure(self, key: str) -> None:
         now = time.monotonic()
         with self._lock:
             cutoff = now - self.window_seconds
             current = [ts for ts in self._attempts.get(key, []) if ts >= cutoff]
-            current.append(now)
-            self._attempts[key] = current
-            if len(current) >= self.limit:
+            if len(current) >= self.limit and self._blocked_until.get(key, 0.0) <= now:
                 self._blocked_until[key] = now + self.block_seconds
 
     def success(self, key: str) -> None:
@@ -246,6 +249,8 @@ class AppContext:
     cookie_secure: bool
     hsts_seconds: int
     allow_registration: bool
+    allow_external_execution: bool
+    audit_retention_days: int
     login_limiter: LoginRateLimiter
     provider_limiter: ProviderCallRateLimiter
     auth_state: AuthState | None = None
@@ -313,6 +318,8 @@ class AppContext:
                 "TANKAI_HSTS_SECONDS", 31_536_000, 0, 63_072_000
             ),
             allow_registration=_env_bool("TANKAI_ALLOW_REGISTRATION", False),
+            allow_external_execution=_env_bool("TANKAI_EXTERNAL_EXECUTION_ENABLED", False),
+            audit_retention_days=_safe_int("TANKAI_AUDIT_RETENTION_DAYS", 90, 1, 3650),
             login_limiter=LoginRateLimiter(
                 limit=_safe_int("TANKAI_LOGIN_ATTEMPTS", 5, 3, 20),
                 window_seconds=_safe_int("TANKAI_LOGIN_WINDOW", 300, 60, 3600),
@@ -362,6 +369,7 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 class Handler(BaseHTTPRequestHandler):
     server_version = "TankAI"
     sys_version = ""
+    timeout = 15
 
     def handle_one_request(self) -> None:
         self._tankai_request_id = secrets.token_hex(12)
@@ -884,6 +892,7 @@ class Handler(BaseHTTPRequestHandler):
                             "web_research": web_status,
                             "execution_mode": mode,
                             "live_provider": mode == "live",
+                            "direct_chat_available": not main_sim,
                             "verification_ready": (mode == "live" and self.app.owner_pilot is not None
                                                    and tank.critic_independent and web_status != "disabled"),
                             "tenant_isolation": True,
@@ -1249,6 +1258,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(exc)}, 403)
             except (QueueError, ValueError) as exc:
                 self._json({"error": str(exc)}, 409)
+            return
+        if path == "/api/chat":
+            self._chat(context)
             return
         if path == "/api/run":
             self._run(context)
@@ -1804,6 +1816,19 @@ class Handler(BaseHTTPRequestHandler):
                     403,
                 )
                 return
+            if not self.app.allow_external_execution:
+                self._audit_agent(
+                    context,
+                    audit_event,
+                    success=False,
+                    details={"reason": "execution_not_enabled"},
+                )
+                self._agent_error(
+                    "execution_not_enabled",
+                    "Externe Jobausführung ist für diesen Betrieb nicht freigegeben",
+                    403,
+                )
+                return
             try:
                 namespaced_pipeline = self._namespace_agent_pipeline(
                     context, clean_key, submission.pipeline
@@ -1951,10 +1976,24 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._agent_error("endpoint_not_found", "Nicht gefunden", 404)
 
+    def _maintain_auth_store(self) -> None:
+        """Räumt abgelaufene Sessions und alte Audit-Ereignisse auf.
+
+        Ohne diese Bereinigung wächst der Auth-State bis zur fail-closed
+        8-MiB-Grenze und alle Zustands-Requests antworten dann mit 503.
+        """
+
+        try:
+            self.app.auth.cleanup_expired_sessions()
+            self.app.auth.prune_audit_events(self.app.audit_retention_days)
+        except Exception:
+            print(f"[web] auth maintenance unavailable request_id={self.request_id}")
+
     def _login(self) -> None:
         if self.app.auth_mode == "disabled":
             self._json(self._me_payload(self._local_context()))
             return
+        self._maintain_auth_store()
         data = self._read_json(max_bytes=10_000)
         if data is None:
             return
@@ -1985,6 +2024,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.app.auth_mode == "disabled" or not self.app.allow_registration:
             self._json({"error": "Registrierung ist deaktiviert"}, 403)
             return
+        key = f"{self.client_address[0]}:register"
+        if not self.app.login_limiter.allowed(key):
+            self._json({"error": "Zu viele Registrierungsversuche. Später erneut versuchen."}, 429)
+            return
+        self._maintain_auth_store()
         data = self._read_json(max_bytes=20_000)
         if data is None:
             return
@@ -2001,6 +2045,7 @@ class Handler(BaseHTTPRequestHandler):
                 workspace_name=values["workspace_name"] if isinstance(values["workspace_name"], str) else "Standard",
             )
         except ValueError as exc:
+            self.app.login_limiter.failure(key)
             self._json({"error": str(exc)}, 400)
             return
         session = self.app.auth.authenticate(email=values["email"], password=values["password"], user_agent=self.headers.get("User-Agent", "")[:500], client_ip=self.client_address[0])
@@ -2009,6 +2054,101 @@ class Handler(BaseHTTPRequestHandler):
             return
         remaining = max(1, int((session.context.expires_at.timestamp() - time.time())))
         self._json(self._me_payload(session.context), 201, set_cookie=self._session_cookie(session.token, remaining))
+
+    def _chat(self, context: AuthContext) -> None:
+        """One live-model answer for ordinary chat; never mislabel it as verified."""
+        data = self._read_json(max_bytes=22_000)
+        if data is None:
+            return
+        if set(data) != {"message"} or not isinstance(data["message"], str):
+            self._json({"error": "Genau ein Textfeld 'message' erforderlich"}, 400)
+            return
+        message = data["message"].strip()
+        if not message or len(message) > 20_000:
+            self._json({"error": "Nachricht fehlt oder ist zu lang"}, 400)
+            return
+        try:
+            with self.app.runtimes.acquire(
+                tenant_id=context.tenant_id, workspace_id=context.workspace_id
+            ) as runtime:
+                tank = runtime.tank
+                if tank.llm.is_simulation:
+                    self._json(
+                        {"error": "Kein echtes KI-Modell verbunden. Der Simulationsmodus liefert keine Chatantwort."},
+                        503,
+                    )
+                    return
+                tank.llm_call_budget.reset()
+                tank.llm_call_budget.set_call_guard(
+                    lambda identity: self.app.provider_limiter.consume(
+                        context.user_id, identity
+                    )
+                )
+                started = time.monotonic()
+                try:
+                    answer = tank.llm.complete(
+                        message,
+                        system=(
+                            "Du bist TankAI, ein hilfreicher KI-Assistent. "
+                            "Antworte klar, direkt und in der Sprache des Nutzers. "
+                            "Dieser direkte Chatmodus hat keine Websuche, keine Tools "
+                            "und keine unabhängige Faktenprüfung. "
+                            "Behaupte keine ausgeführten Aktionen oder geprüften "
+                            "aktuellen Quellen. Kennzeichne Unsicherheit."
+                        ),
+                    )
+                finally:
+                    tank.llm_call_budget.set_call_guard(None)
+                if not isinstance(answer, str) or not answer.strip():
+                    self._json({"error": "Das KI-Modell hat keine Antwort geliefert"}, 502)
+                    return
+                payload = {
+                    "run_id": secrets.token_hex(16),
+                    "workspace_id": context.workspace_id,
+                    "goal": message,
+                    "final_answer": answer.strip(),
+                    "status": "unverified",
+                    "answer_mode": "direct",
+                    "execution_mode": "live",
+                    "duration_seconds": round(time.monotonic() - started, 2),
+                    "receipts_count": 0,
+                    "receipts": [],
+                    "plan": None,
+                    "main_llm": tank.main_llm_identity,
+                    "critic_llm": tank.critic_llm_identity,
+                    "critic_independent": tank.critic_independent,
+                    "verification_passed": False,
+                    "release_ready": False,
+                    "plan_gate_passed": False,
+                    "failed_step_ids": [],
+                    "web_research": "not_used",
+                    "source_ids": [],
+                    "source_urls": [],
+                }
+                runtime.history.append(payload)
+            self.app.auth.audit(
+                "chat", user_id=context.user_id,
+                workspace_id=context.workspace_id, success=True,
+                details=json.dumps({"run_id": payload["run_id"], "mode": "direct"}),
+            )
+            self._json(payload)
+        except LLMRateLimitExceeded as exc:
+            self._json(
+                {
+                    "error": "Provider-Rate-Limit erreicht. Später erneut versuchen.",
+                    "retry_after_seconds": exc.retry_after_seconds,
+                },
+                429,
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            )
+        except WorkspaceRuntimeUnavailable:
+            self._runtime_unavailable()
+        except Exception:
+            self.app.auth.audit(
+                "chat", user_id=context.user_id,
+                workspace_id=context.workspace_id, success=False,
+            )
+            self._internal_error("chat")
 
     def _run(self, context: AuthContext) -> None:
         pilot = self.app.owner_pilot

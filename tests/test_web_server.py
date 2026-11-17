@@ -130,6 +130,7 @@ def _configure(monkeypatch, tmp_path) -> AuthStore:
     monkeypatch.setenv("TANKAI_AUTH_MODE", "session")
     monkeypatch.setenv("TANKAI_COOKIE_SECURE", "0")
     monkeypatch.setenv("TANKAI_ALLOW_REGISTRATION", "0")
+    monkeypatch.setenv("TANKAI_EXTERNAL_EXECUTION_ENABLED", "1")
     monkeypatch.setenv("TANKAI_DATA_ROOT", str(tmp_path / "data"))
     monkeypatch.setenv("TANKAI_AUTH_DB", str(tmp_path / "data" / "auth.db"))
     monkeypatch.setenv("TANKAI_LTM_MEMORY", "0")
@@ -1112,6 +1113,7 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
                 "job_cancel_conflict",
                 "method_not_allowed",
                 "endpoint_not_found",
+                "execution_not_enabled",
             ],
         }
         assert capabilities["agent"]["agent_id"] == agent_id
@@ -2123,6 +2125,365 @@ def test_external_agent_gateway_is_scoped_revocable_and_job_isolated(
         assert status == 401
         assert "widerrufen" in invalid["error"]
         _assert_external_error(invalid, "invalid_agent_token")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_direct_chat_rejects_mock_and_requires_auth_and_csrf(tmp_path, monkeypatch) -> None:
+    store = _configure(monkeypatch, tmp_path)
+    store.create_user_with_tenant(
+        email="direct-mock@example.com",
+        password="Direct-mock-password-123",
+        display_name="Direct Mock",
+        tenant_name="Direct Mock Tenant",
+    )
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, _, denied = client.post("/api/chat", {"message": "Hallo"})
+        assert status == 401
+        assert denied["error"] == "Nicht angemeldet"
+
+        status, _, login = client.post(
+            "/api/auth/login",
+            {"email": "direct-mock@example.com", "password": "Direct-mock-password-123"},
+        )
+        assert status == 200
+        csrf = login["csrf_token"]
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["direct_chat_available"] is False
+
+        status, _, denied = client.post("/api/chat", {"message": "Hallo"})
+        assert status == 403
+        assert "CSRF" in denied["error"]
+
+        for bad in ({}, {"message": ""}, {"message": 7}, {"message": "x", "extra": True}):
+            status, _, _ = client.post("/api/chat", bad, csrf=csrf)
+            assert status == 400
+
+        status, _, mock = client.post("/api/chat", {"message": "Hallo"}, csrf=csrf)
+        assert status == 503
+        assert "Kein echtes KI-Modell" in mock["error"]
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_direct_chat_one_live_call_unverified_and_workspace_scoped(
+    tmp_path, monkeypatch
+) -> None:
+    store = _configure(monkeypatch, tmp_path)
+    _, tenant, workspace = store.create_user_with_tenant(
+        email="direct-live@example.com",
+        password="Direct-live-password-123",
+        display_name="Direct Live",
+        tenant_name="Direct Live Tenant",
+    )
+    app = web_server.AppContext.from_env("127.0.0.1")
+    calls = []
+
+    class FakeLive:
+        is_simulation = False
+        provider_name = "fake-live"
+        model_name = "test-only"
+
+        def complete(self, prompt, *, system="", **kwargs):
+            calls.append((prompt, system))
+            return "Antwort vom Testmodell"
+
+    with app.runtimes.acquire(tenant_id=tenant, workspace_id=workspace) as runtime:
+        runtime.tank.llm.delegate = FakeLive()
+        runtime.tank.llm.is_simulation = False
+        runtime.tank.llm.provider_name = "fake-live"
+        runtime.tank.llm.model_name = "test-only"
+
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, _, login = client.post(
+            "/api/auth/login",
+            {"email": "direct-live@example.com", "password": "Direct-live-password-123"},
+        )
+        assert status == 200
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["direct_chat_available"] is True
+
+        status, _, response = client.post(
+            "/api/chat", {"message": "  Hallo, TankAI!  "},
+            csrf=login["csrf_token"],
+        )
+        assert status == 200
+        assert response["workspace_id"] == workspace
+        assert response["goal"] == "Hallo, TankAI!"
+        assert response["final_answer"] == "Antwort vom Testmodell"
+        assert response["answer_mode"] == "direct"
+        assert response["status"] == "unverified"
+        assert response["execution_mode"] == "live"
+        assert response["release_ready"] is False
+        assert response["verification_passed"] is False
+        assert len(calls) == 1
+        assert calls[0][0] == "Hallo, TankAI!"
+        assert "keine unabhängige Faktenprüfung" in calls[0][1]
+
+        with app.runtimes.acquire(tenant_id=tenant, workspace_id=workspace) as runtime:
+            assert runtime.tank.llm_call_budget.snapshot()["used"] == 1
+        status, _, history = client.get("/api/history")
+        assert status == 200
+        assert len(history) == 1
+        assert history[0]["run_id"] == response["run_id"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_login_rate_limiter_is_atomic_and_blocks() -> None:
+    """Regression: die Prüfung darf nicht check-then-act sein (Parallelzugriff)."""
+    limiter = web_server.LoginRateLimiter(limit=5, window_seconds=300, block_seconds=900)
+    results: list[bool] = []
+    barrier = threading.Barrier(20)
+
+    def attempt() -> None:
+        barrier.wait()
+        results.append(limiter.allowed("127.0.0.1:a@example.com"))
+
+    threads = [threading.Thread(target=attempt) for _ in range(20)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert sum(results) == 5
+    assert limiter.allowed("127.0.0.1:a@example.com") is False
+    limiter.success("127.0.0.1:a@example.com")
+    assert limiter.allowed("127.0.0.1:a@example.com") is True
+
+
+def test_registration_is_rate_limited(tmp_path, monkeypatch) -> None:
+    """Regression: Registrierungen werden zähllimitiert."""
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("TANKAI_ALLOW_REGISTRATION", "1")
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        for index in range(5):
+            status, _, payload = client.post(
+                "/api/auth/register",
+                {
+                    "email": f"rated-{index}@example.com",
+                    "password": "Registration-password-123",
+                    "display_name": "Rated",
+                    "tenant_name": f"Tenant {index}",
+                },
+            )
+            assert status == 201, payload
+        status, _, payload = client.post(
+            "/api/auth/register",
+            {
+                "email": "rated-6@example.com",
+                "password": "Registration-password-123",
+                "display_name": "Rated",
+                "tenant_name": "Tenant 6",
+            },
+        )
+        assert status == 429
+        assert payload["error"].startswith("Zu viele Registrierungsversuche")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_handler_declares_socket_timeout() -> None:
+    """Regression: der Handler braucht eine Standard-Socket-Timeout-Grenze."""
+    assert isinstance(web_server.Handler.timeout, (int, float))
+    assert 0 < web_server.Handler.timeout <= 60
+
+
+def test_slow_client_connection_is_closed_after_timeout(tmp_path, monkeypatch) -> None:
+    """Regression: ohne Socket-Timeout können Clients Verbindungen hängen halten."""
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setattr(web_server.Handler, "timeout", 1)
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with socket.create_connection(
+            ("127.0.0.1", server.server_address[1]), timeout=5
+        ) as sock:
+            sock.sendall(b"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+            sock.settimeout(10)
+            assert sock.recv(65536) == b""
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_external_agent_submission_requires_explicit_execution_opt_in(
+    tmp_path, monkeypatch
+) -> None:
+    """Fail-closed: ohne TANKAI_EXTERNAL_EXECUTION_ENABLED wird nichts eingequeuet."""
+    store = _configure(monkeypatch, tmp_path)
+    monkeypatch.delenv("TANKAI_EXTERNAL_EXECUTION_ENABLED")
+    owner, tenant, workspace = store.create_user_with_tenant(
+        email="gated-owner@example.com",
+        password="Gated-owner-password-123",
+        display_name="Gated Owner",
+        tenant_name="Gated Tenant",
+    )
+    repo_base = tmp_path / "repositories"
+    work_base = tmp_path / "worktrees"
+    state_base = tmp_path / "states"
+    allowed_repo = repo_base / "allowed"
+    _init_web_queue_repo(allowed_repo)
+    monkeypatch.setenv("TANKAI_DEV_QUEUE_ENABLED", "1")
+    monkeypatch.setenv("TANKAI_REPOSITORY_BASE", str(repo_base))
+    monkeypatch.setenv("TANKAI_WORKTREE_BASE", str(work_base))
+    monkeypatch.setenv("TANKAI_STATE_BASE", str(state_base))
+
+    image = "tankai-worker@sha256:" + "d" * 64
+    app = web_server.AppContext.from_env("127.0.0.1")
+    assert app.job_queue is not None
+    app.job_queue.set_policy(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        policy=WorkspaceQueuePolicy(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            allowed_images=[image],
+        ),
+    )
+    repository = app.job_queue.register_repository(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        name="Allowed",
+        repository_path=allowed_repo,
+        workspace_root=work_base / "allowed",
+        state_path=state_base / "allowed.json",
+    )
+    session = store.authenticate(
+        email="gated-owner@example.com", password="Gated-owner-password-123"
+    )
+    assert session is not None
+    agent = store.create_service_agent(actor=session.context, name="Gated Agent")
+    token = store.create_agent_token(
+        actor=session.context,
+        agent_id=agent.agent_id,
+        scopes=["jobs:read", "jobs:submit"],
+        repository_ids=[repository.repository_id],
+    )
+
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    payload = {
+        "repository_id": repository.repository_id,
+        "idempotency_key": "gated-job",
+        "pipeline": _web_queue_pipeline(image),
+    }
+    try:
+        status, _, preflight = client.post(
+            "/api/v1/jobs/preflight", payload, bearer=token.token
+        )
+        assert status == 403
+        _assert_external_error(preflight, "execution_not_enabled")
+        status, _, rejected = client.post(
+            "/api/v1/jobs", payload, bearer=token.token
+        )
+        assert status == 403
+        _assert_external_error(rejected, "execution_not_enabled")
+        assert app.job_queue.list_jobs(
+            actor_user_id=owner, workspace_id=workspace
+        ) == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_auth_store_prunes_expired_sessions_and_old_audit_events(tmp_path) -> None:
+    store = AuthStore(tmp_path / "auth.db")
+    user_id, _tenant_id, workspace_id = store.create_user_with_tenant(
+        email="prune@example.com",
+        password="Prune-password-123",
+        display_name="Prune",
+        tenant_name="Prune Tenant",
+    )
+    session = store.authenticate(
+        email="prune@example.com", password="Prune-password-123"
+    )
+    assert session is not None
+    store.audit("login", user_id=user_id, workspace_id=workspace_id, success=True)
+    with sqlite3.connect(store.path) as conn:
+        conn.execute("UPDATE sessions SET expires_at='2000-01-01T00:00:00+00:00'")
+        conn.execute("UPDATE audit_events SET created_at='2000-01-01T00:00:00+00:00'")
+
+    assert store.cleanup_expired_sessions() == 1
+    assert store.resolve_session(session.token) is None
+    assert store.prune_audit_events(90) >= 1
+    store.audit("recent", user_id=user_id, workspace_id=workspace_id, success=True)
+    assert store.prune_audit_events(90) == 0
+
+
+class _FailingAuthState:
+    def save(self, auth) -> None:
+        raise RuntimeError("Snapshot voll")
+
+
+def test_post_fails_closed_when_auth_state_persistierung_fehlschlaegt(
+    tmp_path, monkeypatch
+) -> None:
+    """Fail-closed: wenn der Auth-State nicht persistert werden kann, kein 200."""
+    store = _configure(monkeypatch, tmp_path)
+    store.create_user_with_tenant(
+        email="durable-owner@example.com",
+        password="Durable-password-123",
+        display_name="Durable",
+        tenant_name="Durable Tenant",
+    )
+    app = web_server.AppContext.from_env("127.0.0.1")
+    app.auth_state = _FailingAuthState()
+    server = web_server.ThreadedHTTPServer(
+        ("127.0.0.1", 0), web_server.Handler, app=app
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = Client(f"http://127.0.0.1:{server.server_address[1]}")
+    try:
+        status, headers, payload = client.post(
+            "/api/auth/login",
+            {
+                "email": "durable-owner@example.com",
+                "password": "Durable-password-123",
+            },
+        )
+        assert status == 503
+        assert payload["error"] == "Kontospeicher vorübergehend nicht verfügbar"
+        assert headers.get("Set-Cookie") is None
     finally:
         server.shutdown()
         server.server_close()

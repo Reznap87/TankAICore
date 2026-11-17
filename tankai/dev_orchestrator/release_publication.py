@@ -61,8 +61,8 @@ _COMMIT = re.compile(r"[0-9a-f]{40}")
 _MAX_ARTIFACTS = 2_000
 _MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
 _MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024
-_ALLOWED_DIGESTS = {"sha256", "sha1", "md5"}
-_DIGEST_LENGTHS = {"sha256": 64, "sha1": 40, "md5": 32}
+_ALLOWED_DIGESTS = {"sha256"}
+_DIGEST_LENGTHS = {"sha256": 64}
 
 
 def utcnow() -> str:
@@ -413,8 +413,9 @@ def _validate_remote_url(target: Mapping[str, Any], remote_id: str, remote_url: 
     elif kind == "github":
         if host != "github.com":
             raise PublicationError("GitHub-Receipt verwendet eine fremde Domain")
-        expected_prefix = "/" + target["locator"].casefold()
-        if not parsed.path.casefold().startswith(expected_prefix):
+        locator = target["locator"].casefold()
+        path = parsed.path.casefold()
+        if not (path == f"/{locator}" or path.startswith(f"/{locator}/")):
             raise PublicationError("GitHub-Receipt verweist auf ein anderes Repository")
     else:
         raise PublicationError(f"Unbekannter Zieltyp im Ledger: {kind!r}")

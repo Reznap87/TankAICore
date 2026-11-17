@@ -87,7 +87,10 @@ def path_matches_scope(path: str, scope: str) -> bool:
     if normalized_scope.endswith("/**"):
         base = normalized_scope[:-3].rstrip("/")
         return normalized_path == base or normalized_path.startswith(base + "/")
-    return fnmatch.fnmatchcase(normalized_path, normalized_scope)
+    if any(char in normalized_scope for char in "*?["):
+        return fnmatch.fnmatchcase(normalized_path, normalized_scope)
+    # Eine Verzeichnis-Scope ohne Wildcard muss auch ihre Kinder abdecken.
+    return normalized_path == normalized_scope or normalized_path.startswith(normalized_scope + "/")
 
 
 def scopes_overlap(first: str, second: str) -> bool:
@@ -96,7 +99,7 @@ def scopes_overlap(first: str, second: str) -> bool:
     b, b_wild, b_recursive = _scope_anchor(second)
 
     if not a_wild and not b_wild:
-        return a == b
+        return a == b or a.startswith(b + "/") or b.startswith(a + "/")
     if a_recursive and not b_wild:
         return b == a or b.startswith(a + "/")
     if b_recursive and not a_wild:

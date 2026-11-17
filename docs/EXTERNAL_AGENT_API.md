@@ -25,6 +25,15 @@ Roh-Token wird genau einmal zurückgegeben.
 - eine aktive Queue-Richtlinie für den Workspace
 - mindestens ein operatorseitig registriertes Repository
 - ein fest per Digest oder Image-ID freigegebenes Worker-Image
+- `TANKAI_EXTERNAL_EXECUTION_ENABLED=1` **und** eine vom Betreiber provisionierte,
+  ausführbare Agenten-/Task-Identität im Development-State
+
+Ohne `TANKAI_EXTERNAL_EXECUTION_ENABLED=1` lehnen `POST /api/v1/jobs/preflight` und
+`POST /api/v1/jobs` jeden Auftrag mit HTTP 403 und dem maschinenlesbaren Code
+`execution_not_enabled` ab. Es wird dann weder Queue-Kapazität reserviert noch ein
+Job eingetragen, der später an der fehlenden Ausführungsidentität scheitern würde.
+Die übrigen v1-Routen (Capabilities, Repository- und Schema-Discovery, Jobliste,
+Status, Verlauf, Abbruch) bleiben unverändert nutzbar.
 
 ## Scopes
 
@@ -239,6 +248,7 @@ den begrenzten `validation`-Block mit JSON-Pointern. Die aktuelle v1-Code-Menge 
 | `job_cancel_conflict` | 409 | Job kann im aktuellen Zustand nicht abgebrochen werden |
 | `method_not_allowed` | 405 | HTTP-Methode wird im External-Agent-Namespace nicht unterstützt |
 | `endpoint_not_found` | 404 | v1-Pfad ist unbekannt |
+| `execution_not_enabled` | 403 | Externe Jobausführung ist für diesen Betrieb nicht freigegeben |
 
 HTTP-Status und `error`-Text bleiben für bestehende Integrationen erhalten. Fehlercodes enthalten
 keine Token, Payloadwerte, Hostpfade oder internen Ausnahmearten. Berechtigungen und die bewusst

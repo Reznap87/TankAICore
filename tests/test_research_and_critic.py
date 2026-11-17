@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 import re
+import socket
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.request import Request
 
 import pytest
 
 from tankai import TankAI
+from tankai.core import web_research
 from tankai.core.llm import BaseLLM
 from tankai.core.models import TaskStatus
 from tankai.core.web_research import (
@@ -130,6 +135,8 @@ def test_private_targets_are_blocked() -> None:
         "http://127.0.0.1/",
         "http://169.254.169.254/latest/meta-data",
         "http://[::1]/",
+        "http://100.64.0.1/",
+        "http://100.127.255.254/latest/meta-data",
         "file:///etc/passwd",
     ):
         with pytest.raises(WebResearchError):
@@ -384,3 +391,102 @@ def test_search_api_redirects_are_rejected() -> None:
 
     handler = _NoRedirectHandler()
     assert handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/") is None
+
+
+def test_resolve_public_url_returns_url_and_first_public_ip() -> None:
+    def resolver(host, port, type=0, *args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", port)),
+        ]
+
+    normalized, ip = web_research._resolve_public_url(
+        "http://example.org/", resolver=resolver
+    )
+    assert normalized == "http://example.org/"
+    assert ip == "93.184.216.34"
+    assert assert_public_url("http://example.org/", resolver=resolver) == normalized
+
+
+def test_resolve_public_url_rejects_forbidden_address() -> None:
+    def resolver(host, port, type=0, *args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port)),
+        ]
+
+    with pytest.raises(WebResearchError, match="blockiert"):
+        web_research._resolve_public_url("http://example.org/", resolver=resolver)
+
+
+def test_pinning_handler_binds_validated_ip_to_connection() -> None:
+    class RecordingHandler(web_research._PinningHTTPHandler):
+        captured: dict = {}
+
+        def do_open(self, http_class, req, **kwargs):
+            connection = http_class()
+            self.captured["host"] = connection.host
+            self.captured["pinned_ip"] = connection.pinned_ip
+            return None
+
+    handler = RecordingHandler({"example.org": "93.184.216.34"})
+    handler.http_open(Request("http://example.org/path"))
+    assert handler.captured["host"] == "example.org"
+    assert handler.captured["pinned_ip"] == "93.184.216.34"
+
+
+def test_fetch_uses_validated_ip_and_ignores_rebinding(monkeypatch) -> None:
+    """End-to-End: die zweite (böswillige) Auflösung darf nicht benutzt werden.
+
+    Der Fake-Resolver liefert für den Hostnamen beim ersten Aufruf 127.0.0.1 und
+    beim zweiten 127.0.0.2 (DNS-Rebinding). Ein auf IP-Pinning ausgelegter Abruf
+    ignoriert den zweiten Wert.
+    """
+    bodies: dict[str, bytes] = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = bodies[self.server.server_address[0]]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args) -> None:
+            pass
+
+    servers = []
+    try:
+        for ip in ("127.0.0.1", "127.0.0.2"):
+            server = HTTPServer((ip, 0), Handler)
+            bodies[ip] = f"antwort-von-{ip}".encode("utf-8")
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            servers.append(server)
+    except OSError as exc:
+        pytest.skip(f"Loopback-Alias nicht verfügbar: {exc}")
+
+    first_port = servers[0].server_address[1]
+    calls = {"count": 0}
+
+    def resolver(host, port, type=0, *args, **kwargs):
+        calls["count"] += 1
+        if host in ("127.0.0.1", "127.0.0.2"):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (host, port))]
+        rebinding_ip = "127.0.0.1" if calls["count"] == 1 else "127.0.0.2"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (rebinding_ip, port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolver)
+    monkeypatch.setattr(web_research, "_normalize_public_url", lambda url: url)
+    monkeypatch.setattr(web_research, "_is_forbidden_ip", lambda ip: False)
+    fetcher = web_research.WebPageFetcher(timeout=5)
+    fetcher.resolver = resolver
+    try:
+        assert (
+            fetcher.fetch(f"http://rebind.test:{first_port}/seite")
+            == "antwort-von-127.0.0.1"
+        )
+    finally:
+        for server in servers:
+            server.shutdown()
+            server.server_close()

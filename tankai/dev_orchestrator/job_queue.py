@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import secrets
@@ -24,6 +25,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Sequence
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -127,6 +130,15 @@ class QueueModel(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
 
+class ExternalExecutionProfile(QueueModel):
+    """Vom Betreiber freigegebene Ausführungsidentität für externe Jobs."""
+
+    worker_agent_id: str = Field(min_length=1, max_length=120)
+    reviewer_agent_id: str = Field(min_length=1, max_length=120)
+    qa_agent_id: str = Field(min_length=1, max_length=120)
+    task_id: str = Field(min_length=1, max_length=120)
+
+
 class WorkspaceQueuePolicy(QueueModel):
     tenant_id: str = Field(min_length=1, max_length=120)
     workspace_id: str = Field(min_length=1, max_length=120)
@@ -141,6 +153,11 @@ class WorkspaceQueuePolicy(QueueModel):
     max_jobs_per_user_hour: int = Field(default=20, ge=1, le=1000)
     submit_roles: list[str] = Field(default_factory=lambda: ["owner", "admin"], min_length=1, max_length=3)
     allowed_images: list[str] = Field(min_length=1, max_length=64)
+    external_profile: ExternalExecutionProfile | None = None
+
+    @property
+    def external_execution_enabled(self) -> bool:
+        return self.external_profile is not None
 
     @field_validator("submit_roles")
     @classmethod
@@ -291,7 +308,7 @@ class _AdmissionPlan:
 
 
 class DevelopmentJobQueue:
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(
         self,
@@ -307,8 +324,8 @@ class DevelopmentJobQueue:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.path.parent, 0o700)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path.parent, exc)
         self.auth = auth_store
         self.repository_base = Path(repository_base).resolve()
         self.workspace_base = Path(workspace_base).resolve()
@@ -356,6 +373,7 @@ class DevelopmentJobQueue:
                     max_jobs_per_user_hour INTEGER NOT NULL,
                     submit_roles_json TEXT NOT NULL,
                     allowed_images_json TEXT NOT NULL,
+                    external_profile_json TEXT,
                     updated_by TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -421,7 +439,7 @@ class DevelopmentJobQueue:
                 );
                 CREATE INDEX IF NOT EXISTS idx_job_events_job_sequence
                     ON job_events(job_id, sequence);
-                INSERT OR REPLACE INTO queue_meta(key,value) VALUES('schema_version','3');
+                INSERT OR REPLACE INTO queue_meta(key,value) VALUES('schema_version','4');
                 COMMIT;
                 """
             )
@@ -435,6 +453,10 @@ class DevelopmentJobQueue:
                     conn.execute(
                         "ALTER TABLE queue_policies ADD COLUMN submit_roles_json TEXT NOT NULL "
                         "DEFAULT '[\"owner\",\"admin\"]'"
+                    )
+                if "external_profile_json" not in columns:
+                    conn.execute(
+                        "ALTER TABLE queue_policies ADD COLUMN external_profile_json TEXT"
                     )
                 job_columns = {
                     row["name"]
@@ -483,8 +505,8 @@ class DevelopmentJobQueue:
                 raise
         try:
             os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("chmod %s fehlgeschlagen: %s", self.path, exc)
 
     def _access(self, user_id: str, workspace_id: str) -> WorkspaceAccess:
         if self.auth is None:
@@ -517,8 +539,8 @@ class DevelopmentJobQueue:
                 INSERT INTO queue_policies(
                     workspace_id,tenant_id,enabled,max_queued,max_running,max_memory_mb,max_cpus,
                     max_pids,max_runtime_seconds,max_attempts,max_jobs_per_user_hour,
-                    submit_roles_json,allowed_images_json,updated_by,updated_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    submit_roles_json,allowed_images_json,external_profile_json,updated_by,updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(workspace_id) DO UPDATE SET
                     tenant_id=excluded.tenant_id,enabled=excluded.enabled,
                     max_queued=excluded.max_queued,max_running=excluded.max_running,
@@ -528,6 +550,7 @@ class DevelopmentJobQueue:
                     max_jobs_per_user_hour=excluded.max_jobs_per_user_hour,
                     submit_roles_json=excluded.submit_roles_json,
                     allowed_images_json=excluded.allowed_images_json,
+                    external_profile_json=excluded.external_profile_json,
                     updated_by=excluded.updated_by,updated_at=excluded.updated_at
                 """,
                 (
@@ -544,6 +567,11 @@ class DevelopmentJobQueue:
                     policy.max_jobs_per_user_hour,
                     _canonical_json(policy.submit_roles),
                     _canonical_json(policy.allowed_images),
+                    (
+                        _canonical_json(policy.external_profile.model_dump(mode="json"))
+                        if policy.external_profile is not None
+                        else None
+                    ),
                     actor_user_id,
                     now,
                 ),
@@ -570,6 +598,11 @@ class DevelopmentJobQueue:
             max_jobs_per_user_hour=row["max_jobs_per_user_hour"],
             submit_roles=json.loads(row["submit_roles_json"]),
             allowed_images=json.loads(row["allowed_images_json"]),
+            external_profile=(
+                ExternalExecutionProfile(**json.loads(row["external_profile_json"]))
+                if row["external_profile_json"]
+                else None
+            ),
         )
 
     def _resolve_operator_path(

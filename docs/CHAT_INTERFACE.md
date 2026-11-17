@@ -13,12 +13,15 @@ Die Oberfläche nutzt die bestehenden gleichursprünglichen Endpunkte:
 | Workspace wechseln | `/api/workspaces/select` |
 | Core- und Modellkonfiguration | `/api/health` |
 | Letzte 20 Aufgaben und Antworten | `/api/history` |
-| Neue Aufgabe bearbeiten | `/api/run` |
+| Direkte Live-Chatantwort (Standard) | `/api/chat` |
+| Mehrstufige Aufgabe mit Prüfung (optional) | `/api/run` |
 
 POST-Anfragen verwenden den CSRF-Token der Session. Workspace-Wechsel und
 Abmeldung verwerfen den sichtbaren Verlauf; verspätete Antworten einer alten
 Session werden nicht in die neue Ansicht übernommen. Texte aus dem Core werden
 als Text ausgegeben. Im Browser wird nur das Erscheinungsbild gespeichert.
+
+Standardmäßig sendet die Oberfläche eine Nachricht an das konfigurierte echte Hauptmodell. `/api/chat` führt genau einen Modellaufruf aus und kennzeichnet das Ergebnis als **nicht unabhängig geprüft**. Bei Mock-/Echo-Konfiguration verweigert der Endpunkt mit HTTP 503 die Antwort, statt eine Simulation als KI auszugeben. Session, CSRF, Workspace-Isolation, Provider-Limit und Verlauf werden weiterverwendet. Die Einstellungen erlauben alternativ den bestehenden mehrstufigen `/api/run`-Pfad. Ohne tatsächlich angeschlossenes Live-Modell funktioniert auch der neue Direktchat nicht.
 
 Jede Nachricht startet einen einzelnen Core-Run. Der Entwurf implementiert
 keine zusätzlichen mehrteiligen Chat-Sessions, Dateiuploads oder Sprachaufnahme.
