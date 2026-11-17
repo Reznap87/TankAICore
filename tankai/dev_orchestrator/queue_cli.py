@@ -15,6 +15,7 @@ from tankai.web.auth import AgentManagementActor, AuthStore
 from .bootstrap_readiness import evaluate_bootstrap_configuration
 from .job_queue import (
     DevelopmentJobQueue,
+    ExternalExecutionProfile,
     QueueError,
     QueuedWorkerDispatcher,
     WorkspaceQueuePolicy,
@@ -60,6 +61,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Standard: owner und admin",
     )
     policy.add_argument("--disabled", action="store_true")
+
+    profile = sub.add_parser(
+        "set-external-profile",
+        help="Legt die betreiberseitige Ausführungsidentität für externe Jobs fest",
+    )
+    profile.add_argument("--actor-email", required=True)
+    profile.add_argument("--workspace-id", required=True)
+    profile.add_argument("--worker-agent-id", required=True)
+    profile.add_argument("--reviewer-agent-id", required=True)
+    profile.add_argument("--qa-agent-id", required=True)
+    profile.add_argument("--task-id", required=True)
+
+    clear_profile = sub.add_parser(
+        "clear-external-profile", help="Entfernt das Ausführungsprofil wieder"
+    )
+    clear_profile.add_argument("--actor-email", required=True)
+    clear_profile.add_argument("--workspace-id", required=True)
 
     register = sub.add_parser("register-repository", help="Registriert operatorseitige Repository-Pfade")
     register.add_argument("--actor-email", required=True)
@@ -322,6 +340,27 @@ def main(argv: list[str] | None = None) -> int:
                     submit_roles=args.submit_role or ["owner", "admin"],
                     allowed_images=args.allowed_image,
                 ),
+            )
+            _dump(result)
+        elif args.command in {"set-external-profile", "clear-external-profile"}:
+            actor = _actor(queue, args.actor_email)
+            current = queue.get_policy(args.workspace_id)
+            if current is None:
+                raise PermissionError("Keine Queue-Richtlinie für diesen Workspace")
+            profile = (
+                ExternalExecutionProfile(
+                    worker_agent_id=args.worker_agent_id,
+                    reviewer_agent_id=args.reviewer_agent_id,
+                    qa_agent_id=args.qa_agent_id,
+                    task_id=args.task_id,
+                )
+                if args.command == "set-external-profile"
+                else None
+            )
+            result = queue.set_policy(
+                actor_user_id=actor,
+                workspace_id=args.workspace_id,
+                policy=current.model_copy(update={"external_profile": profile}),
             )
             _dump(result)
         elif args.command == "register-repository":

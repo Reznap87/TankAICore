@@ -17,6 +17,7 @@ from tankai.dev_orchestrator.queue_cli import main as queue_cli_main
 from tankai.dev_orchestrator.job_queue import (
     AdmissionDenied,
     DevelopmentJobQueue,
+    ExternalExecutionProfile,
     JobState,
     LeaseError,
     QueueError,
@@ -1649,3 +1650,139 @@ def test_queue_cli_container_reaper_defaults_to_dry_run(queue_env, capsys) -> No
     ]
     assert queue_cli_main(args) == 0
     assert json.loads(capsys.readouterr().out) == []
+
+
+def test_external_execution_profile_persists_and_can_be_cleared(tmp_path) -> None:
+    auth = AuthStore(tmp_path / "auth.db")
+    owner, tenant, workspace = auth.create_user_with_tenant(
+        email="profile-owner@example.com",
+        password="Profile-password-123",
+        display_name="Profile Owner",
+        tenant_name="Profile Tenant",
+    )
+    queue = DevelopmentJobQueue(
+        tmp_path / "queue.db",
+        auth_store=auth,
+        repository_base=tmp_path / "repositories",
+        workspace_base=tmp_path / "worktrees",
+        state_base=tmp_path / "states",
+    )
+    base = WorkspaceQueuePolicy(
+        tenant_id=tenant, workspace_id=workspace, allowed_images=[IMAGE]
+    )
+    assert base.external_profile is None
+    assert base.external_execution_enabled is False
+
+    with_profile = base.model_copy(
+        update={
+            "external_profile": ExternalExecutionProfile(
+                worker_agent_id="AGENT_WORKER_01",
+                reviewer_agent_id="AGENT_REVIEWER_01",
+                qa_agent_id="AGENT_QA_01",
+                task_id="TASK_EXTERNAL_01",
+            )
+        }
+    )
+    queue.set_policy(
+        actor_user_id=owner, workspace_id=workspace, policy=with_profile
+    )
+    stored = queue.get_policy(workspace)
+    assert stored is not None
+    assert stored.external_execution_enabled is True
+    assert stored.external_profile is not None
+    assert stored.external_profile.worker_agent_id == "AGENT_WORKER_01"
+    assert stored.external_profile.task_id == "TASK_EXTERNAL_01"
+
+    queue.set_policy(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        policy=stored.model_copy(update={"external_profile": None}),
+    )
+    cleared = queue.get_policy(workspace)
+    assert cleared is not None
+    assert cleared.external_profile is None
+    assert cleared.external_execution_enabled is False
+
+
+def test_external_execution_profile_migrates_from_schema_three(tmp_path) -> None:
+    auth = AuthStore(tmp_path / "auth.db")
+    owner, tenant, workspace = auth.create_user_with_tenant(
+        email="migration-owner@example.com",
+        password="Migration-password-123",
+        display_name="Migration Owner",
+        tenant_name="Migration Tenant",
+    )
+    queue = DevelopmentJobQueue(
+        tmp_path / "queue.db",
+        auth_store=auth,
+        repository_base=tmp_path / "repositories",
+        workspace_base=tmp_path / "worktrees",
+        state_base=tmp_path / "states",
+    )
+    queue.set_policy(
+        actor_user_id=owner,
+        workspace_id=workspace,
+        policy=WorkspaceQueuePolicy(
+            tenant_id=tenant, workspace_id=workspace, allowed_images=[IMAGE]
+        ),
+    )
+    with sqlite3.connect(queue.path) as conn:
+        conn.execute("ALTER TABLE queue_policies DROP COLUMN external_profile_json")
+
+    reopened = DevelopmentJobQueue(
+        tmp_path / "queue.db",
+        auth_store=auth,
+        repository_base=tmp_path / "repositories",
+        workspace_base=tmp_path / "worktrees",
+        state_base=tmp_path / "states",
+    )
+    migrated = reopened.get_policy(workspace)
+    assert migrated is not None
+    assert migrated.external_profile is None
+    assert reopened.SCHEMA_VERSION == 4
+
+
+def test_queue_cli_sets_and_clears_external_execution_profile(tmp_path, capsys) -> None:
+    auth_db = tmp_path / "auth.db"
+    auth = AuthStore(auth_db)
+    _owner, _tenant, workspace = auth.create_user_with_tenant(
+        email="profile-cli@example.com",
+        password="Profile-cli-password-123",
+        display_name="Profile CLI",
+        tenant_name="Profile CLI Tenant",
+    )
+    common = [
+        "--queue-db", str(tmp_path / "queue.db"),
+        "--auth-db", str(auth_db),
+        "--repository-base", str(tmp_path / "repositories"),
+        "--workspace-base", str(tmp_path / "worktrees"),
+        "--state-base", str(tmp_path / "states"),
+    ]
+    assert queue_cli_main(common + [
+        "set-policy",
+        "--actor-email", "profile-cli@example.com",
+        "--workspace-id", workspace,
+        "--allowed-image", IMAGE,
+    ]) == 0
+    capsys.readouterr()
+
+    assert queue_cli_main(common + [
+        "set-external-profile",
+        "--actor-email", "profile-cli@example.com",
+        "--workspace-id", workspace,
+        "--worker-agent-id", "AGENT_WORKER_01",
+        "--reviewer-agent-id", "AGENT_REVIEWER_01",
+        "--qa-agent-id", "AGENT_QA_01",
+        "--task-id", "TASK_EXTERNAL_01",
+    ]) == 0
+    stored = json.loads(capsys.readouterr().out)
+    assert stored["external_profile"]["worker_agent_id"] == "AGENT_WORKER_01"
+    assert stored["external_profile"]["task_id"] == "TASK_EXTERNAL_01"
+
+    assert queue_cli_main(common + [
+        "clear-external-profile",
+        "--actor-email", "profile-cli@example.com",
+        "--workspace-id", workspace,
+    ]) == 0
+    cleared = json.loads(capsys.readouterr().out)
+    assert cleared["external_profile"] is None
