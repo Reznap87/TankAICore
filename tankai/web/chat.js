@@ -7,13 +7,14 @@
   let currentUser = null;
   let epoch = 0;
   let busy = false;
+  let registering = false;
   let historyItems = [];
   let selectedResult = null;
   let selectedIndex = -1;
   let theme = 'dark';
   let toastTimer;
   try { const stored = localStorage.getItem('tankai.ui.theme'); if (['dark', 'light', 'system'].includes(stored)) theme = stored; }
-  catch (error) { console.info('TankAI: appearance preference is unavailable.'); }
+  catch (error) { console.info('Theme unavailable.'); }
   function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = String(text); return node; }
   function icon(name) { const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); node.setAttribute('aria-hidden', 'true'); const use = document.createElementNS(node.namespaceURI, 'use'); use.setAttribute('href', '#i-' + name); node.append(use); return node; }
   function toast(message) { clearTimeout(toastTimer); byId('toast').textContent = message; byId('toast').hidden = false; toastTimer = setTimeout(() => { byId('toast').hidden = true; }, 6000); }
@@ -28,67 +29,55 @@
     return data;
   }
   function resetResult() {
-    selectedResult = null; selectedIndex = -1;
-    ['questionRow', 'outCard', 'planCard', 'receiptCard'].forEach(id => { byId(id).hidden = true; });
-    ['question', 'answer', 'badges', 'planBody', 'receiptBody', 'rationale'].forEach(id => byId(id).replaceChildren());
-    byId('export-chat').disabled = true;
-    byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true;
-    byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI';
-    document.title = 'TankAI – Dein Chat';
+    selectedResult = null; selectedIndex = -1; ['questionRow', 'outCard', 'planCard', 'receiptCard'].forEach(id => { byId(id).hidden = true; }); ['question', 'answer', 'badges', 'planBody', 'receiptBody', 'rationale'].forEach(id => byId(id).replaceChildren()); byId('export-chat').disabled = true;
+    byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
   }
   function resetWorkspace() {
-    historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren();
-    byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = '';
-    byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft';
-    resetResult(); renderHistory();
+    historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = '';
+    byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
   }
   function showLogin() {
-    epoch += 1; csrf = ''; currentUser = null; busy = false;
-    resetWorkspace(); byId('workspace').replaceChildren(); byId('profile-name').textContent = 'Dein Konto'; byId('profile-workspace').textContent = 'Geschützter Arbeitsraum';
-    document.querySelectorAll('dialog[open]').forEach(d => d.close());
-    byId('appView').hidden = true; byId('loginView').hidden = false; sidebar(false); setBusy(false);
+    epoch += 1; csrf = ''; currentUser = null; busy = false; setRegistration(false); resetWorkspace(); byId('workspace').replaceChildren(); byId('profile-name').textContent = 'Dein Konto'; byId('profile-workspace').textContent = 'Geschützter Arbeitsraum';
+    document.querySelectorAll('dialog[open]').forEach(d => d.close()); byId('appView').hidden = true; byId('loginView').hidden = false; sidebar(false); setBusy(false);
   }
+  function sessionOk(data){return data.user?.email&&data.csrf_token?.trim?.()&&data.workspace?.id}
   function showApp(data) {
-    epoch += 1; currentUser = data; csrf = String(data.csrf_token || ''); resetWorkspace();
-    byId('loginView').hidden = true; byId('appView').hidden = false;
-    byId('profile-name').textContent = data.user?.display_name || data.user?.email || 'Dein Konto';
-    byId('profile-workspace').textContent = data.workspace?.name || 'Dein Workspace';
-    const select = byId('workspace'); select.replaceChildren();
-    (data.workspaces || []).forEach(w => { const option = element('option', '', w.name + ' (' + w.role + ')'); option.value = w.id; option.selected = w.id === data.workspace?.id; select.append(option); });
-    setBusy(false); syncSidebar();
+    epoch += 1; currentUser = data; csrf = String(data.csrf_token || ''); resetWorkspace(); byId('loginView').hidden = true; byId('appView').hidden = false; byId('profile-name').textContent = data.user?.display_name || data.user?.email || 'Dein Konto'; byId('profile-workspace').textContent = data.workspace?.name || 'Dein Workspace';
+    const select = byId('workspace'); select.replaceChildren(); (data.workspaces || []).forEach(w => { const option = element('option', '', w.name + ' (' + w.role + ')'); option.value = w.id; option.selected = w.id === data.workspace?.id; select.append(option); }); setBusy(false); syncSidebar();
   }
   function setBusy(value) {
-    busy = value; byId('goal').disabled = value;
-    ['new-chat', 'workspace'].forEach(id => { byId(id).disabled = value; });
-    document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; });
-    byId('runBtn').disabled = value || !byId('goal').value.trim();
-    byId('composer').setAttribute('aria-busy', String(value));
+    busy = value; byId('goal').disabled = value; ['new-chat', 'workspace'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
   }
   async function refreshHealth() {
-    const requestEpoch = epoch;
+    const e=epoch;
     try {
-      const data = await jsonFetch('/api/health'); if (requestEpoch !== epoch) return;
-      byId('login-health').textContent = data.ok ? 'TankAI-Core erreichbar' : 'Core nicht erreichbar';
-      if (!currentUser) return;
-      const mode = data.execution_mode || 'unknown';
-      const label = mode === 'live' ? 'Core verbunden' : mode === 'simulation' ? 'Simulation' : mode === 'mixed' ? 'Teilweise Simulation' : 'Modellstatus unbekannt';
-      byId('health').textContent = label; byId('connection-info').dataset.mode = mode;
-      byId('model-label').textContent = data.direct_chat_available ? 'Live-Chat · ' + String(data.llm || 'KI-Modell') : 'Kein Live-Modell verbunden';
-      byId('sysInfo').textContent = 'Hauptmodell: ' + (data.llm || 'unbekannt') + '\nPrüfmodell: ' + (data.critic_llm || 'unbekannt') + '\nUnabhängige Prüfung: ' + (data.critic_independent ? 'Ja' : 'Nein') + '\nRecherche: ' + (data.web_research || 'disabled') + '\nModus: ' + mode + '\nVersion: ' + String(data.version || '');
-    } catch (error) { if (requestEpoch !== epoch) return; byId('login-health').textContent = 'Core momentan nicht erreichbar'; if (currentUser) { byId('health').textContent = 'Verbindung unterbrochen'; byId('connection-info').dataset.mode = 'offline'; byId('model-label').textContent = 'Core momentan nicht erreichbar'; } }
+      const data=await jsonFetch('/api/health'); if(e!==epoch)return;
+      byId('login-health').textContent=data.ok?'TankAI-Core erreichbar':'Core nicht erreichbar';
+      byId('registration-toggle').hidden=data.registration_enabled!==true;
+      if(data.registration_enabled!==true&&registering)setRegistration(false);
+      if(!currentUser)return;
+      if(data.user!==currentUser.user.email||data.workspace_id!==currentUser.workspace.id)throw 0;
+      const m=String(data.llm||'').trim(),mode=data.execution_mode==='live'&&!m?'unknown':data.execution_mode||'unknown';
+      const label=mode==='live'?'Core verbunden':mode==='simulation'?'Simulation':mode==='mixed'?'Teilweise Simulation':'Modellstatus unbekannt';
+      byId('health').textContent=label;byId('connection-info').dataset.mode=mode;
+      byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat · '+m:'Kein Live-Modell verbunden';
+      byId('sysInfo').textContent='Hauptmodell: '+(m||'unbekannt')+'\nPrüfmodell: '+(data.critic_llm||'unbekannt')+'\nUnabhängige Prüfung: '+(data.critic_independent?'Ja':'Nein')+'\nRecherche: '+(data.web_research||'disabled')+'\nModus: '+mode+'\nVersion: '+String(data.version||'');
+    }catch(error){if(e!==epoch)return;byId('login-health').textContent='Core momentan nicht erreichbar';if(currentUser){byId('health').textContent='Verbindung unterbrochen';byId('connection-info').dataset.mode='offline';byId('model-label').textContent='Core momentan nicht erreichbar';}}
   }
   async function loadMe() {
     const requestEpoch = epoch;
-    try { const data = await jsonFetch('/api/auth/me'); if (requestEpoch !== epoch) return; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); }
-    catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('loginStatus').textContent = String(error.message || error); }
+    try { const data = await jsonFetch('/api/auth/me'); if (requestEpoch !== epoch) return; if(!sessionOk(data)){showLogin();byId('loginStatus').textContent='Anmeldenachweis fehlt';return} showApp(data); await Promise.all([refreshHealth(), loadHistory()]); }
+    catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) { showLogin(); await refreshHealth(); } else byId('loginStatus').textContent = String(error.message || error); }
   }
   async function login(event) {
-    event.preventDefault(); const btn = byId('loginBtn'); btn.disabled = true; const requestEpoch = epoch;
-    const email = byId('email').value.trim(); const password = byId('password').value;
-    byId('loginStatus').textContent = 'Anmeldung wird geprüft …';
-    try { const data = await jsonFetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (requestEpoch !== epoch) return; byId('password').value = ''; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); byId('loginStatus').textContent = ''; }
-    catch (error) { if (requestEpoch === epoch) byId('loginStatus').textContent = String(error.message || error); }
-    finally { btn.disabled = false; }
+    event.preventDefault();const btn=byId('loginBtn'),toggle=byId('registration-toggle');if(btn.disabled)return;btn.disabled=true;toggle.disabled=true;const requestEpoch=epoch,isRegistration=registering,email=byId('email').value.trim(),password=byId('password').value;byId('loginStatus').textContent=isRegistration?'Konto wird erstellt …':'Anmeldung wird geprüft …';const payload=isRegistration?{email,password,display_name:byId('display-name').value.trim(),tenant_name:byId('tenant-name').value.trim()}:{email,password};
+    try{const data=await jsonFetch(isRegistration?'/api/auth/register':'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(requestEpoch!==epoch)return;if(data.user?.email!==email.toLowerCase()||!sessionOk(data))throw new Error('Anmeldenachweis fehlt');byId('password').value='';showApp(data);await Promise.all([refreshHealth(),loadHistory()]);byId('loginStatus').textContent='';}
+    catch(error){if(requestEpoch===epoch)byId('loginStatus').textContent=String(error.message||error);}
+    finally{btn.disabled=false;toggle.disabled=false;}
+  }
+  function setRegistration(value) {
+    registering = value; byId('registration-fields').hidden = !value; byId('registration-toggle').setAttribute('aria-expanded', String(value)); byId('login-intro').textContent = value ? 'Erstelle dein TankAI-Konto und deinen Arbeitsraum.' : 'Melde dich mit deinem TankAI-Konto an.'; byId('display-name').required = value; byId('tenant-name').required = value;
+    byId('password').minLength = value ? 12 : 0; byId('password').autocomplete = value ? 'new-password' : 'current-password'; byId('loginBtn').textContent = value ? 'Konto erstellen' : 'Anmelden'; byId('registration-toggle').textContent = value ? 'Bereits ein Konto? Anmelden' : 'Konto erstellen'; byId('loginStatus').textContent = '';
   }
   async function logout() {
     const requestEpoch = epoch;
@@ -97,8 +86,8 @@
   }
   async function selectWorkspace() {
     if (busy || !currentUser) return;
-    const requestEpoch = epoch; const oldId = currentUser.workspace.id; byId('workspace').disabled = true;
-    try { const data = await jsonFetch('/api/workspaces/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspace_id: byId('workspace').value }) }); if (requestEpoch !== epoch) return; showApp(data); await Promise.all([refreshHealth(), loadHistory()]); }
+    const requestEpoch=epoch,oldId=currentUser.workspace.id,mail=currentUser.user.email,w=byId('workspace').value;byId('workspace').disabled=true;
+    try{const data=await jsonFetch('/api/workspaces/select',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspace_id:w})});if(requestEpoch!==epoch)return;if(!sessionOk(data)||data.user.email!==mail||data.workspace.id!==w)throw new Error('Workspace-Nachweis fehlt');showApp(data);await Promise.all([refreshHealth(),loadHistory()])}
     catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else { byId('workspace').value = oldId; toast('Workspace konnte nicht gewechselt werden: ' + String(error.message || error)); } }
     finally { if (currentUser && !busy) byId('workspace').disabled = false; }
   }
@@ -108,10 +97,11 @@
     historyItems.forEach((item, index) => { const button = element('button', 'history-item' + (index === selectedIndex ? ' active' : ''), String(item.goal || 'Ohne Titel').slice(0, 65)); button.type = 'button'; button.disabled = busy; if (index === selectedIndex) button.setAttribute('aria-current', 'page'); button.addEventListener('click', () => { selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
   }
   function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
+  function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
   async function loadHistory() {
-    const requestEpoch = epoch;
-    try { const data = await jsonFetch('/api/history'); if (requestEpoch !== epoch) return; historyItems = Array.isArray(data) ? data : []; selectedIndex = selectedResult ? historyItems.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; renderHistory(); }
-    catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); }
+    const e = epoch;
+    try { const data = await jsonFetch('/api/history'); if (e !== epoch) return; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; renderHistory(); }
+    catch (error) { if (e !== epoch) return; if (error.status === 401) showLogin(); else { historyItems = []; selectedIndex = -1; byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); } }
   }
   function textCell(value) { return element('td', '', value ?? ''); }
   function badge(value, className) { return element('span', 'badge ' + className, value); }
@@ -119,8 +109,12 @@
     selectedResult = data; byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
     byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
     byId('outCard').hidden = false; byId('answer').textContent = String(data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
-    const badges = byId('badges'); badges.replaceChildren(); const simulated = data.status === 'simulated' || data.execution_mode === 'simulation'; const direct = data.answer_mode === 'direct';
-    badges.append(badge(simulated ? 'Simulation · keine verifizierte KI-Antwort' : direct ? 'KI-Antwort · ungeprüft' : data.release_ready ? 'Prüfung bestanden' : 'Nicht freigegeben', simulated || direct ? 'b-warn' : data.release_ready ? 'b-ok' : 'b-warn'));
+    const badges = byId('badges'); badges.replaceChildren(); const mode = String(data.execution_mode || 'unknown').toLowerCase(); const simulated = data.status === 'simulated' || mode === 'simulation' || mode === 'mixed'; const direct = data.answer_mode === 'direct'; const criticUsed = !direct && data.critic_used !== false;
+    const resultLabel = mode === 'mixed' ? 'Teilweise Simulation · keine verifizierte Live-Antwort' : simulated ? 'Simulation · keine verifizierte KI-Antwort' : mode !== 'live' ? 'Ausführungsmodus nicht belegt' : direct ? 'KI-Antwort · ungeprüft' : data.release_ready ? 'Prüfung bestanden' : 'Nicht freigegeben';
+    badges.append(badge(resultLabel, mode === 'live' && !direct && data.release_ready ? 'b-ok' : 'b-warn'));
+    badges.append(badge('Hauptmodell: ' + String(data.main_llm || 'nicht belegt'), data.main_llm ? 'b-info' : 'b-warn'));
+    badges.append(badge(criticUsed ? 'Prüfmodell: ' + String(data.critic_llm || 'nicht belegt') : 'Prüfmodell: nicht verwendet', criticUsed && data.critic_llm ? 'b-info' : 'b-warn'));
+    badges.append(badge(!criticUsed ? 'Keine unabhängige Prüfung' : data.critic_independent === true ? 'Prüfmodell unabhängig' : data.critic_independent === false ? 'Prüfmodell nicht unabhängig' : 'Prüfmodell-Unabhängigkeit nicht belegt', criticUsed && data.critic_independent === true ? 'b-ok' : 'b-warn'));
     badges.append(badge(String(data.duration_seconds ?? 0) + ' s', 'b-info'));
     const steps = data.plan?.steps; const planBody = byId('planBody'); planBody.replaceChildren(); byId('planCard').hidden = !Array.isArray(steps) || !steps.length;
     byId('rationale').textContent = String(data.plan?.rationale || '');
@@ -139,6 +133,8 @@
     try {
       const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal }) });
       if (requestEpoch !== epoch) return;
+      if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
+      if(!advanced&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
       if (!data.goal) data.goal = goal; renderResult(data); byId('goal').value = '';
       byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.answer_mode === 'direct' ? 'Live-Antwort erhalten · nicht unabhängig geprüft.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
       await loadHistory();
@@ -155,8 +151,8 @@
     if (!matches.length) { root.append(element('div', 'no-results', historyItems.length ? 'Keine passenden Gespräche gefunden.' : 'Noch keine Gespräche in diesem Workspace.')); return; }
     matches.forEach(({ item, index }) => { const button = element('button', 'search-result'); button.type = 'button'; button.disabled = busy; button.append(icon('chat')); const text = element('div'); text.append(element('strong', '', String(item.goal || 'Ohne Titel').slice(0, 90)), element('p', '', String(item.final_answer || '').slice(0, 120))); button.append(text); button.addEventListener('click', () => { byId('search-dialog').close(); selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
   }
-  function exportChat() { if (!selectedResult) return; const data = selectedResult; const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nStatus: ' + String(data.status || 'unbekannt') + '\nFreigegeben: ' + (data.release_ready ? 'Ja' : 'Nein') + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
-  byId('login-form').addEventListener('submit', login); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
+  function exportChat() { if (!selectedResult) return; const data = selectedResult; const criticUsed = data.answer_mode !== 'direct' && data.critic_used !== false; const critic = criticUsed ? String(data.critic_llm || 'nicht belegt') : 'nicht verwendet'; const independence = criticUsed ? (data.critic_independent === true ? 'Ja' : data.critic_independent === false ? 'Nein' : 'Nicht belegt') : 'Nicht geprüft'; const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nHauptmodell: ' + String(data.main_llm || 'nicht belegt') + '\nPrüfmodell: ' + critic + '\nPrüfmodell unabhängig: ' + independence + '\nStatus: ' + String(data.status || 'unbekannt') + '\nFreigegeben: ' + (data.release_ready ? 'Ja' : 'Nein') + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
+  byId('login-form').addEventListener('submit', login); byId('registration-toggle').addEventListener('click', () => setRegistration(!registering)); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
   byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
   byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });
   byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEventListener('click', exportChat);

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1b1d1b">
-<meta name="description" content="Dein TankAI-Chat mit geschütztem Workspace und serverseitigem Verlauf.">
+<meta name="description" content="TankAI-Chat mit Workspace und Verlauf.">
 <title>TankAI – Dein Chat</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="/favicon.png" sizes="256x256">
@@ -34,10 +34,16 @@
 <main id="loginView" class="login-view">
   <form id="login-form" class="login-card">
     <a href="/" class="brand"><img src="/favicon.png" width="42" height="42" alt=""><span>Tank<span class="brand-ai">AI</span></span></a>
-    <h1>Dein Arbeitsraum.</h1><p>Melde dich mit deinem TankAI-Konto an.</p>
+    <h1>Dein Arbeitsraum.</h1><p id="login-intro">Melde dich mit deinem TankAI-Konto an.</p>
     <label for="email">E-Mail</label><input id="email" name="email" type="email" autocomplete="username" maxlength="254" required>
     <label for="password">Passwort</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+    <div id="registration-fields" hidden>
+      <label for="display-name">Dein Name</label><input id="display-name" name="display_name" autocomplete="name" maxlength="100">
+      <label for="tenant-name">Name deines Arbeitsraums</label><input id="tenant-name" name="tenant_name" maxlength="100">
+      <p>Mindestens 12 Zeichen.</p>
+    </div>
     <button class="primary-button" id="loginBtn" type="submit">Anmelden</button>
+    <button id="registration-toggle" class="registration-toggle" type="button" aria-controls="registration-fields" aria-expanded="false" hidden>Konto erstellen</button>
     <p id="loginStatus" role="status" aria-live="polite"></p><div id="login-health" class="muted">Core wird geprüft …</div>
   </form>
 </main>
@@ -54,25 +60,25 @@
 <main class="main" id="main">
   <header class="topbar"><div class="topbar-left"><button type="button" class="icon-button" id="open-sidebar" aria-label="Seitenleiste öffnen" aria-expanded="false" aria-controls="sidebar"><svg><use href="#i-panel"/></svg></button><span class="topbar-title" id="topbar-title">TankAI</span></div><div class="topbar-right"><button type="button" class="connection-badge" id="connection-info" data-mode="unknown"><span></span><span id="health">Core wird geprüft</span></button><button type="button" class="icon-button" id="export-chat" aria-label="Gespräch exportieren" title="Gespräch exportieren" disabled><svg><use href="#i-download"/></svg></button></div></header>
   <div class="workspace">
-    <section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-mark"><img src="/favicon.png" width="46" height="46" alt=""></div><div class="eyebrow">DEINE IDEEN. DEIN TEMPO.</div><h1 id="welcome-title">Was hast du vor?</h1><p>Frag TankAI oder beschreibe deine nächste Aufgabe.</p></section>
+    <section class="welcome" id="welcome" aria-labelledby="welcome-title"><div class="welcome-mark"><img src="/favicon.png" width="46" height="46" alt=""></div><div class="eyebrow">DEINE IDEEN. DEIN TEMPO.</div><h1 id="welcome-title">Was hast du vor?</h1><p>Frag TankAI oder beschreibe deine Aufgabe.</p></section>
     <section class="messages" id="messages" aria-label="Frage und Ergebnis" hidden>
       <div class="message" id="questionRow" hidden><div class="message-bubble" id="question"></div></div>
       <article class="answer-card" id="outCard" hidden><div class="answer-heading"><img src="/favicon.png" width="28" height="28" alt=""><strong>TankAI</strong></div><div class="answer-content" id="answer"></div><div class="badges" id="badges"></div></article>
       <details class="result-detail" id="planCard" hidden><summary>Plan ansehen</summary><p class="muted" id="rationale"></p><div class="table-scroll"><table><thead><tr><th>#</th><th>Bereich</th><th>Schritt</th><th>Status</th></tr></thead><tbody id="planBody"></tbody></table></div></details>
       <details class="result-detail" id="receiptCard" hidden><summary>Ausführung ansehen</summary><div class="table-scroll"><table><thead><tr><th>Bereich</th><th>Aktion</th><th>Erfolg</th><th>Ergebnis</th></tr></thead><tbody id="receiptBody"></tbody></table></div></details>
     </section>
-    <div class="composer-area"><form class="composer" id="composer"><label class="sr-only" for="goal">Nachricht an TankAI</label><textarea id="goal" name="message" placeholder="Frag TankAI oder beschreibe deine Aufgabe …" rows="2" maxlength="20000" required></textarea><div class="composer-toolbar"><div class="composer-tools"><button type="button" class="icon-button muted" id="task-options" aria-label="Aufgabeneinstellungen" title="Aufgabeneinstellungen"><svg><use href="#i-settings"/></svg></button><span class="model-label" id="model-label">Verbindung wird geprüft</span></div><button class="send-button" type="submit" id="runBtn" aria-label="An TankAI senden" disabled><svg><use href="#i-arrow"/></svg></button></div></form><div class="composer-footer"><span id="status" role="status" aria-live="polite">Ergebnisse werden im aktiven Workspace gespeichert.</span><span class="enter-hint">↵ Senden · Shift + ↵ Neue Zeile</span></div></div>
+    <div class="composer-area"><form class="composer" id="composer"><label class="sr-only" for="goal">Nachricht an TankAI</label><textarea id="goal" name="message" placeholder="Frag TankAI oder beschreibe deine Aufgabe …" rows="2" maxlength="20000" required></textarea><div class="composer-toolbar"><div class="composer-tools"><button type="button" class="icon-button muted" id="task-options" aria-label="Aufgabeneinstellungen" title="Aufgabeneinstellungen"><svg><use href="#i-settings"/></svg></button><span class="model-label" id="model-label">Verbindung wird geprüft</span></div><button class="send-button" type="submit" id="runBtn" aria-label="An TankAI senden" disabled><svg><use href="#i-arrow"/></svg></button></div></form><div class="composer-footer"><span id="status" role="status" aria-live="polite">Ergebnisse bleiben im Workspace.</span><span class="enter-hint">↵ Senden · Shift + ↵ Neue Zeile</span></div></div>
     <div class="suggestions" id="suggestions" aria-label="Vorschläge"><button type="button" data-prompt="Hilf mir, einen Text zu schreiben. Es geht um: "><svg><use href="#i-write"/></svg><span>Text schreiben</span></button><button type="button" data-prompt="Prüfe diese Idee und schlage die nächsten Schritte vor: "><svg><use href="#i-spark"/></svg><span>Idee ausarbeiten</span></button><button type="button" data-prompt="Erstelle einen konkreten Plan für: "><svg><use href="#i-plan"/></svg><span>Etwas planen</span></button><button type="button" data-prompt="Erkläre mir diesen Code Schritt für Schritt: "><svg><use href="#i-code"/></svg><span>Code verstehen</span></button></div>
-  </div><footer class="app-footer"><span>TankAI</span><span>Dein Core. Dein Workspace.</span></footer>
+  </div><footer class="app-footer"><span>TankAI</span><span>Dein Core.</span></footer>
 </main>
 </div>
-<dialog id="search-dialog" class="search-dialog"><div class="dialog-search"><svg><use href="#i-search"/></svg><label for="search-input" class="sr-only">Verlauf durchsuchen</label><input id="search-input" placeholder="Letzte 20 Aufgaben durchsuchen …" autocomplete="off"><button type="button" class="icon-button" data-close="search-dialog" aria-label="Suche schließen"><svg><use href="#i-x"/></svg></button></div><div class="search-results" id="search-results"></div><div class="dialog-footnote">Suche in den letzten 20 Aufgaben deines aktiven Workspace</div></dialog>
+<dialog id="search-dialog" class="search-dialog"><div class="dialog-search"><svg><use href="#i-search"/></svg><label for="search-input" class="sr-only">Verlauf durchsuchen</label><input id="search-input" placeholder="20 Aufgaben durchsuchen …" autocomplete="off"><button type="button" class="icon-button" data-close="search-dialog" aria-label="Suche schließen"><svg><use href="#i-x"/></svg></button></div><div class="search-results" id="search-results"></div><div class="dialog-footnote">Suche in den letzten 20 Aufgaben</div></dialog>
 <dialog id="settings-dialog" class="settings-dialog"><div class="dialog-heading"><h2>Dein Arbeitsraum</h2><button type="button" class="icon-button" data-close="settings-dialog" aria-label="Einstellungen schließen"><svg><use href="#i-x"/></svg></button></div><div class="settings-content">
 <div class="setting"><div><strong>Erscheinungsbild</strong><p>So, wie es für dich passt.</p></div><label class="sr-only" for="theme">Erscheinungsbild wählen</label><select id="theme"><option value="dark">Dunkel</option><option value="light">Hell</option><option value="system">Wie das Gerät</option></select></div>
 <div class="settings-section"><label for="workspace">Workspace</label><select id="workspace"></select></div>
-<div class="settings-section"><label class="parallel-label"><input type="checkbox" id="advanced"> Mehrstufige Agentenprüfung statt direktem Chat</label><label for="dod">Wann ist die Aufgabe erledigt?</label><input id="dod" maxlength="5000" value="Eine klare, überprüfbare Antwort liegt vor."><label class="parallel-label"><input type="checkbox" id="parallel"> Teilaufgaben parallel bearbeiten</label></div>
-<div class="settings-section"><h3>Verbindung</h3><pre id="sysInfo">Core wird geprüft …</pre><p>Der Status zeigt, welchen Modus dein Core meldet. Simulationen und ungeprüfte Ergebnisse sind gekennzeichnet.</p></div>
-<div class="settings-section"><h3>Deine Daten</h3><p>Aufgaben und Antworten kommen aus deinem angemeldeten TankAI-Workspace. Der Browser speichert nur deine Einstellung für das Erscheinungsbild.</p><p>Jede Nachricht startet eine eigene Aufgabe im Core. Der Verlauf zeigt die letzten 20 Aufgaben.</p></div>
+<div class="settings-section"><label class="parallel-label"><input type="checkbox" id="advanced"> Agentenprüfung statt Direktchat</label><label for="dod">Wann ist die Aufgabe erledigt?</label><input id="dod" maxlength="5000" value="Klare, prüfbare Antwort."><label class="parallel-label"><input type="checkbox" id="parallel"> Teilaufgaben parallel bearbeiten</label></div>
+<div class="settings-section"><h3>Verbindung</h3><pre id="sysInfo">Core wird geprüft …</pre><p>Der Status zeigt den Core-Modus. Simulationen und ungeprüfte Ergebnisse sind markiert.</p></div>
+<div class="settings-section"><h3>Deine Daten</h3><p>Aufgaben und Antworten bleiben im aktiven TankAI-Workspace. Der Browser speichert nur das Erscheinungsbild.</p><p>Jede Nachricht ist eine Core-Aufgabe. Der Verlauf zeigt die letzten 20.</p></div>
 <button type="button" class="secondary-button" id="logoutBtn">Abmelden</button></div></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script nonce="__CSP_NONCE__">__CHAT_SCRIPT__</script>
