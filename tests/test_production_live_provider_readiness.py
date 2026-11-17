@@ -111,7 +111,7 @@ def test_readiness_fails_closed_for_mock_only_container(tmp_path: Path) -> None:
     assert _check(result, "runtime_budget_contract")["status"] == "FAIL"
 
 
-def test_fully_wired_explicit_independent_target_can_be_ready(tmp_path: Path) -> None:
+def test_wired_target_and_secret_names_do_not_prove_operational_readiness(tmp_path: Path) -> None:
     _fixture(tmp_path, wired=True)
     result = evaluate(
         tmp_path,
@@ -122,8 +122,13 @@ def test_fully_wired_explicit_independent_target_can_be_ready(tmp_path: Path) ->
         search_provider="brave",
         present_secrets={"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "BRAVE_SEARCH_API_KEY"},
     )
-    assert result["overall"] == "READY"
-    assert all(item["status"] == "PASS" for item in result["checks"])
+    assert result["overall"] == "UNKNOWN"
+    assert _check(result, "shared_monetary_admission_evidence")["status"] == "UNKNOWN"
+    assert _check(result, "coordinated_recovery_evidence")["status"] == "UNKNOWN"
+    operational = {"shared_monetary_admission_evidence", "coordinated_recovery_evidence"}
+    assert all(item["status"] == "PASS" for item in result["checks"] if item["name"] not in operational)
+    assert result["production_authorization"] is False
+    assert result["gate_scope"] == "source_and_presence_metadata_only"
 
 
 def test_same_provider_family_is_not_independent(tmp_path: Path) -> None:
@@ -167,3 +172,30 @@ def test_repository_run_without_target_selection_is_unknown_only_for_target_meta
     assert result["overall"] == "UNKNOWN"
     assert _check(result, "target_provider_policy")["status"] == "UNKNOWN"
     assert _check(result, "required_secret_presence")["status"] == "UNKNOWN"
+
+
+def test_environment_claims_cannot_override_missing_operational_evidence(tmp_path: Path, monkeypatch) -> None:
+    _fixture(tmp_path, wired=True)
+    for name in ("TANKAI_BUDGET_VERIFIED", "TANKAI_RESTORE_VERIFIED", "TANKAI_PRODUCTION_READY"):
+        monkeypatch.setenv(name, "1")
+    result = evaluate(tmp_path, main_provider="openai", main_model="main-model",
+                      critic_provider="anthropic", critic_model="critic-model",
+                      search_provider="brave",
+                      present_secrets={"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "BRAVE_SEARCH_API_KEY"})
+    assert result["overall"] == "UNKNOWN"
+    assert result["production_authorization"] is False
+
+
+def test_cli_blocks_wired_target_without_operational_evidence(tmp_path: Path) -> None:
+    import json
+    import subprocess
+    _fixture(tmp_path, wired=True)
+    output = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path),
+        "--main-provider", "openai", "--main-model", "main-model",
+        "--critic-provider", "anthropic", "--critic-model", "critic-model",
+        "--search-provider", "brave", "--present-secret", "OPENAI_API_KEY",
+        "--present-secret", "ANTHROPIC_API_KEY", "--present-secret", "BRAVE_SEARCH_API_KEY"],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert output.returncode == 2
+    result = json.loads(output.stdout)
+    assert result["overall"] == "UNKNOWN" and result["production_authorization"] is False
