@@ -2,6 +2,14 @@
 
 Diese Anleitung beschreibt TankAI Core 1.10.0 hinter einem HTTPS-Reverse-Proxy auf einem Linux-Server sowie den getrennten manuellen Cloudflare-Produktionspfad. Die seit 1.4 vorhandenen externen monotonen Lease-Fences und das mechanische Rootless-Runtime-Gate für Development-Worker bleiben verbindlich. Der öffentliche Webdienst und der privilegierte Runner müssen getrennte Prozesse und getrennte Dienstkonten bleiben; deshalb bleibt `production_ready=false`.
 
+> **Zwei Betriebsvarianten.** Abschnitt 2–7 beschreibt den eigenständigen
+> systemd-Betrieb (Account `tankai`, `/opt/tankai`). Abschnitt 8 beschreibt den
+> Container-Betrieb. Der tatsächlich betriebene Single-Host-Betrieb läuft als
+> **Container mit Budget-Cutover** (Candidate bauen → Preflight → umbuchen →
+> verifizieren); dessen Ablauf, Gates und Nachweise stehen in
+> [`docs/PRODUCTION_REDEPLOY_RUNBOOK.md`](docs/PRODUCTION_REDEPLOY_RUNBOOK.md).
+> Ein Redeploy ist dort **kein** `docker compose up -d`.
+
 ## 1. Voraussetzungen
 
 - Linux-Server
