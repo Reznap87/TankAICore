@@ -19,18 +19,72 @@ Die Oberfläche nutzt die bestehenden gleichursprünglichen Endpunkte:
 POST-Anfragen verwenden den CSRF-Token der Session. Workspace-Wechsel und
 Abmeldung verwerfen den sichtbaren Verlauf; verspätete Antworten einer alten
 Session werden nicht in die neue Ansicht übernommen. Texte aus dem Core werden
-als Text ausgegeben. Im Browser wird nur das Erscheinungsbild gespeichert.
+als Text ausgegeben. Eine neue Chat- oder Run-Antwort wird nur dargestellt, wenn
+ihre `workspace_id` exakt zum aktiven angemeldeten Workspace passt; fehlende oder
+abweichende Workspace-Herkunft wird fail-closed als Fehler angezeigt. Im Browser
+wird nur das Erscheinungsbild gespeichert. Auch der vom Server geladene Verlauf
+wird vollständig verworfen, sobald ein Eintrag keine exakt passende
+`workspace_id` trägt; solche Einträge gelangen damit weder in die Seitenleiste
+noch in Suche oder Ergebnisansicht.
+
+Nach Login oder Registrierung öffnet die Oberfläche den Arbeitsbereich nur,
+wenn die E-Mail im Auth-Nachweis der kanonischen Browser-Eingabe entspricht.
+Für ASCII-Adressen wird die bereits getrimmte Eingabe dazu kleingeschrieben,
+passend zur vorhandenen Normalisierung im Backend. Request-Payload und empfangene
+E-Mail werden dabei nicht verändert; der Nachweis muss weiterhin exakt die
+erwartete kanonische Adresse enthalten. Ein formal erfolgreicher Nachweis für
+ein anderes Konto bleibt in der Anmeldeansicht und wird als Identitätsfehler
+angezeigt. Dasselbe gilt für einen Auth-Nachweis ohne nichtleeren
+`csrf_token` oder ohne aktive `workspace.id`: Die App öffnet erst, wenn die
+folgende schreibende Chataktion an die belegte Sitzung und den belegten
+Arbeitsraum gebunden werden kann. Dieselbe Strukturprüfung gilt beim
+automatischen Wiederherstellen einer bestehenden Sitzung über `/api/auth/me`;
+ein unvollständiger Restore-Receipt bleibt in der Anmeldeansicht.
+
+Ein Workspace-Wechsel übernimmt den neuen Sitzungsnachweis nur, wenn dessen aktive
+`workspace.id` exakt der angeforderten Auswahl entspricht und die Konto-E-Mail
+unverändert bleibt. Ein Receipt für einen anderen Workspace oder ein anderes Konto
+lässt den bisherigen Arbeitsraum aktiv und zeigt einen Fehler.
+
+Das Browserfeld verwendet die native Prüfung von `type=email`. Der Frontend-
+Vergleich implementiert kein allgemeines Unicode-Casefolding des Backends.
+Im geprüften Edge werden beispielsweise `Straße@example.invalid` und
+`a@straße.invalid` bereits vom E-Mail-Feld als ungültig abgewiesen. Ein
+allgemeiner Unicode-Adressabgleich ist mit diesem Test nicht nachgewiesen.
 
 Standardmäßig sendet die Oberfläche eine Nachricht an das konfigurierte echte Hauptmodell. `/api/chat` führt genau einen Modellaufruf aus und kennzeichnet das Ergebnis als **nicht unabhängig geprüft**. Bei Mock-/Echo-Konfiguration verweigert der Endpunkt mit HTTP 503 die Antwort, statt eine Simulation als KI auszugeben. Session, CSRF, Workspace-Isolation, Provider-Limit und Verlauf werden weiterverwendet. Die Einstellungen erlauben alternativ den bestehenden mehrstufigen `/api/run`-Pfad. Ohne tatsächlich angeschlossenes Live-Modell funktioniert auch der neue Direktchat nicht.
+
+Eine neue direkte Antwort wird außerdem nur gerendert, wenn ihr eigener Payload
+eine nicht leere Hauptmodellidentität in `main_llm` und einen nicht leeren
+Antworttext in `final_answer` enthält. Fehlt einer dieser per-Run-Nachweise,
+bleibt die Antwortkarte verborgen und die Oberfläche meldet den Fehler; die
+globale Health-Anzeige kann ihn nicht ersetzen. Damit wird eine formal
+erfolgreiche HTTP-Antwort ohne benutzbare Modellantwort nicht als Live-Erfolg
+dargestellt.
 
 Jede Nachricht startet einen einzelnen Core-Run. Der Entwurf implementiert
 keine zusätzlichen mehrteiligen Chat-Sessions, Dateiuploads oder Sprachaufnahme.
 Die Suche umfasst die letzten 20 Aufgaben des aktiven Workspace. Der Export
-enthält das ausgewählte Ergebnis und dessen Prüfstatus.
+enthält das ausgewählte Ergebnis, dessen Ausführungsmodus sowie die vom jeweiligen
+Run gemeldete Identität des Hauptmodells und eines tatsächlich verwendeten
+Prüfmodells. Der direkte Chat kennzeichnet das Prüfmodell ausdrücklich als
+`nicht verwendet` und behauptet keine Critic-Unabhängigkeit, weil dieser Pfad nur
+das Hauptmodell aufruft. Fehlende Herkunftsdaten eines geprüften Runs werden als
+`nicht belegt` angezeigt; insbesondere gilt die Health-Anzeige nicht als Nachweis
+dafür, welches Modell eine einzelne Antwort erzeugt hat. Gemischte Ausführung wird
+ausdrücklich als nicht verifizierte Live-Antwort markiert.
 
-`Core verbunden` bestätigt eine erfolgreiche Health-Antwort mit dem vom Core
-gemeldeten Live-Modus. Es ersetzt keinen erfolgreichen Modellaufruf.
-Simulationen, gemischte Ausführung und fehlende Freigabe sind gesondert markiert.
+`Core verbunden` bestätigt eine erfolgreiche Health-Antwort nur dann, wenn der
+Core zugleich den Live-Modus und eine nicht leere Hauptmodellidentität meldet.
+Bei angemeldeten Konten muss der Health-Nachweis außerdem exakt die E-Mail des
+aktiven Kontos und die unveränderliche `workspace_id` des aktiven Workspace tragen;
+ein bloß gleicher Workspace-Name genügt nicht. Ein Nachweis für ein anderes Konto
+oder einen anderen Workspace wird fail-closed als unterbrochene Verbindung
+angezeigt und kann deshalb keinen fremden Live-Status übernehmen.
+Ein formal live wirkender Health-Payload ohne `llm` bleibt bei
+`Modellstatus unbekannt` und zeigt keinen Live-Chat an. Diese Anzeige ersetzt
+weiterhin keinen erfolgreichen Modellaufruf. Simulationen, gemischte Ausführung
+und fehlende Freigabe sind gesondert markiert.
 
 Die dauerhafte Aufbewahrung von Konten und Verlauf hängt weiterhin vom
 konfigurierten Server-Speicher ab; diese Änderung ergänzt keinen persistenten
