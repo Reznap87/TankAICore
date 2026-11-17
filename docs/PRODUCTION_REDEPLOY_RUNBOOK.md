@@ -112,12 +112,16 @@ Reihenfolge: `stage` → `preflight` → `prepare` → `launch` → `final_verif
       `TANKAI_REQUIRE_INDEPENDENT_CRITIC=0`. Ohne Critic gilt
       `verification_ready=false` — bewusst, solange kein zweiter Anbieter bzw.
       zweites Modell hinterlegt ist.
-- [ ] RAM des Hosts liegt unter der in `host_readiness` dokumentierten
-      Mindestanforderung — vom Betrieb akzeptiert, aber nicht dokumentiert.
-- [ ] `DEPLOY.md` beschreibt systemd, real läuft Docker: Doku an den Betrieb
-      anpassen (oder Betrieb auf die Doku verlegen).
-- [ ] Alt-Volumes und gestoppte Core-Container bleiben nach jedem Umbuch liegen;
-      Bereinigung noch nicht automatisiert.
+- [x] RAM des Hosts (3809 MiB) liegt unter der in `host_readiness` dokumentierten
+      Mindestanforderung (8192 MiB). **Betriebsentscheidung 2026-11-17: akzeptiert** —
+      der Dienst läuft im Single-Host-Betrieb stabil; das Readiness-Gate gilt für
+      Neuinstallationen, nicht für diesen Host.
+- [x] `DEPLOY.md` hatte systemd und Docker ohne Zuordnung beschrieben; mit
+      #116 sind die beiden Betriebsvarianten benannt und auf dieses Runbook
+      verwiesen.
+- [x] Alt-Volumes und gestoppte Core-Container bleiben nach jedem Umbuch liegen.
+      Bereinigung über `prune_budget_volumes.py` (Dry-run standardmäßig, `--apply`
+      zur Löschung; Volumes mit Container-Bezug werden nie angefasst).
 
 ## 8. Definition of Done
 
