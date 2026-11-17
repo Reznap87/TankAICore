@@ -5,3 +5,8 @@ pytest>=8,<10
 # Offline transport-boundary tests; no provider credentials or inference calls.
 openai==3.37.0
 anthropic==2.3.0
+# Direkt importiert von tankai/core/llm.py und tankai/core/response_limits.py.
+# Ohne diesen Pin waere httpx2 nur transitiv ueber openai==3.37.0 abgedeckt;
+# ohne die direkte Deklaration bleiben die Transport-Tests in einer sauberen
+# Umgebung unsammelbar.
+httpx2==2.16.0
