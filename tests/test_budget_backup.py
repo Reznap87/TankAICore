@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from tankai.core import budget_backup as backup
+from tankai.core import monetary_budget as monetary
 from tankai.core.monetary_budget import BudgetDenied, MonetaryBudget
 from test_budget_snapshots import budget, no_network
 from test_monetary_budget import Clock, OWNER, begin, reserve
@@ -190,6 +191,167 @@ def test_success_receipts_require_durable_directory_entries(
             encrypted, tmp_path / "restored.sqlite", key, **options(budget, receipt)
         )
     assert True in observed
+
+
+def test_identical_replacement_of_created_ciphertext_is_rejected(tmp_path, budget, monkeypatch):
+    target = tmp_path / "replaceable.enc"
+    created = tmp_path / "exclusively-created.enc"
+    real_sync = backup._sync_directory
+    replaced = False
+
+    def replace_after_sync(parent):
+        nonlocal replaced
+        real_sync(parent)
+        if not replaced and target.exists():
+            replaced = True
+            target.rename(created)
+            target.write_bytes(created.read_bytes())
+
+    monkeypatch.setattr(backup, "_sync_directory", replace_after_sync)
+    with pytest.raises(backup.BudgetBackupError, match="persisted encrypted backup was replaced"):
+        backup.create_backup(budget, target, secrets.token_bytes(32))
+    assert target.read_bytes() == created.read_bytes()
+
+
+def test_in_place_mutated_restored_database_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch,
+):
+    path, key, receipt, _ = saved
+    budget.close_job("job", owner_id=OWNER)
+    altered_snapshot = budget.export_snapshot()
+    target = tmp_path / "mutated-restore.sqlite"
+    real_sync = monetary._sync_directory
+    mutated = False
+
+    def mutate_after_directory_sync(parent):
+        nonlocal mutated
+        real_sync(parent)
+        if not mutated and target.exists():
+            mutated = True
+            with target.open("r+b") as output:
+                output.write(altered_snapshot)
+                output.truncate()
+                output.flush()
+                os.fsync(output.fileno())
+
+    monkeypatch.setattr(monetary, "_sync_directory", mutate_after_directory_sync)
+    with pytest.raises(backup.BudgetBackupError, match="restore failed closed"):
+        backup.restore_backup(source=path, destination=target, key=key, **options(budget, receipt))
+    assert target.read_bytes() == altered_snapshot
+
+
+def test_identical_replacement_after_restore_close_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch,
+):
+    path, key, receipt, _ = saved
+    target = tmp_path / "closed-restore.sqlite"
+    created = tmp_path / "exclusively-created-restore.sqlite"
+    real_close = MonetaryBudget.close
+    replaced = False
+
+    def replace_after_close(self):
+        nonlocal replaced
+        real_close(self)
+        if not replaced and self.path == target.absolute():
+            replaced = True
+            target.rename(created)
+            target.write_bytes(created.read_bytes())
+
+    monkeypatch.setattr(MonetaryBudget, "close", replace_after_close)
+    with pytest.raises(backup.BudgetBackupError, match="restore failed closed"):
+        backup.restore_backup(
+            source=path, destination=target, key=key, **options(budget, receipt)
+        )
+    assert replaced
+    assert target.read_bytes() == created.read_bytes()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory-symlink contract")
+def test_destination_directory_symlink_after_restore_close_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch,
+):
+    path, key, receipt, _ = saved
+    parent = tmp_path / "restore-parent"
+    preserved = tmp_path / "original-restore-parent"
+    parent.mkdir()
+    target = parent / "restored.sqlite"
+    real_close = MonetaryBudget.close
+    replaced = False
+
+    def replace_parent_after_close(self):
+        nonlocal replaced
+        real_close(self)
+        if not replaced and self.path == target.absolute():
+            replaced = True
+            parent.rename(preserved)
+            parent.symlink_to(preserved, target_is_directory=True)
+
+    monkeypatch.setattr(MonetaryBudget, "close", replace_parent_after_close)
+    with pytest.raises(backup.BudgetBackupError, match="destination directory changed"):
+        backup.restore_backup(
+            source=path, destination=target, key=key, **options(budget, receipt)
+        )
+
+    assert replaced
+    assert parent.is_symlink()
+    assert target.read_bytes() == (preserved / target.name).read_bytes()
+
+
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_sidecar_created_during_restore_close_blocks_success(
+    tmp_path, budget, saved, monkeypatch, suffix,
+):
+    path, key, receipt, _ = saved
+    target = tmp_path / "sidecar-restore.sqlite"
+    sidecar = Path(str(target) + suffix)
+    real_close = MonetaryBudget.close
+    created = False
+
+    def close_with_sidecar(self):
+        nonlocal created
+        real_close(self)
+        if not created and self.path == target.absolute():
+            created = True
+            sidecar.write_bytes(b"synthetic untrusted SQLite companion")
+
+    monkeypatch.setattr(MonetaryBudget, "close", close_with_sidecar)
+    with pytest.raises(backup.BudgetBackupError, match="restore failed closed"):
+        backup.restore_backup(
+            source=path, destination=target, key=key, **options(budget, receipt)
+        )
+
+    assert created
+    assert sidecar.read_bytes() == b"synthetic untrusted SQLite companion"
+
+
+@pytest.mark.parametrize("operation", ["verify", "restore"])
+def test_source_replacement_after_decode_cannot_receive_success(
+    tmp_path, budget, saved, monkeypatch, operation,
+):
+    path, key, receipt, _ = saved
+    preserved = tmp_path / "decoded-source.enc"
+    target = tmp_path / "source-bound-restore.sqlite"
+    original_decode = backup._decode
+    replaced = False
+
+    def replace_after_decode(*args, **kwargs):
+        nonlocal replaced
+        result = original_decode(*args, **kwargs)
+        if not replaced:
+            replaced = True
+            path.rename(preserved)
+            path.write_bytes(preserved.read_bytes())
+        return result
+
+    monkeypatch.setattr(backup, "_decode", replace_after_decode)
+    with pytest.raises(backup.BudgetBackupError, match="changed before receipt"):
+        if operation == "verify":
+            backup.verify_backup(path, key, **options(budget, receipt))
+        else:
+            backup.restore_backup(path, target, key, **options(budget, receipt))
+
+    assert replaced
+    assert path.read_bytes() == preserved.read_bytes()
 
 
 def test_persisted_ciphertext_is_checked_after_writing(tmp_path, budget, monkeypatch):
