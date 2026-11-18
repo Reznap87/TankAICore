@@ -883,6 +883,14 @@ class Handler(BaseHTTPRequestHandler):
                         critic_sim = bool(tank.critic_llm.is_simulation)
                         mode = "simulation" if main_sim and critic_sim else "mixed" if (main_sim or critic_sim) else "live"
                         web_status = tank.tools.web_research_status()
+                        direct_chat_ready = False
+                        if not main_sim and self.app.owner_pilot is not None:
+                            try:
+                                self.app.owner_pilot.authorize(context, self.app.auth)
+                            except (OwnerPilotForbidden, DispatchDenied):
+                                pass
+                            else:
+                                direct_chat_ready = True
                         payload.update({
                             "user": context.email,
                             "workspace": context.workspace_name,
@@ -893,7 +901,7 @@ class Handler(BaseHTTPRequestHandler):
                             "web_research": web_status,
                             "execution_mode": mode,
                             "live_provider": mode == "live",
-                            "direct_chat_available": not main_sim,
+                            "direct_chat_available": direct_chat_ready,
                             "verification_ready": (mode == "live" and self.app.owner_pilot is not None
                                                    and tank.critic_independent and web_status != "disabled"),
                             "tenant_isolation": True,
@@ -2077,6 +2085,20 @@ class Handler(BaseHTTPRequestHandler):
         if not message or len(message) > 20_000:
             self._json({"error": "Nachricht fehlt oder ist zu lang"}, 400)
             return
+        pilot = self.app.owner_pilot
+        if pilot is not None:
+            try:
+                pilot.authorize(context, self.app.auth)
+            except OwnerPilotForbidden:
+                self.app.auth.audit(
+                    "chat", user_id=context.user_id, workspace_id=context.workspace_id,
+                    success=False, details='{"reason":"owner_pilot_forbidden"}',
+                )
+                self._json({"error": "Besitzerpilot ist für diesen Zugang nicht freigegeben"}, 403)
+                return
+            except DispatchDenied:
+                self._json({"error": "Sichere Pilotfreigabe ist derzeit nicht möglich"}, 503)
+                return
         try:
             with self.app.runtimes.acquire(
                 tenant_id=context.tenant_id, workspace_id=context.workspace_id
@@ -2088,25 +2110,36 @@ class Handler(BaseHTTPRequestHandler):
                         503,
                     )
                     return
-                tank.llm_call_budget.reset()
-                tank.llm_call_budget.set_call_guard(
-                    lambda identity: self.app.provider_limiter.consume(
-                        context.user_id, identity
+                if pilot is None:
+                    self.app.auth.audit(
+                        "chat", user_id=context.user_id, workspace_id=context.workspace_id,
+                        success=False, details='{"reason":"monetary_admission_required"}',
                     )
-                )
+                    self._json({
+                        "error": "Reale Modellaufrufe benötigen eine geprüfte gemeinsame Geldfreigabe",
+                        "error_code": "monetary_admission_required",
+                    }, 503)
+                    return
+                tank.llm_call_budget.reset()
+                def admit_provider_call(identity: str) -> None:
+                    pilot.authorize(context, self.app.auth)
+                    self.app.provider_limiter.consume(context.user_id, identity)
+
+                tank.llm_call_budget.set_call_guard(admit_provider_call)
                 started = time.monotonic()
                 try:
-                    answer = tank.llm.complete(
-                        message,
-                        system=(
-                            "Du bist TankAI, ein hilfreicher KI-Assistent. "
-                            "Antworte klar, direkt und in der Sprache des Nutzers. "
-                            "Dieser direkte Chatmodus hat keine Websuche, keine Tools "
-                            "und keine unabhängige Faktenprüfung. "
-                            "Behaupte keine ausgeführten Aktionen oder geprüften "
-                            "aktuellen Quellen. Kennzeichne Unsicherheit."
-                        ),
-                    )
+                    with pilot.scope(context, self.app.auth, tank) as pilot_job_id:
+                        answer = tank.llm.complete(
+                            message,
+                            system=(
+                                "Du bist TankAI, ein hilfreicher KI-Assistent. "
+                                "Antworte klar, direkt und in der Sprache des Nutzers. "
+                                "Dieser direkte Chatmodus hat keine Websuche, keine Tools "
+                                "und keine unabhängige Faktenprüfung. "
+                                "Behaupte keine ausgeführten Aktionen oder geprüften "
+                                "aktuellen Quellen. Kennzeichne Unsicherheit."
+                            ),
+                        )
                 finally:
                     tank.llm_call_budget.set_call_guard(None)
                 if not isinstance(answer, str) or not answer.strip():
@@ -2139,6 +2172,7 @@ class Handler(BaseHTTPRequestHandler):
                     "source_ids": [],
                     "source_urls": [],
                 }
+                payload["monetary_admission"] = pilot.status(pilot_job_id)
                 runtime.history.append(payload)
             self.app.auth.audit(
                 "chat", user_id=context.user_id,
@@ -2146,6 +2180,24 @@ class Handler(BaseHTTPRequestHandler):
                 details=json.dumps({"run_id": payload["run_id"], "mode": "direct"}),
             )
             self._json(payload)
+        except OwnerPilotForbidden:
+            self.app.auth.audit(
+                "chat", user_id=context.user_id, workspace_id=context.workspace_id,
+                success=False, details='{"reason":"owner_pilot_membership_changed"}',
+            )
+            self._json({"error": "Besitzerberechtigung ist nicht mehr gültig"}, 403)
+        except BudgetDenied:
+            self.app.auth.audit(
+                "chat", user_id=context.user_id, workspace_id=context.workspace_id,
+                success=False, details='{"reason":"owner_pilot_budget_denied"}',
+            )
+            self._json({"error": "Der Pilot ist durch seine Geld-, Auftrags- oder Zeitgrenze gesperrt"}, 429)
+        except (BudgetStateError, DispatchDenied, PricingError):
+            self.app.auth.audit(
+                "chat", user_id=context.user_id, workspace_id=context.workspace_id,
+                success=False, details='{"reason":"owner_pilot_admission_unavailable"}',
+            )
+            self._json({"error": "Sichere Pilotfreigabe ist derzeit nicht möglich"}, 503)
         except LLMRateLimitExceeded as exc:
             self._json(
                 {
