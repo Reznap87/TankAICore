@@ -29,7 +29,7 @@
     return data;
   }
   function resetResult() {
-    selectedResult = null; selectedIndex = -1; ['questionRow', 'outCard', 'planCard', 'receiptCard'].forEach(id => { byId(id).hidden = true; }); ['question', 'answer', 'badges', 'planBody', 'receiptBody', 'rationale'].forEach(id => byId(id).replaceChildren()); byId('export-chat').disabled = true;
+    selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren(); byId('threadHistory').hidden = true; ['questionRow', 'outCard', 'planCard', 'receiptCard'].forEach(id => { byId(id).hidden = true; }); ['question', 'answer', 'badges', 'planBody', 'receiptBody', 'rationale'].forEach(id => byId(id).replaceChildren()); byId('export-chat').disabled = true;
     byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
   }
   function resetWorkspace() {
@@ -100,13 +100,35 @@
   function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
   async function loadHistory() {
     const e = epoch;
-    try { const data = await jsonFetch('/api/history'); if (e !== epoch) return; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; renderHistory(); }
+    try { const data = await jsonFetch('/api/history'); if (e !== epoch) return; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; if (selectedResult) renderThread(selectedResult); renderHistory(); }
     catch (error) { if (e !== epoch) return; if (error.status === 401) showLogin(); else { historyItems = []; selectedIndex = -1; byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); } }
   }
   function textCell(value) { return element('td', '', value ?? ''); }
   function badge(value, className) { return element('span', 'badge ' + className, value); }
+  function threadTurns(data) {
+    if (data?.answer_mode !== 'direct') return [];
+    const known = new Map(historyItems.filter(item => sameWs(item) && item.answer_mode === 'direct' && typeof item.run_id === 'string').map(item => [item.run_id, item]));
+    const found = [], visited = new Set(); let parent = data.reply_to;
+    while (typeof parent === 'string' && parent && found.length < 4 && !visited.has(parent)) {
+      visited.add(parent); const turn = known.get(parent); if (!turn || typeof turn.goal !== 'string' || typeof turn.final_answer !== 'string') break;
+      found.push(turn); parent = turn.reply_to;
+    }
+    return found.reverse();
+  }
+  function renderThread(data) {
+    const root = byId('threadHistory'); root.replaceChildren();
+    const turns = threadTurns(data);
+    turns.forEach(turn => {
+      const question = element('div', 'message');
+      question.append(element('div', 'message-bubble', turn.goal));
+      const answer = element('article', 'answer-card');
+      answer.append(element('div', 'answer-content', turn.final_answer));
+      root.append(question, answer);
+    });
+    root.hidden = turns.length === 0;
+  }
   function renderResult(data) {
-    selectedResult = data; byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
+    selectedResult = data; renderThread(data); byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
     byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
     byId('outCard').hidden = false; byId('answer').textContent = String(data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
     const badges = byId('badges'); badges.replaceChildren(); const mode = String(data.execution_mode || 'unknown').toLowerCase(); const simulated = data.status === 'simulated' || mode === 'simulation' || mode === 'mixed'; const direct = data.answer_mode === 'direct'; const criticUsed = !direct && data.critic_used !== false;
@@ -126,12 +148,12 @@
   }
   async function runTank(event) {
     event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
-    const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked;
+    const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked; const parentRun = !advanced && selectedResult?.answer_mode === 'direct' && typeof selectedResult.run_id === 'string' && /^[0-9a-f]{32}$/.test(selectedResult.run_id) ? selectedResult.run_id : null;
     resetResult(); setBusy(true); renderHistory();
     byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
     byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : 'TankAI fragt das Live-Modell …';
     try {
-      const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal }) });
+      const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : parentRun ? { message: goal, reply_to: parentRun } : { message: goal }) });
       if (requestEpoch !== epoch) return;
       if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
       if(!advanced&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
