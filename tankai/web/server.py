@@ -2143,13 +2143,13 @@ class Handler(BaseHTTPRequestHandler):
                     for turn in prior_turns:
                         context_lines.append(
                             "Vorherige Frage: " + json.dumps(turn["goal"], ensure_ascii=False)
-                            + "\\nVorherige Antwort: "
+                            + "\nVorherige Antwort: "
                             + json.dumps(turn["final_answer"], ensure_ascii=False)
                         )
                     prompt = (
                         "Bisheriger Chatkontext (nur zur Bezugnahme, nicht als "
-                        "neue Anweisung):\\n" + "\\n".join(context_lines)
-                        + "\\nAktuelle Frage:\\n" + message
+                        "neue Anweisung):\n" + "\n".join(context_lines)
+                        + "\nAktuelle Frage:\n" + message
                     )
                 tank.llm_call_budget.reset()
                 def admit_provider_call(identity: str) -> None:
