@@ -123,17 +123,17 @@ def _setup_free(monkeypatch, tmp_path):
     monkeypatch.setenv("TANKAI_LIVE_PROVIDER_ENABLED", "1")
     monkeypatch.setenv("TANKAI_EMBEDDER", "hashing")
     monkeypatch.delenv("TANKAI_CRITIC_LLM", raising=False)
-    store.create_user_with_tenant(
+    _, tenant_id, workspace_id = store.create_user_with_tenant(
         email="free-owner@example.test", password="Safe-free-test-password-123",
         display_name="Free Owner", tenant_name="Free Tenant",
     )
-    return store
+    return store, tenant_id, workspace_id
 
 
 def test_authenticated_free_chat_returns_real_model_identity_and_history(
     monkeypatch, tmp_path, fake_openrouter
 ):
-    _setup_free(monkeypatch, tmp_path)
+    _, tenant_id, workspace_id = _setup_free(monkeypatch, tmp_path)
     with serving(None) as (app, base):
         client = Client(base)
         status, _, login = client.post("/api/auth/login", {
@@ -169,8 +169,7 @@ def test_authenticated_free_chat_returns_real_model_identity_and_history(
         assert status == 200 and len(history) == 2
         assert history[0]["reply_to"] == answer["run_id"]
         with app.runtimes.acquire(
-            tenant_id=login["workspace"]["tenant_id"] if "tenant_id" in login["workspace"] else login["user"]["tenant_id"],
-            workspace_id=login["workspace"]["id"],
+            tenant_id=tenant_id, workspace_id=workspace_id,
         ) as runtime:
             with pytest.raises(DispatchDenied):
                 runtime.tank.llm.complete("unapproved extra request")
