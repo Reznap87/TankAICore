@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tankai import __version__
-from tankai.core.llm import LLMRateLimitExceeded
+from tankai.core.llm import LLMRateLimitExceeded, OpenRouterFreeLLM, openrouter_free_scope
 from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.core.request_pricing import PricingError
@@ -240,6 +240,10 @@ class LoginRateLimiter:
             self._blocked_until.pop(key, None)
 
 
+class FreeRouterForbidden(PermissionError):
+    """Session is not allowed to use the owner's free-only API key."""
+
+
 @dataclass
 class AppContext:
     auth_mode: str
@@ -255,12 +259,42 @@ class AppContext:
     provider_limiter: ProviderCallRateLimiter
     auth_state: AuthState | None = None
     owner_pilot: OwnerPilot | None = None
+    free_route_enabled: bool = False
 
     def __post_init__(self) -> None:
         if self.owner_pilot is not None and (
                 type(self.owner_pilot) is not OwnerPilot or self.auth_mode != "session"
                 or self.job_queue is not None or not self.runtimes.require_request_admission):
             raise RuntimeError("Besitzerpilot benötigt Session-Anmeldung und geschützte Laufzeiten")
+        if self.free_route_enabled and (self.auth_mode != "session" or self.owner_pilot is not None):
+            raise RuntimeError("OpenRouter-Free benötigt Session-Anmeldung und getrennte Free-Admission")
+
+    def authorize_openrouter_free(self, context: AuthContext) -> None:
+        if not self.free_route_enabled or context.role != "owner":
+            raise FreeRouterForbidden("OpenRouter-Free ist nur für den Workspace-Eigentümer freigegeben")
+        current = self.auth.resolve_session_by_id(context.session_id)
+        if current is None or (current.user_id, current.tenant_id, current.workspace_id, current.role) != (
+                context.user_id, context.tenant_id, context.workspace_id, context.role):
+            raise FreeRouterForbidden("Anmeldung ist nicht mehr gültig")
+        workspace = self.auth.workspace_access(context.user_id, context.workspace_id)
+        if workspace is None or workspace.tenant_id != context.tenant_id or workspace.role != "owner":
+            raise FreeRouterForbidden("Workspace-Berechtigung ist nicht mehr gültig")
+
+    def consume_openrouter_free_quota(self) -> None:
+        """Durable shared-key 20/minute and conservative 50/day limits."""
+        for provider, limit, seconds in (
+            ("openrouter_free_minute", 20, 60),
+            ("openrouter_free_daily", 50, 86_400),
+        ):
+            retry = self.auth.consume_provider_call_event(
+                user_id="openrouter-free-shared-key", provider=provider,
+                limit=limit, window_seconds=seconds,
+            )
+            if retry is not None:
+                raise LLMRateLimitExceeded(
+                    provider="openrouter_free", limit=limit,
+                    window_seconds=seconds, retry_after_seconds=retry,
+                )
 
     @classmethod
     def from_env(cls, server_host: str, *, owner_pilot: OwnerPilot | None = None) -> "AppContext":
@@ -274,6 +308,12 @@ class AppContext:
             raise RuntimeError("Besitzerpilot benötigt geprüfte Konfiguration und Session-Anmeldung")
         if owner_pilot is not None and _env_bool("TANKAI_DEV_QUEUE_ENABLED", False):
             raise RuntimeError("Besitzerpilot erlaubt keine parallele Development-Queue")
+        free_route_enabled = (
+            _env_bool("TANKAI_OPENROUTER_FREE_ENABLED", False)
+            and _env_bool("TANKAI_LIVE_PROVIDER_ENABLED", False)
+        )
+        if free_route_enabled and (mode != "session" or owner_pilot is not None):
+            raise RuntimeError("OpenRouter-Free darf nicht ohne Session oder mit Geldpilot laufen")
         data_root = Path(_env("TANKAI_DATA_ROOT", ".tankai/data")).resolve()
         auth_db = Path(_env("TANKAI_AUTH_DB", str(data_root / "auth.db"))).resolve()
         cookie_secure = _env_bool("TANKAI_COOKIE_SECURE", not is_loopback)
@@ -312,6 +352,7 @@ class AppContext:
             auth=auth,
             runtimes=WorkspaceRuntimeManager(data_root, require_request_admission=owner_pilot is not None),
             owner_pilot=owner_pilot,
+            free_route_enabled=free_route_enabled,
             job_queue=job_queue,
             cookie_secure=cookie_secure,
             hsts_seconds=_safe_int(
@@ -872,8 +913,9 @@ class Handler(BaseHTTPRequestHandler):
                 "registration_enabled": self.app.allow_registration,
                 "production_ready": False,
                 "development_queue_enabled": self.app.job_queue is not None,
-                "live_model_requests_require_budget": True,
+                "live_model_requests_require_budget": not self.app.free_route_enabled,
                 "monetary_admission_configured": self.app.owner_pilot is not None,
+                "free_route_admission_configured": self.app.free_route_enabled,
             }
             if context is not None:
                 try:
@@ -888,6 +930,13 @@ class Handler(BaseHTTPRequestHandler):
                             try:
                                 self.app.owner_pilot.authorize(context, self.app.auth)
                             except (OwnerPilotForbidden, DispatchDenied):
+                                pass
+                            else:
+                                direct_chat_ready = True
+                        elif not main_sim and self.app.free_route_enabled and type(tank.llm.delegate) is OpenRouterFreeLLM:
+                            try:
+                                self.app.authorize_openrouter_free(context)
+                            except FreeRouterForbidden:
                                 pass
                             else:
                                 direct_chat_ready = True
