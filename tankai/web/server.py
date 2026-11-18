@@ -2155,6 +2155,12 @@ class Handler(BaseHTTPRequestHandler):
             except DispatchDenied:
                 self._json({"error": "Sichere Pilotfreigabe ist derzeit nicht möglich"}, 503)
                 return
+        if pilot is None and self.app.free_route_enabled:
+            try:
+                self.app.authorize_openrouter_free(context)
+            except FreeRouterForbidden:
+                self._json({"error": "OpenRouter-Free ist für diesen Zugang nicht freigegeben"}, 403)
+                return
         try:
             with self.app.runtimes.acquire(
                 tenant_id=context.tenant_id, workspace_id=context.workspace_id
@@ -2166,7 +2172,11 @@ class Handler(BaseHTTPRequestHandler):
                         503,
                     )
                     return
-                if pilot is None:
+                free_route = (
+                    pilot is None and self.app.free_route_enabled
+                    and type(tank.llm.delegate) is OpenRouterFreeLLM
+                )
+                if pilot is None and not free_route:
                     self.app.auth.audit(
                         "chat", user_id=context.user_id, workspace_id=context.workspace_id,
                         success=False, details='{"reason":"monetary_admission_required"}',
@@ -2202,13 +2212,20 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 tank.llm_call_budget.reset()
                 def admit_provider_call(identity: str) -> None:
-                    pilot.authorize(context, self.app.auth)
-                    self.app.provider_limiter.consume(context.user_id, identity)
+                    if free_route:
+                        self.app.authorize_openrouter_free(context)
+                        self.app.consume_openrouter_free_quota()
+                    else:
+                        pilot.authorize(context, self.app.auth)
+                        self.app.provider_limiter.consume(context.user_id, identity)
 
                 tank.llm_call_budget.set_call_guard(admit_provider_call)
                 started = time.monotonic()
                 try:
-                    with pilot.scope(context, self.app.auth, tank) as pilot_job_id:
+                    with (
+                        openrouter_free_scope() if free_route
+                        else pilot.scope(context, self.app.auth, tank)
+                    ) as pilot_job_id:
                         answer = tank.llm.complete(
                             prompt,
                             system=(
@@ -2239,7 +2256,11 @@ class Handler(BaseHTTPRequestHandler):
                     "receipts_count": 0,
                     "receipts": [],
                     "plan": None,
-                    "main_llm": tank.main_llm_identity,
+                    "main_llm": (
+                        "openrouter_free:" + tank.llm.delegate.resolved_model
+                        + ":https://openrouter.ai/api/v1"
+                        if free_route else tank.main_llm_identity
+                    ),
                     # The direct path performs exactly one main-model call. Do
                     # not attach the configured critic's identity to a result
                     # that the critic never inspected.
@@ -2254,7 +2275,12 @@ class Handler(BaseHTTPRequestHandler):
                     "source_ids": [],
                     "source_urls": [],
                 }
-                payload["monetary_admission"] = pilot.status(pilot_job_id)
+                if free_route:
+                    payload["free_model_admission"] = {
+                        "route": "openrouter/free", "per_minute": 20, "per_day": 50
+                    }
+                else:
+                    payload["monetary_admission"] = pilot.status(pilot_job_id)
                 runtime.history.append(payload)
             self.app.auth.audit(
                 "chat", user_id=context.user_id,
@@ -2262,6 +2288,11 @@ class Handler(BaseHTTPRequestHandler):
                 details=json.dumps({"run_id": payload["run_id"], "mode": "direct"}),
             )
             self._json(payload)
+        except FreeRouterForbidden:
+            self.app.auth.audit("chat", user_id=context.user_id,
+                                workspace_id=context.workspace_id, success=False,
+                                details='{"reason":"openrouter_free_forbidden"}')
+            self._json({"error": "OpenRouter-Free-Berechtigung ist nicht mehr gültig"}, 403)
         except OwnerPilotForbidden:
             self.app.auth.audit(
                 "chat", user_id=context.user_id, workspace_id=context.workspace_id,
