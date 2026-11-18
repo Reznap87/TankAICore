@@ -920,9 +920,8 @@ class Handler(BaseHTTPRequestHandler):
                 "registration_enabled": self.app.allow_registration,
                 "production_ready": False,
                 "development_queue_enabled": self.app.job_queue is not None,
-                "live_model_requests_require_budget": not self.app.free_route_enabled,
+                "live_model_requests_require_budget": True,
                 "monetary_admission_configured": self.app.owner_pilot is not None,
-                "free_route_admission_configured": self.app.free_route_enabled,
             }
             if context is not None:
                 try:
@@ -948,6 +947,7 @@ class Handler(BaseHTTPRequestHandler):
                             else:
                                 direct_chat_ready = True
                         payload.update({
+                            "free_route_admission_configured": self.app.free_route_enabled,
                             "user": context.email,
                             "workspace": context.workspace_name,
                             "workspace_id": context.workspace_id,
