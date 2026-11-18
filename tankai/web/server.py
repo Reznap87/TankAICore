@@ -312,8 +312,15 @@ class AppContext:
             _env_bool("TANKAI_OPENROUTER_FREE_ENABLED", False)
             and _env_bool("TANKAI_LIVE_PROVIDER_ENABLED", False)
         )
-        if free_route_enabled and (mode != "session" or owner_pilot is not None):
-            raise RuntimeError("OpenRouter-Free darf nicht ohne Session oder mit Geldpilot laufen")
+        if free_route_enabled:
+            if mode != "session" or owner_pilot is not None or _env_bool("TANKAI_DEV_QUEUE_ENABLED", False):
+                raise RuntimeError("OpenRouter-Free braucht Session und darf keinen Geldpilot oder Dev-Queue teilen")
+            if _env("TANKAI_LLM").lower() not in {"openrouter", "openrouter_free", "openrouter-free"}:
+                raise RuntimeError("OpenRouter-Free erfordert TANKAI_LLM=openrouter")
+            if _env("TANKAI_CRITIC_LLM") and _env("TANKAI_CRITIC_LLM").lower() not in {
+                "openrouter", "openrouter_free", "openrouter-free"
+            }:
+                raise RuntimeError("OpenRouter-Free darf keinen kostenpflichtigen Critic laden")
         data_root = Path(_env("TANKAI_DATA_ROOT", ".tankai/data")).resolve()
         auth_db = Path(_env("TANKAI_AUTH_DB", str(data_root / "auth.db"))).resolve()
         cookie_secure = _env_bool("TANKAI_COOKIE_SECURE", not is_loopback)
