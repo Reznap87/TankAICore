@@ -2261,7 +2261,7 @@ def test_direct_chat_rejects_mock_and_requires_auth_and_csrf(tmp_path, monkeypat
         thread.join(timeout=5)
 
 
-def test_direct_chat_one_live_call_unverified_and_workspace_scoped(
+def test_direct_chat_never_calls_live_model_without_monetary_admission(
     tmp_path, monkeypatch
 ) -> None:
     store = _configure(monkeypatch, tmp_path)
@@ -2303,39 +2303,21 @@ def test_direct_chat_one_live_call_unverified_and_workspace_scoped(
         assert status == 200
         status, _, health = client.get("/api/health")
         assert status == 200
-        assert health["direct_chat_available"] is True
+        assert health["direct_chat_available"] is False
 
-        status, _, response = client.post(
+        status, _, denied = client.post(
             "/api/chat", {"message": "  Hallo, TankAI!  "},
             csrf=login["csrf_token"],
         )
-        assert status == 200
-        assert response["workspace_id"] == workspace
-        assert response["goal"] == "Hallo, TankAI!"
-        assert response["final_answer"] == "Antwort vom Testmodell"
-        assert response["answer_mode"] == "direct"
-        assert response["status"] == "unverified"
-        assert response["execution_mode"] == "live"
-        assert response["release_ready"] is False
-        assert response["verification_passed"] is False
-        assert response["critic_used"] is False
-        assert response["critic_llm"] is None
-        assert response["critic_independent"] is None
-        assert len(calls) == 1
-        assert calls[0][0] == "Hallo, TankAI!"
-        assert "keine unabhängige Faktenprüfung" in calls[0][1]
-
-        with app.runtimes.acquire(tenant_id=tenant, workspace_id=workspace) as runtime:
-            assert runtime.tank.llm_call_budget.snapshot()["used"] == 1
+        assert status == 503
+        assert denied["error_code"] == "monetary_admission_required"
+        assert calls == []
         status, _, history = client.get("/api/history")
-        assert status == 200
-        assert len(history) == 1
-        assert history[0]["run_id"] == response["run_id"]
+        assert status == 200 and history == []
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-
 
 def test_login_rate_limiter_is_atomic_and_blocks() -> None:
     """Regression: die Prüfung darf nicht check-then-act sein (Parallelzugriff)."""
