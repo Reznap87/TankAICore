@@ -184,6 +184,98 @@ def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, led
         assert history[0]["run_id"] == body["run_id"]
 
 
+def test_direct_chat_replays_only_server_owned_workspace_history(accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, first = client.post(
+            "/api/chat", {"message": "My secret phrase is copper comet"}, csrf=csrf
+        )
+        assert status == 200, first
+        assert first["reply_to"] is None
+        assert first["context_turns_used"] == 0
+        assert "copper comet" in provider_factory[0].calls[0]["messages"][-1]["content"]
+
+        status, _, next_turn = client.post(
+            "/api/chat", {"message": "What was my phrase?", "reply_to": first["run_id"]},
+            csrf=csrf,
+        )
+        assert status == 200, next_turn
+        assert next_turn["reply_to"] == first["run_id"]
+        assert next_turn["context_turns_used"] == 1
+        assert next_turn["goal"] == "What was my phrase?"
+        prompt = provider_factory[0].calls[1]["messages"][-1]["content"]
+        assert "My secret phrase is copper comet" in prompt
+        assert "Vorherige Antwort" in prompt
+        assert "What was my phrase?" in prompt
+        assert calls(provider_factory) == 2
+        assert ledger.snapshot()["attempts"] == 2
+        assert ledger.snapshot()["jobs"] == 2
+        assert next_turn["monetary_admission"]["held_micro_eur"] == 4000
+
+        status, _, history = client.get("/api/history")
+        assert status == 200 and len(history) == 2
+        assert history[0]["reply_to"] == first["run_id"]
+
+
+def test_direct_chat_rejects_untrusted_or_unknown_parent_before_billing(accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        for payload in [
+            {"message": "skip", "reply_to": "not-an-id"},
+            {"message": "skip", "reply_to": None},
+            {"message": "skip", "reply_to": "0" * 32, "history": []},
+        ]:
+            status, _, _ = client.post("/api/chat", payload, csrf=csrf)
+            assert status == 400
+        status, _, unavailable = client.post(
+            "/api/chat", {"message": "skip", "reply_to": "0" * 32}, csrf=csrf
+        )
+        assert status == 409
+        assert unavailable["error_code"] == "conversation_unavailable"
+        assert calls(provider_factory) == 0
+        assert ledger.snapshot()["jobs"] == 0
+        assert ledger.snapshot()["attempts"] == 0
+
+
+def test_direct_chat_context_excludes_other_workspaces(accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (app, base):
+        client, csrf = login(base)
+        status, _, original = client.post("/api/chat", {"message": "first workspace"}, csrf=csrf)
+        assert status == 200
+        status, _, selected = client.post(
+            "/api/workspaces/select", {"workspace_id": accounts.second}, csrf=csrf
+        )
+        assert status == 200
+        status, _, unavailable = client.post(
+            "/api/chat", {"message": "cross workspace", "reply_to": original["run_id"]},
+            csrf=selected["csrf_token"],
+        )
+        assert status == 409
+        assert unavailable["error_code"] == "conversation_unavailable"
+        assert calls(provider_factory) == 1
+        assert ledger.snapshot()["attempts"] == 1
+
+
+def test_direct_chat_replays_at_most_four_previous_turns(accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        parent = None
+        for index in range(6):
+            payload = {"message": f"distinct turn {index}"}
+            if parent is not None:
+                payload["reply_to"] = parent
+            status, _, result = client.post("/api/chat", payload, csrf=csrf)
+            assert status == 200, result
+            assert result["context_turns_used"] == min(index, 4)
+            parent = result["run_id"]
+        last_prompt = provider_factory[0].calls[-1]["messages"][-1]["content"]
+        assert "distinct turn 5" in last_prompt
+        assert "distinct turn 1" in last_prompt
+        assert "distinct turn 0" not in last_prompt
+        assert len(provider_factory[0].calls) == 6
+        assert ledger.snapshot()["jobs"] == 6
+
+
 def test_direct_chat_rejects_other_owner_before_model_dispatch(accounts, ledger, provider_factory):
     with serving(pilot(accounts, ledger)) as (_, base):
         client, csrf = login(base, "other-owner@example.test")
