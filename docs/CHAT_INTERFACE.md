@@ -62,8 +62,26 @@ globale Health-Anzeige kann ihn nicht ersetzen. Damit wird eine formal
 erfolgreiche HTTP-Antwort ohne benutzbare Modellantwort nicht als Live-Erfolg
 dargestellt.
 
-Jede Nachricht startet einen einzelnen Core-Run. Der Entwurf implementiert
-keine zusätzlichen mehrteiligen Chat-Sessions, Dateiuploads oder Sprachaufnahme.
+Jede Nachricht startet einen einzelnen, budgetierten Core-Run. Der
+Direktchat unterstützt nun **begrenzte Folgefragen**: Der Browser übermittelt
+optional `reply_to` als 32-stellige Run-ID, aber niemals ungeprüfte frühere
+Dialogtexte. Der Server liest die Referenz ausschließlich aus dem Verlauf des
+aktiven, authentifizierten Workspaces und rekonstruiert bis zu vier vorherige
+Frage-/Antwort-Paare. Je Paar werden höchstens 700 Zeichen der Frage und 900
+Zeichen der Antwort als Kontext für den nächsten Hauptmodellaufruf genutzt.
+Nur echte, gespeicherte Direktchat-Ergebnisse werden akzeptiert; fehlende,
+fremde oder nicht passende Referenzen führen vor jedem Modellaufruf zu
+HTTP 409 (`conversation_unavailable`). Die Prüfung von Session, CSRF,
+Workspace-Mitgliedschaft, OwnerPilot und Geldreservierung bleibt unverändert
+erforderlich. Die letzte Antwort und ihr `reply_to` werden dauerhaft
+gespeichert. `Neuer Chat` startet wieder ohne Verweis.
+
+Dies ist ein begrenzter Gesprächsfaden auf Basis einzelner Runs, **keine
+unbegrenzte Chat-Session**: Nur die letzten 100 serverseitigen Workspace-Einträge
+stehen für die Rekonstruktion zur Verfügung; ältere Verweise können mit 409
+abgewiesen werden. Die Oberfläche stellt verfügbare frühere Dialogzüge dar,
+aber ein vollständig darüber hinausgehender Langzeitkontext, Dateiuploads
+oder Sprachaufnahme sind nicht implementiert.
 Die Suche umfasst die letzten 20 Aufgaben des aktiven Workspace. Der Export
 enthält das ausgewählte Ergebnis, dessen Ausführungsmodus sowie die vom jeweiligen
 Run gemeldete Identität des Hauptmodells und eines tatsächlich verwendeten
