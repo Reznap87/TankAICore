@@ -1,10 +1,16 @@
 # Public registration
 
-The release configuration in `wrangler.jsonc` enables
-`TANKAI_ALLOW_REGISTRATION`. This is a source configuration, not evidence that
-the release has been deployed. The Worker passes the flag to the container, and
-the chat page offers registration only when the health endpoint reports it
-enabled. Existing users can still sign in.
+Public registration is implemented and bounded, but the release configuration
+in `wrangler.jsonc` currently sets `TANKAI_ALLOW_REGISTRATION` to `"0"` —
+registration stays **closed** until that is deliberately changed. This is a
+source configuration, not evidence that a release has been deployed. The Worker
+passes the flag to the container, and the chat page offers registration only
+when the health endpoint reports it enabled. Existing users can still sign in.
+
+The flag is kept off deliberately: registration has no e-mail ownership
+verification, so enabling it would be a bounded account-creation surface rather
+than an identity-bound one. It belongs to the production-readiness decision
+(provider selection, budget admission), not to a hardening change.
 
 Registration is limited through the existing auth-state Durable Object: three
 attempts per client per UTC hour, and fifty successful or unresolved registrations
