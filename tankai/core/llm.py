@@ -630,7 +630,7 @@ class OpenAILLM(BaseLLM):
 # The request scope is per-thread/context, not a process-global switch.
 _OPENROUTER_FREE_SCOPE: ContextVar[bool] = ContextVar("tankai_openrouter_free_scope", default=False)
 _OPENROUTER_FREE_URL = "https://openrouter.ai/api/v1"
-_OPENROUTER_FREE_MODEL = re.compile(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.:-]+:free\\Z")
+_OPENROUTER_FREE_MODEL = re.compile(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.:-]+:free\Z")
 
 
 @contextmanager
