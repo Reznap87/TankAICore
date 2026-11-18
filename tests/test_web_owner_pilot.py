@@ -148,6 +148,76 @@ def test_authenticated_owner_http_core_run_binds_server_job_and_preserves_holds(
         assert calls(provider_factory) == 5
 
 
+def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, ledger, provider_factory):
+    configured = pilot(accounts, ledger)
+    with serving(configured) as (app, base):
+        client, csrf = login(base)
+        status, _, health = client.get("/api/health")
+        assert status == 200 and health["direct_chat_available"] is True
+
+        status, _, body = client.post("/api/chat", {"message": "Hello from a bounded direct chat"}, csrf=csrf)
+        assert status == 200, body
+        assert body["goal"] == "Hello from a bounded direct chat"
+        assert body["final_answer"] == "step result"
+        assert body["answer_mode"] == "direct" and body["status"] == "unverified"
+        assert body["critic_used"] is False and body["critic_llm"] is None
+        assert body["verification_passed"] is False and body["release_ready"] is False
+        assert calls(provider_factory) == 1
+        assert len(provider_factory[0].calls) == 1
+        assert not provider_factory[1].calls
+        assert provider_factory[0].exposures == [2000]
+        assert body["monetary_admission"]["held_micro_eur"] == 2000
+        assert body["monetary_admission"]["active_jobs"] == 0
+        assert body["monetary_admission"]["job_id"].startswith(
+            accounts.tenant + ":" + accounts.workspace + ":"
+        )
+        assert ledger.snapshot()["jobs"] == 1
+        assert ledger.snapshot()["attempts"] == 1
+
+        with app.runtimes.acquire(tenant_id=accounts.tenant, workspace_id=accounts.workspace) as runtime:
+            assert runtime.tank.llm_call_budget.monetary_dispatch is None
+            with pytest.raises(DispatchDenied):
+                runtime.tank.llm.complete("cannot spend outside an approved job")
+
+        status, _, history = client.get("/api/history")
+        assert status == 200 and len(history) == 1
+        assert history[0]["run_id"] == body["run_id"]
+
+
+def test_direct_chat_rejects_other_owner_before_model_dispatch(accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base, "other-owner@example.test")
+        status, _, health = client.get("/api/health")
+        assert status == 200 and health["direct_chat_available"] is False
+
+        status, _, body = client.post("/api/chat", {"message": "unauthorized"}, csrf=csrf)
+        assert status == 403
+        assert "Besitzerpilot" in body["error"]
+        assert calls(provider_factory) == 0
+        assert ledger.snapshot()["jobs"] == 0
+
+
+def test_direct_chat_cannot_overlap_an_active_budget_job(accounts, ledger, provider_factory):
+    configured = pilot(accounts, ledger)
+    with serving(configured) as (app, base):
+        client, csrf = login(base)
+        status, _, chosen = client.post(
+            "/api/workspaces/select", {"workspace_id": accounts.second}, csrf=csrf
+        )
+        assert status == 200
+        with app.runtimes.acquire(tenant_id=accounts.tenant, workspace_id=accounts.workspace) as active:
+            with configured.scope(accounts.context, accounts.store, active.tank):
+                status, _, denied = client.post(
+                    "/api/chat", {"message": "second concurrent job"},
+                    csrf=chosen["csrf_token"],
+                )
+                assert status == 429
+                assert "Geld-" in denied["error"]
+                assert ledger.snapshot()["active_jobs"] == 1
+        assert calls(provider_factory) == 0
+        assert ledger.snapshot()["attempts"] == 0
+
+
 def test_other_owner_cannot_spend_pilot_or_create_a_runtime(accounts, ledger, provider_factory):
     with serving(pilot(accounts, ledger)) as (app, base):
         client, csrf = login(base, "other-owner@example.test")
