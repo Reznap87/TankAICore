@@ -52,7 +52,7 @@ Im geprüften Edge werden beispielsweise `Straße@example.invalid` und
 `a@straße.invalid` bereits vom E-Mail-Feld als ungültig abgewiesen. Ein
 allgemeiner Unicode-Adressabgleich ist mit diesem Test nicht nachgewiesen.
 
-Standardmäßig sendet die Oberfläche eine Nachricht an das konfigurierte echte Hauptmodell. `/api/chat` führt genau einen Modellaufruf aus und kennzeichnet das Ergebnis als **nicht unabhängig geprüft**. Bei Mock-/Echo-Konfiguration verweigert der Endpunkt mit HTTP 503 die Antwort, statt eine Simulation als KI auszugeben. Session, CSRF, Workspace-Isolation, Provider-Limit und Verlauf werden weiterverwendet. Die Einstellungen erlauben alternativ den bestehenden mehrstufigen `/api/run`-Pfad. Ohne tatsächlich angeschlossenes Live-Modell funktioniert auch der neue Direktchat nicht.
+Standardmäßig sendet die Oberfläche eine Nachricht an das konfigurierte echte Hauptmodell. `/api/chat` führt genau einen Modellaufruf aus und kennzeichnet das Ergebnis als **nicht unabhängig geprüft**. Bei Mock-/Echo-Konfiguration verweigert der Endpunkt mit HTTP 503 die Antwort, statt eine Simulation als KI auszugeben. Session, CSRF, Workspace-Isolation, Provider-Limit und Verlauf werden weiterverwendet. **Ein konfigurierter Live-Provider allein genügt nicht:** wie `/api/run` benötigt `/api/chat` eine serverseitig geprüfte gemeinsame `OwnerPilot`-Geldfreigabe mit aktuellem Eigentümer-/Workspace-Recht, Tarifen, Token-Zählung und dauerhaftem Reservierungsbuch. Ohne diese Freigabe antwortet `/api/chat` mit HTTP 503 (`monetary_admission_required`) und führt **keinen** Modellaufruf aus. Ein freigegebener Direktchat verwendet genau einen kostenreservierten Hauptmodellaufruf, ohne den unabhängigen Critic tatsächlich aufzurufen. Ein gesperrter oder unsicherer Provider-Versuch bleibt im Ledger konservativ erfasst. Die Einstellungen erlauben alternativ den bestehenden mehrstufigen `/api/run`-Pfad. Ohne tatsächlich angeschlossenes Live-Modell funktioniert auch der neue Direktchat nicht.
 
 Eine neue direkte Antwort wird außerdem nur gerendert, wenn ihr eigener Payload
 eine nicht leere Hauptmodellidentität in `main_llm` und einen nicht leeren
@@ -83,7 +83,11 @@ oder einen anderen Workspace wird fail-closed als unterbrochene Verbindung
 angezeigt und kann deshalb keinen fremden Live-Status übernehmen.
 Ein formal live wirkender Health-Payload ohne `llm` bleibt bei
 `Modellstatus unbekannt` und zeigt keinen Live-Chat an. Diese Anzeige ersetzt
-weiterhin keinen erfolgreichen Modellaufruf. Simulationen, gemischte Ausführung
+weiterhin keinen erfolgreichen Modellaufruf. Das Backend meldet
+`direct_chat_available=true` jetzt nur für nicht simulierte Hauptmodelle mit
+explizit vorhandenem und aktuell autorisiertem OwnerPilot. Dies ist kein
+Nachweis über freie Restbudgets oder die Erreichbarkeit der Provider-API;
+ein kontrollierter echter Login → `/api/chat` → Modellantwort-Smoke ist separat nötig. Simulationen, gemischte Ausführung
 und fehlende Freigabe sind gesondert markiert.
 
 Die dauerhafte Aufbewahrung von Konten und Verlauf hängt weiterhin vom
