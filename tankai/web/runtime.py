@@ -73,6 +73,49 @@ class WorkspaceHistory:
         return list(reversed(output))
 
 
+    def direct_thread(self, reply_to: str, *, workspace_id: str) -> list[dict[str, str]]:
+        """Load up to four prior approved direct-chat turns from this workspace.
+
+        The browser supplies only an opaque run id. Prompts and answers are
+        reconstructed from the server-owned workspace history, not the request.
+        A missing or foreign immediate parent is rejected before inference.
+        Older ancestors beyond the most recent 100 records are not replayed.
+        """
+        recent = self.list_recent(100)
+        by_run = {
+            item["run_id"]: item for item in recent
+            if type(item.get("run_id")) is str
+        }
+        turns: list[dict[str, str]] = []
+        visited: set[str] = set()
+        current: str | None = reply_to
+        while current and len(turns) < 4:
+            if current in visited:
+                raise ValueError("Gesprächsverlauf ungültig")
+            visited.add(current)
+            previous = by_run.get(current)
+            if previous is None:
+                if not turns:
+                    raise ValueError("Gespräch nicht mehr im verfügbaren Verlauf")
+                break
+            goal, answer = previous.get("goal"), previous.get("final_answer")
+            if (
+                previous.get("workspace_id") != workspace_id
+                or previous.get("answer_mode") != "direct"
+                or previous.get("execution_mode") != "live"
+                or type(goal) is not str or not goal.strip()
+                or type(answer) is not str or not answer.strip()
+            ):
+                raise ValueError("Gesprächsverlauf gehört nicht zum aktiven Live-Chat")
+            turns.append({"goal": goal[:700], "final_answer": answer[:900]})
+            parent = previous.get("reply_to")
+            if parent is not None and (type(parent) is not str or len(parent) != 32
+                                       or any(c not in "0123456789abcdef" for c in parent)):
+                raise ValueError("Gesprächsverlauf ungültig")
+            current = parent
+        return list(reversed(turns))
+
+
 @dataclass
 class WorkspaceRuntime:
     workspace_id: str
