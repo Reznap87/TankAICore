@@ -8,6 +8,9 @@ In einer echten Deployment würde man hier Provider-Adapter
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from contextvars import ContextVar
+import re
 import inspect
 import threading
 import uuid
@@ -623,6 +626,81 @@ class OpenAILLM(BaseLLM):
         return _openai_text(self.client.chat.completions.create(**parameters))
 
 
+# This opt-in route must never inherit a payable model fallback.
+# The request scope is per-thread/context, not a process-global switch.
+_OPENROUTER_FREE_SCOPE: ContextVar[bool] = ContextVar("tankai_openrouter_free_scope", default=False)
+_OPENROUTER_FREE_URL = "https://openrouter.ai/api/v1"
+_OPENROUTER_FREE_MODEL = re.compile(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.:-]+:free\Z")
+
+
+@contextmanager
+def openrouter_free_scope():
+    """Server-internal, request-local permission after session and rate admission."""
+    token = _OPENROUTER_FREE_SCOPE.set(True)
+    try:
+        yield
+    finally:
+        _OPENROUTER_FREE_SCOPE.reset(token)
+
+
+class OpenRouterFreeLLM(OpenAILLM):
+    """Only zero-priced OpenRouter routes. Never accept a paid fallback.
+
+    The untrusted browser cannot choose a model, provider, base URL or headers.
+    A real request also needs the server's request-local free-route admission.
+    """
+
+    provider_name = "openrouter_free"
+    requires_request_admission = True
+
+    def __init__(self, model: str | None = None, api_key: str | None = None, **kwargs: Any) -> None:
+        import os
+        selected = (model or os.environ.get("OPENROUTER_MODEL", "openrouter/free")).strip()
+        if selected != "openrouter/free" and not _OPENROUTER_FREE_MODEL.fullmatch(selected):
+            raise ValueError("OpenRouter akzeptiert hier nur openrouter/free oder Modelle mit :free")
+        if kwargs:
+            raise ValueError("OpenRouter-Free erlaubt keine Überschreibung von URL oder SDK-Optionen")
+        self.resolved_model = ""
+        super().__init__(
+            model=selected,
+            api_key=api_key or _require_env("OPENROUTER_API_KEY"),
+            base_url=_OPENROUTER_FREE_URL,
+            max_tokens=512,
+            timeout_seconds=30.0,
+            max_retries=0,
+        )
+
+    def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
+        if not _OPENROUTER_FREE_SCOPE.get() or "_budget_dispatch" in kwargs:
+            raise DispatchDenied("OpenRouter-Free requires explicit server request admission")
+        tokens = kwargs.pop("max_tokens", self.max_tokens)
+        temperature = kwargs.pop("temperature", self.temperature)
+        if kwargs or type(tokens) is not int or not 1 <= tokens <= 512:
+            raise DispatchDenied("invalid free model request parameters")
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        from openai import DefaultHttpxClient
+        import httpx2
+        wire = bounded_transport(httpx2.HTTPTransport(retries=0, trust_env=False))
+        with DefaultHttpxClient(transport=wire, follow_redirects=False, trust_env=False) as transport:
+            client = self.client.with_options(
+                max_retries=0, timeout=30.0, http_client=transport
+            )
+            if getattr(client, "_client", None) is not transport or client.max_retries != 0:
+                raise DispatchDenied("free provider transport is not bounded")
+            response = client.chat.completions.create(
+                model=self.model, messages=messages, temperature=temperature,
+                max_tokens=tokens,
+            )
+        selected = getattr(response, "model", None)
+        if type(selected) is not str or not selected.endswith(":free"):
+            raise DispatchDenied("OpenRouter did not confirm a free model in the response")
+        self.resolved_model = selected
+        return bounded_text(_openai_text(response))
+
+
 class AnthropicLLM(BaseLLM):
     """
     Anthropic Messages API Adapter.
@@ -726,6 +804,7 @@ def get_llm(provider: str | None = None, **kwargs: Any) -> BaseLLM:
       - mock (default)
       - openai
       - anthropic
+      - openrouter (free models only)
       - echo
 
     Wenn provider=None, muss TANKAI_LLM explizit gesetzt sein. Es gibt keinen stillen Mock-Fallback.
@@ -755,12 +834,14 @@ def get_llm(provider: str | None = None, **kwargs: Any) -> BaseLLM:
         return EchoLLM()
     if p in ("openai", "oai", "gpt"):
         return OpenAILLM(**kwargs)
+    if p in ("openrouter", "openrouter_free", "openrouter-free"):
+        return OpenRouterFreeLLM(**kwargs)
     if p in ("anthropic", "claude"):
         return AnthropicLLM(**kwargs)
 
     raise ValueError(
         f"Unbekannter LLM-Provider: {provider!r}. "
-        "Erlaubt: mock, openai, anthropic, echo"
+        "Erlaubt: mock, openai, anthropic, openrouter, echo"
     )
 
 

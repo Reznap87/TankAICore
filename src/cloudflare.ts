@@ -8,6 +8,9 @@ type TankAIRuntimeEnv = Env & {
   TANKAI_ALLOW_REGISTRATION?: string;
   TANKAI_LIVE_PROVIDER_ENABLED?: string;
   TANKAI_LLM?: string;
+  TANKAI_OPENROUTER_FREE_ENABLED?: string;
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_MODEL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;
   OPENAI_BASE_URL?: string;
@@ -47,6 +50,9 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
   pingEndpoint = "/api/health";
 
   private readonly liveProviderEnabled = enabled(this.env.TANKAI_LIVE_PROVIDER_ENABLED);
+  private readonly openRouterFreeEnabled = this.liveProviderEnabled &&
+    clean(this.env.TANKAI_LLM).toLowerCase() === "openrouter" &&
+    enabled(this.env.TANKAI_OPENROUTER_FREE_ENABLED);
 
   envVars = {
     TANKAI_AUTH_STATE_URL: clean(this.env.TANKAI_AUTH_STATE_TOKEN) ? "https://tankai-core.reznaplecram.workers.dev/_tankai/auth-state" : "",
@@ -57,6 +63,9 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     TANKAI_PORT: "8765",
     TANKAI_LIVE_PROVIDER_ENABLED: this.liveProviderEnabled ? "1" : "0",
     TANKAI_LLM: this.liveProviderEnabled ? clean(this.env.TANKAI_LLM) : "mock",
+    TANKAI_OPENROUTER_FREE_ENABLED: this.openRouterFreeEnabled ? "1" : "0",
+    OPENROUTER_API_KEY: this.openRouterFreeEnabled ? clean(this.env.OPENROUTER_API_KEY) : "",
+    OPENROUTER_MODEL: this.openRouterFreeEnabled ? clean(this.env.OPENROUTER_MODEL, "openrouter/free") : "",
     TANKAI_EMBEDDER: "hashing",
     TANKAI_RUN_STORE: "/tmp/tankai_runs.jsonl",
 
@@ -66,11 +75,11 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     ANTHROPIC_API_KEY: this.liveProviderEnabled ? clean(this.env.ANTHROPIC_API_KEY) : "",
     ANTHROPIC_MODEL: this.liveProviderEnabled ? clean(this.env.ANTHROPIC_MODEL) : "",
 
-    TANKAI_CRITIC_LLM: this.liveProviderEnabled ? clean(this.env.TANKAI_CRITIC_LLM) : "",
-    TANKAI_CRITIC_MODEL: this.liveProviderEnabled ? clean(this.env.TANKAI_CRITIC_MODEL) : "",
-    TANKAI_CRITIC_API_KEY: this.liveProviderEnabled ? clean(this.env.TANKAI_CRITIC_API_KEY) : "",
-    TANKAI_CRITIC_BASE_URL: this.liveProviderEnabled ? clean(this.env.TANKAI_CRITIC_BASE_URL) : "",
-    TANKAI_REQUIRE_INDEPENDENT_CRITIC: this.liveProviderEnabled ? "1" : "0",
+    TANKAI_CRITIC_LLM: (this.liveProviderEnabled && !this.openRouterFreeEnabled) ? clean(this.env.TANKAI_CRITIC_LLM) : "",
+    TANKAI_CRITIC_MODEL: (this.liveProviderEnabled && !this.openRouterFreeEnabled) ? clean(this.env.TANKAI_CRITIC_MODEL) : "",
+    TANKAI_CRITIC_API_KEY: (this.liveProviderEnabled && !this.openRouterFreeEnabled) ? clean(this.env.TANKAI_CRITIC_API_KEY) : "",
+    TANKAI_CRITIC_BASE_URL: (this.liveProviderEnabled && !this.openRouterFreeEnabled) ? clean(this.env.TANKAI_CRITIC_BASE_URL) : "",
+    TANKAI_REQUIRE_INDEPENDENT_CRITIC: (this.liveProviderEnabled && !this.openRouterFreeEnabled) ? "1" : "0",
 
     TANKAI_SEARCH_PROVIDER: this.liveProviderEnabled ? clean(this.env.TANKAI_SEARCH_PROVIDER) : "",
     TANKAI_SEARCH_API_KEY: this.liveProviderEnabled ? clean(this.env.TANKAI_SEARCH_API_KEY) : "",

@@ -54,6 +54,28 @@ allgemeiner Unicode-Adressabgleich ist mit diesem Test nicht nachgewiesen.
 
 Standardmäßig sendet die Oberfläche eine Nachricht an das konfigurierte echte Hauptmodell. `/api/chat` führt genau einen Modellaufruf aus und kennzeichnet das Ergebnis als **nicht unabhängig geprüft**. Bei Mock-/Echo-Konfiguration verweigert der Endpunkt mit HTTP 503 die Antwort, statt eine Simulation als KI auszugeben. Session, CSRF, Workspace-Isolation, Provider-Limit und Verlauf werden weiterverwendet. **Ein konfigurierter Live-Provider allein genügt nicht:** wie `/api/run` benötigt `/api/chat` eine serverseitig geprüfte gemeinsame `OwnerPilot`-Geldfreigabe mit aktuellem Eigentümer-/Workspace-Recht, Tarifen, Token-Zählung und dauerhaftem Reservierungsbuch. Ohne diese Freigabe antwortet `/api/chat` mit HTTP 503 (`monetary_admission_required`) und führt **keinen** Modellaufruf aus. Ein freigegebener Direktchat verwendet genau einen kostenreservierten Hauptmodellaufruf, ohne den unabhängigen Critic tatsächlich aufzurufen. Ein gesperrter oder unsicherer Provider-Versuch bleibt im Ledger konservativ erfasst. Die Einstellungen erlauben alternativ den bestehenden mehrstufigen `/api/run`-Pfad. Ohne tatsächlich angeschlossenes Live-Modell funktioniert auch der neue Direktchat nicht.
 
+**OpenRouter-Free (optional):** `TANKAI_LLM=openrouter` nutzt
+`OPENROUTER_MODEL=openrouter/free` (oder eine ausdrücklich konfigurierte
+`:free`-Modellvariante) über den festen
+`https://openrouter.ai/api/v1`-Endpunkt. Dieser Modus benötigt einen
+privaten `OPENROUTER_API_KEY` sowie beide getrennten Aktivierungsflags
+`TANKAI_LIVE_PROVIDER_ENABLED=1` und
+`TANKAI_OPENROUTER_FREE_ENABLED=1`. Standard ist **aus**.
+Die auf echte bezahlte Modelle zugeschnittene `OwnerPilot`-Geldfreigabe
+bleibt für diese Modelle verpflichtend; ausschließlich der explizite
+OpenRouter-Free-Modus besitzt stattdessen eine dedizierte, persistente
+serverweite Anfragefreigabe (maximal 20/min und vorsorglich 50/24h).
+Pro Nachricht wird ein Free-Modell kontaktiert, kein kostenpflichtiger
+Fallback und kein unabhängiger Critic. Die Antwort nennt die vom Provider
+gemeldete `:free`-Modell-ID. Fehlendes Secret, gesperrte Freigabe,
+fremde Workspace-Berechtigung oder erschöpfte Quote verhindern Live-Aufrufe.
+**Datenschutz:** Beim späteren Aktivieren gehen neue Chat-Anfragen und
+relevante vorherige Gesprächsauszüge an OpenRouter und den ausgewählten
+Drittanbieter; einzelne kostenlose Anbieter können Eingaben/Ausgaben zum
+Modelltraining verwenden. Ohne bewusste Aktivierung erfolgt kein solcher
+Versand. Ein echter Provider-/Browser-End-to-End-Test ist weiterhin
+ein gesonderter Nachweis, kein Ergebnis der Offline-CI.
+
 Eine neue direkte Antwort wird außerdem nur gerendert, wenn ihr eigener Payload
 eine nicht leere Hauptmodellidentität in `main_llm` und einen nicht leeren
 Antworttext in `final_answer` enthält. Fehlt einer dieser per-Run-Nachweise,
