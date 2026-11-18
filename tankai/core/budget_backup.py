@@ -17,7 +17,14 @@ import sqlite3
 import stat
 
 from .monetary_budget import (
-    BudgetStateError, MAX_LEDGER_BYTES, MonetaryBudget, PilotPolicy, _sync_directory,
+    BudgetStateError,
+    MAX_LEDGER_BYTES,
+    MonetaryBudget,
+    PilotPolicy,
+    _has_sidecars,
+    _require_created_snapshot,
+    _stat_identity,
+    _sync_directory,
 )
 
 
@@ -47,6 +54,56 @@ def _policy_context(policy: PilotPolicy) -> bytes:
     return hashlib.sha256(canonical.encode("utf-8")).digest()
 
 
+def _file_identity(info):
+    # Windows lstat and descriptor stat can expose different legacy ctime
+    # meanings (creation vs change time). File ID/size/mtime remain checked;
+    # POSIX additionally compares ctime. The pinned hash and GCM tag cover bytes.
+    return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns if os.name != "nt" else 0)
+
+
+def _require_created_identity(path: Path, expected_identity) -> None:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("persisted encrypted backup was removed before verification") from None
+    if (not stat.S_ISREG(current.st_mode)
+            or _file_identity(current) != expected_identity
+            or (os.name != "nt" and current.st_nlink != 1)):
+        raise BudgetBackupError("persisted encrypted backup was replaced before verification")
+
+
+def _require_read_identity(path: Path, expected_identity) -> None:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("encrypted backup changed before receipt") from None
+    if (not stat.S_ISREG(current.st_mode)
+            or _file_identity(current) != expected_identity
+            or (os.name != "nt" and current.st_nlink != 1)):
+        raise BudgetBackupError("encrypted backup changed before receipt")
+
+
+def _directory_identity(path: Path) -> tuple[int, int]:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("ordinary restore destination directory required") from None
+    if not stat.S_ISDIR(current.st_mode):
+        raise BudgetBackupError("ordinary restore destination directory required")
+    return current.st_dev, current.st_ino
+
+
+def _require_directory_identity(path: Path, expected_identity: tuple[int, int]) -> None:
+    try:
+        current = Path(path).lstat()
+    except OSError:
+        raise BudgetBackupError("restore destination directory changed before receipt") from None
+    if (not stat.S_ISDIR(current.st_mode)
+            or (current.st_dev, current.st_ino) != expected_identity):
+        raise BudgetBackupError("restore destination directory changed before receipt")
+
+
 def _read_regular(path: Path) -> bytes:
     path = Path(path)
     before = path.lstat()
@@ -56,21 +113,16 @@ def _read_regular(path: Path) -> bytes:
         raise BudgetBackupError("exclusively named encrypted backup required")
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     descriptor = os.open(path, flags)
-    def identity(info):
-        # Windows lstat and descriptor stat can expose different legacy ctime
-        # meanings (creation vs change time). File ID/size/mtime remain checked;
-        # POSIX additionally compares ctime. The pinned hash and GCM tag cover bytes.
-        return (info.st_dev, info.st_ino, info.st_nlink, info.st_size, info.st_mtime_ns,
-                info.st_ctime_ns if os.name != "nt" else 0)
     with os.fdopen(descriptor, "rb") as handle:
         opened = os.fstat(handle.fileno())
-        if not stat.S_ISREG(opened.st_mode) or identity(opened) != identity(before):
+        if not stat.S_ISREG(opened.st_mode) or _file_identity(opened) != _file_identity(before):
             raise BudgetBackupError("encrypted backup changed before reading")
         data = handle.read(MAX_ENCRYPTED_BYTES + 1)
         after = os.fstat(handle.fileno())
         current = path.lstat()
-        if (len(data) != opened.st_size or identity(after) != identity(opened)
-                or not stat.S_ISREG(current.st_mode) or identity(current) != identity(opened)):
+        if (len(data) != opened.st_size or _file_identity(after) != _file_identity(opened)
+                or not stat.S_ISREG(current.st_mode)
+                or _file_identity(current) != _file_identity(opened)):
             raise BudgetBackupError("encrypted backup changed during reading")
     return data
 
@@ -83,13 +135,16 @@ def _receipt(data: bytes, snapshot: bytes, policy: PilotPolicy) -> dict:
 
 
 def _decode(source: Path, key: bytes, expected_sha256: str,
-            expected_policy: PilotPolicy) -> tuple[bytes, dict]:
+            expected_policy: PilotPolicy) -> tuple[bytes, dict, tuple]:
     cipher = _cipher(key)
     context = _policy_context(expected_policy)
     # No implicit trust in a digest packaged alongside an untrusted file.
     if type(expected_sha256) is not str or re.fullmatch(r"[a-f0-9]{64}", expected_sha256) is None:
         raise BudgetBackupError("an independently trusted encrypted-file digest is required")
+    source = Path(source)
+    source_identity = _file_identity(source.lstat())
     data = _read_regular(source)
+    _require_read_identity(source, source_identity)
     if (not len(MAGIC) + 12 + 16 + 100 <= len(data) <= MAX_ENCRYPTED_BYTES
             or not data.startswith(MAGIC) or hashlib.sha256(data).hexdigest() != expected_sha256):
         raise BudgetBackupError("invalid pinned encrypted monetary backup")
@@ -102,7 +157,8 @@ def _decode(source: Path, key: bytes, expected_sha256: str,
             or not snapshot.startswith(b"SQLite format 3\x00")):
         raise BudgetBackupError("invalid monetary snapshot payload")
     MonetaryBudget._check_snapshot(snapshot, expected_policy)
-    return snapshot, _receipt(data, snapshot, expected_policy)
+    _require_read_identity(source, source_identity)
+    return snapshot, _receipt(data, snapshot, expected_policy), source_identity
 
 
 def create_backup(ledger: MonetaryBudget, destination: Path, key: bytes) -> dict:
@@ -129,9 +185,12 @@ def create_backup(ledger: MonetaryBudget, destination: Path, key: bytes) -> dict
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+            persisted_identity = _file_identity(os.fstat(handle.fileno()))
         _sync_directory(destination.parent)
         digest = hashlib.sha256(data).hexdigest()
-        recovered, receipt = _decode(destination, key, digest, policy)
+        _require_created_identity(destination, persisted_identity)
+        recovered, receipt, _ = _decode(destination, key, digest, policy)
+        _require_created_identity(destination, persisted_identity)
         if recovered != snapshot:
             raise BudgetBackupError("persisted ciphertext does not match captured snapshot")
         return {"ok":True, "operation":"backup", **receipt, "persisted_ciphertext_verified":True}
@@ -145,7 +204,8 @@ def verify_backup(source: Path, key: bytes, *, expected_sha256: str,
                   expected_policy: PilotPolicy) -> dict:
     """Authenticate and validate without creating a recovered destination."""
     try:
-        _, receipt = _decode(source, key, expected_sha256, expected_policy)
+        _, receipt, source_identity = _decode(source, key, expected_sha256, expected_policy)
+        _require_read_identity(source, source_identity)
         return {"ok":True, "operation":"verify", **receipt}
     except (OSError, sqlite3.Error, BudgetStateError):
         raise BudgetBackupError("encrypted monetary verification failed closed") from None
@@ -155,10 +215,31 @@ def restore_backup(source: Path, destination: Path, key: bytes, *, expected_sha2
                    expected_policy: PilotPolicy, clock=None) -> dict:
     """Validate before restore_new; never replace, renew or unlock a ledger."""
     try:
-        snapshot, receipt = _decode(source, key, expected_sha256, expected_policy)
+        snapshot, receipt, source_identity = _decode(source, key, expected_sha256, expected_policy)
+        destination = Path(destination).absolute()
+        destination_parent = destination.parent
+        destination_parent_identity = _directory_identity(destination_parent)
         with MonetaryBudget.restore_new(destination, data=snapshot,
-                expected_sha256=receipt["snapshot_sha256"], expected_policy=expected_policy, clock=clock):
-            pass
+                expected_sha256=receipt["snapshot_sha256"],
+                expected_policy=expected_policy, clock=clock) as restored:
+            current = destination.lstat()
+            if (not stat.S_ISREG(current.st_mode) or current.st_nlink != 1
+                    or (current.st_dev, current.st_ino) != restored._file_identity):
+                raise BudgetStateError("restored budget database identity changed")
+            restored_identity = _stat_identity(current)
+            _require_created_snapshot(destination, snapshot, restored_identity)
+        # Closing SQLite is part of the acknowledged restore boundary. Recheck
+        # afterwards so a byte-identical pathname replacement during close
+        # cannot receive a success receipt for another filesystem object.
+        _require_created_snapshot(destination, snapshot, restored_identity)
+        # WAL/SHM files are permitted only while the restored connection is
+        # validating its pinned view. After close, any companion could change
+        # the next open without changing the verified main-file bytes.
+        if _has_sidecars(destination):
+            raise BudgetStateError("restored budget database gained a sidecar during close")
+        _require_directory_identity(destination_parent, destination_parent_identity)
+        _require_read_identity(source, source_identity)
+        _require_directory_identity(destination_parent, destination_parent_identity)
         return {"ok":True, "operation":"restore", **receipt, "restored_state_verified":True}
     except (OSError, sqlite3.Error, BudgetStateError):
         raise BudgetBackupError("encrypted monetary restore failed closed") from None
