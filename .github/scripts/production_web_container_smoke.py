@@ -28,7 +28,11 @@ DOCKER = shutil.which("docker") or "docker"
 MANAGED_LABEL = "com.tankai.ci.production-web-smoke"
 SCOPE_LABEL = MANAGED_LABEL + ".scope"
 HTTP_LIMIT = 4096
-HTML_LIMIT = 50_000
+# Antwortbudget der Inline-HTML (chat.html + chat.css + chat.js, alles wird in
+# eine Antwort eingebettet). main lag vor der Pilot-Ergaenzung bei 49.842 von
+# 50.000 Bytes - also ohne Spielraum fuer irgendeine UI-Ergaenzung. 64 KiB
+# gibt dem Budget wieder Kopfhalt; die CSP-/Nonces-Pruefung bleibt unveraendert.
+HTML_LIMIT = 64_000
 READY_TIMEOUT = 120.0
 ENVIRONMENT = (
     ("TANKAI_HOST", "0.0.0.0"),

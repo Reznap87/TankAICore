@@ -664,6 +664,53 @@ class MonetaryBudget:
                 "halt_reason": conn.execute("SELECT halt_reason FROM pilot").fetchone()[0],
             }
 
+    def admission_status(self, *, owner_id: str) -> dict:
+        """Inspect current local admission without observing time or allocating work.
+
+        This point-in-time result grants no reservation or permission to send.
+        The normal begin/reserve/dispatch checks must still run for each request.
+        Outstanding holds and active jobs are neither settled nor cleared here.
+        """
+        self._owner(owner_id)
+        with self._transaction() as conn:
+            now = self._now(self._clock)
+            blockers = []
+            last = conn.execute("SELECT last_observed_at FROM pilot").fetchone()[0]
+            if now < last:
+                blockers.append("clock_regression")
+            try:
+                self._window(now)
+            except BudgetDenied as error:
+                blockers.append(error.reason)
+            day = (now - self.policy.starts_at) // DAY_SECONDS
+            jobs = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+            daily_jobs = conn.execute("SELECT COUNT(*) FROM jobs WHERE day_index=?", (day,)).fetchone()[0]
+            active_jobs = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='active'").fetchone()[0]
+            exposure = "COALESCE(SUM(COALESCE(charged_micro_eur, reserved_micro_eur)), 0)"
+            total_used = conn.execute(f"SELECT {exposure} FROM attempts").fetchone()[0]
+            daily_used = conn.execute(f"SELECT {exposure} FROM attempts WHERE day_index=?", (day,)).fetchone()[0]
+            remaining_total = self.policy.total_micro_eur - total_used
+            remaining_daily = self.policy.daily_micro_eur - daily_used
+            for reason, blocked in (
+                ("concurrent_job_limit", active_jobs >= self.policy.max_concurrent_jobs),
+                ("total_job_quota", jobs >= self.policy.max_jobs_total),
+                ("daily_job_quota", daily_jobs >= self.policy.max_jobs_daily),
+                ("total_budget", remaining_total <= 0),
+                ("daily_budget", remaining_daily <= 0),
+            ):
+                if blocked:
+                    blockers.append(reason)
+            return {
+                "checked_at": now, "blockers": blockers,
+                "jobs": jobs, "daily_jobs": daily_jobs, "active_jobs": active_jobs,
+                "remaining_total_micro_eur": remaining_total,
+                "remaining_daily_micro_eur": remaining_daily,
+                "per_job_micro_eur": self.policy.per_job_micro_eur,
+                "starts_at": self.policy.starts_at, "expires_at": self.policy.expires_at,
+                "max_attempts_per_job": self.policy.max_attempts_per_job,
+                "dispatch_authorized": False,
+            }
+
     def export_snapshot(self) -> bytes:
         """Bounded committed SQLite image, including WAL, without releasing holds.
 

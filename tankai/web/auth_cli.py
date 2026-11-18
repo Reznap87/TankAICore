@@ -39,7 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _read_password(stdin: bool) -> str:
     if stdin:
-        password = sys.stdin.readline().rstrip("\n")
+        # Windows subprocess pipes can send CRLF to a Linux container. Remove
+        # exactly one line ending, preserving spaces and other password bytes.
+        password = sys.stdin.readline().removesuffix("\n").removesuffix("\r")
     else:
         password = getpass.getpass("Passwort: ")
         confirmation = getpass.getpass("Passwort wiederholen: ")

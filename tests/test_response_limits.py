@@ -130,6 +130,32 @@ def test_declared_oversize_is_rejected_without_reading_the_body(protected):
     assert_stopped(protected)
 
 
+def test_token_truncated_reply_cannot_be_returned_as_complete(protected):
+    body = json.loads(reply(protected.provider, "apparently complete answer"))
+    if protected.provider == "openai":
+        body["choices"][0]["finish_reason"] = "length"
+    else:
+        body["stop_reason"] = "max_tokens"
+    stream = CountedStream([json.dumps(body).encode()])
+    install_stream(protected, stream)
+    with pytest.raises(DispatchDenied, match="truncated"):
+        protected.wrapped.complete("must have a complete result")
+    assert stream.close_calls >= 1
+    assert_stopped(protected)
+
+
+@pytest.mark.parametrize("protected", ["anthropic"], indirect=True)
+def test_anthropic_context_truncated_reply_keeps_hold_and_stops_job(protected):
+    body = json.loads(reply(protected.provider))
+    body["stop_reason"] = "model_context_window_exceeded"
+    stream = CountedStream([json.dumps(body).encode()])
+    install_stream(protected, stream)
+    with pytest.raises(DispatchDenied, match="truncated"):
+        protected.wrapped.complete("context ended before completion")
+    assert stream.close_calls >= 1
+    assert_stopped(protected)
+
+
 def test_body_at_exact_limit_is_accepted(protected):
     payload = reply(protected.provider)
     stream = CountedStream([payload, b" " * (BODY_LIMIT - len(payload))])

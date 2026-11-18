@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import closing
+
 import json
 import secrets
 import sqlite3
@@ -173,7 +175,7 @@ def test_snapshot_schema_and_foreign_keys_are_validated(tmp_path, remote, kind):
             "audit_events", "provider_call_events", "service_agents",
             "agent_tokens", "agent_job_grants",
         )
-        with sqlite3.connect(incompatible) as connection:
+        with closing(sqlite3.connect(incompatible)) as connection, connection:
             connection.execute(
                 "CREATE TABLE auth_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
@@ -207,7 +209,9 @@ def test_snapshot_auth_objects_must_be_passive_tables(tmp_path, remote, kind):
 
     incompatible = tmp_path / f"{kind}.db"
     AuthStore(incompatible)
-    with sqlite3.connect(incompatible) as connection:
+    # Close as well as commit: reading only the main file while the crafted
+    # view/trigger still lives in a WAL tests an old, compatible schema instead.
+    with closing(sqlite3.connect(incompatible)) as connection, connection:
         if kind == "view":
             connection.execute("DROP TABLE sessions")
             connection.execute(
