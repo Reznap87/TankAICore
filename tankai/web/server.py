@@ -295,6 +295,10 @@ class AppContext:
                     provider="openrouter_free", limit=limit,
                     window_seconds=seconds, retry_after_seconds=retry,
                 )
+        # A Cloudflare container can disappear immediately after sending.
+        # Persist the consumed request quota BEFORE any upstream model call.
+        if self.auth_state is not None:
+            self.auth_state.save(self.auth)
 
     @classmethod
     def from_env(cls, server_host: str, *, owner_pilot: OwnerPilot | None = None) -> "AppContext":
