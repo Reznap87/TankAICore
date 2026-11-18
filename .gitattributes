@@ -1,0 +1,3 @@
+# The model initializer is mounted directly into Linux containers, also when
+# the checkout is on Windows. A CR in the shebang or set options breaks startup.
+*.sh text eol=lf

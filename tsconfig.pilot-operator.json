@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["./pilot-runtime.d.ts", "node"] },
+  "include": ["src/pilot-operator.ts", "src/pilot-api.ts", "src/pilot-controller.ts", "src/pilot-native.ts", "pilot-operator-configuration.d.ts"],
+  "exclude": []
+}

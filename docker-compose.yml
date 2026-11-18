@@ -30,6 +30,8 @@ services:
     security_opt:
       - no-new-privileges:true
     pids_limit: 256
+    # Leave room for the bounded HTTP drain before Compose sends SIGKILL.
+    stop_grace_period: 150s
     restart: unless-stopped
 
 volumes:

@@ -62,6 +62,12 @@ const label=mode==='live'?'Core verbunden':mode==='simulation'?'Simulation':mode
 byId('health').textContent=label;byId('connection-info').dataset.mode=mode;
 byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat · '+m:'Kein Live-Modell verbunden';
 byId('sysInfo').textContent='Hauptmodell: '+(m||'unbekannt')+'\nPrüfmodell: '+(data.critic_llm||'unbekannt')+'\nUnabhängige Prüfung: '+(data.critic_independent?'Ja':'Nein')+'\nRecherche: '+(data.web_research||'disabled')+'\nModus: '+mode+'\nVersion: '+String(data.version||'');
+if(data.monetary_admission_configured){try{const p=await jsonFetch('/api/pilot/preflight');if(e!==epoch)return;
+const R={source_approval_unavailable:'Quelle fehlt',concurrent_job_limit:'Auftrag aktiv',pilot_not_started:'Pilot nicht begonnen',pilot_expired:'Pilot beendet',pilot_halted:'Pilot angehalten',daily_budget:'Tagesbudget aufgebraucht',total_budget:'Gesamtbudget aufgebraucht',daily_job_quota:'Tagesauftragsgrenze',total_job_quota:'Auftragsgrenze',clock_regression:'Serverzeit prüfen',main_target_not_current:'Hauptmodell prüfen',critic_target_not_current:'Prüfmodell prüfen',independent_critic_required:'Prüfmodell fehlt'};
+const d=(p.blockers||[]).map(r=>R[r]||'Bedingung offen');
+byId('sysInfo').textContent+='\nPilot: '+(p.admission_checks_passed?'Startbedingungen erfüllt; Berechtigung und Kosten werden vor jedem Aufruf erneut geprüft.':d.join('; ')||'Bedingungen offen');
+}catch(error){if(e!==epoch)return;byId('sysInfo').textContent+='\nPilot: Prüfung derzeit nicht verfügbar.'}}
+else if(mode==='live'||mode==='mixed')byId('sysInfo').textContent+='\nPilot: gemeinsame Budgetfreigabe fehlt.';
 }catch(error){if(e!==epoch)return;byId('login-health').textContent='Core momentan nicht erreichbar';if(currentUser){byId('health').textContent='Verbindung unterbrochen';byId('connection-info').dataset.mode='offline';byId('model-label').textContent='Core momentan nicht erreichbar';}}
 }
 async function loadMe() {

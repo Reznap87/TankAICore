@@ -67,10 +67,17 @@ authentication tag still apply, while hard-link/ACL policy remains an operator
 filesystem responsibility. Missing, linked, nonregular, changed, oversized,
 truncated, appended or foreign-format inputs fail closed.
 
-Output creation is exclusive. Existing backups, restored databases and SQLite
-sidecars are never replaced. A write/sync/verification failure may leave a new
-diagnostic ciphertext file; it is not acknowledged as a backup, and retry cannot
-overwrite it. On POSIX, successful backup and restore receipts additionally
+Output creation is exclusive. The persisted ciphertext remains bound to the
+identity returned by that exclusive creation before and after its bounded,
+authenticated readback. Restored ledger files are likewise read back through a
+descriptor bound to their exclusive creation identity and must match the exact
+decrypted snapshot bytes before initialization can succeed. A missing, replaced,
+hard-linked or modified output cannot receive a successful persistence or restore
+receipt, even when it remains a valid ledger under the same policy. Existing
+backups, restored databases and SQLite sidecars are never
+replaced. A write/sync/verification failure may leave a new diagnostic ciphertext
+file; it is not acknowledged as a backup, and retry cannot overwrite it. On
+POSIX, successful backup and restore receipts additionally
 require the new directory entry to be synced. Source/destination parents must be
 trusted operator directories. New files request POSIX mode 0600; Windows ACLs
 and directory-metadata durability remain operator-managed.
@@ -107,3 +114,57 @@ module/library. Unit network calls are forbidden.
 starts fresh authenticated loopback HTTP apps: new owner jobs remain blocked
 without an SDK send. Other snapshot, budget, pricing and SDK regressions remain
 required; these tests prove neither model quality nor deployed durability.
+
+### Erfolgsgrenze nach SQLite-Close
+
+Der Restore-Erfolg wird erst nach dem Schließen der neu geöffneten SQLite-Verbindung
+bestätigt. Die ausschließlich erzeugte Zieldatei wird vor dem Schließen an Gerät,
+Inode, Linkzahl und die entschlüsselten Snapshot-Bytes gebunden und anschließend
+noch einmal gegen dieselbe Identität und dieselben Bytes geprüft. Ein Austausch des
+Pfadnamens während des Close-Fensters – auch durch bytegleichen Inhalt – führt damit
+zu einem fehlgeschlagenen Restore statt zu einem Erfolgs-Receipt.
+
+Dieser Nachweis ist ein synthetischer Dateisystemtest. Er ersetzt weder
+Produktions-Writer-Fencing noch unabhängige Freshness-/Anti-Rollback-Nachweise.
+
+
+
+### Abschlussgrenze für SQLite-Sidecars
+
+WAL-, SHM- und Journal-Dateien dürfen während der geöffneten Validierung eines
+wiederhergestellten Ledgers entstehen. Nach dem Schließen der Verbindung darf
+jedoch keiner dieser Begleiter vorhanden sein: Ein nachträglich angelegter
+Sidecar könnte den nächsten Open verändern, ohne die bereits geprüften Bytes der
+Hauptdatei anzutasten. Der verschlüsselte Restore prüft deshalb nach close sowohl
+die exakte Hauptdatei als auch die vollständige Sidecar-Abwesenheit. Synthetische
+Negativtests decken alle drei Namen ab. Dies ist Code-/CI-Evidenz; tatsächliches
+Writer-Fencing, Freshness und produktive Recovery bleiben getrennte Gates.
+
+
+### Quellbindung bis zum Erfolgs-Receipt
+
+Die Identität der verschlüsselten Quelldatei bleibt jetzt über Entschlüsselung,
+SQLite-Validierung und – beim Restore – die vollständige Prüfung der neuen
+Zieldatei hinweg gebunden. Unmittelbar vor einem erfolgreichen Verify- oder
+Restore-Receipt muss der Betreiberpfad noch dieselbe gewöhnliche, exklusiv
+benannte Datei bezeichnen. Auch ein bytegleicher Austausch nach dem authentifizierten
+Lesen wird deshalb abgewiesen. Synthetische Negativtests decken Verify und Restore
+ab; ein bereits angelegtes Restore-Ziel bleibt bei später Ablehnung als
+Diagnoseartefakt erhalten.
+
+Die Bindung ersetzt keine unveränderliche Offsite-Ablage, unabhängige
+Freshness-/Anti-Rollback-Evidenz oder Schutz eines nicht vertrauenswürdigen
+Quellverzeichnisses.
+
+### Zielverzeichnisbindung bis zum Restore-Receipt
+
+Der verschlüsselte Restore akzeptiert als Zielparent nur ein gewöhnliches
+Verzeichnis und bindet dessen Gerät/Inode bis unmittelbar vor den Erfolgs-Receipt.
+Die Prüfung erfolgt nach dem Schließen und nach der abschließenden Quellprüfung
+erneut. Wird der Parentpfad in diesem Fenster durch einen Symlink auf dasselbe
+ursprüngliche Verzeichnis ersetzt, bleiben Zieldatei, Inode und Snapshot-Bytes
+zwar erreichbar, der Restore wird dennoch fail-closed abgewiesen. Ein
+synthetischer POSIX-Negativtest deckt genau diesen Fall ab.
+
+Diese Bindung belegt keine vertrauenswürdige produktive Verzeichniskette,
+Windows-ACLs, Writer-Fencing, Freshness oder Anti-Rollback-Eigenschaften.
