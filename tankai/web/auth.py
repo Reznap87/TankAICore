@@ -733,8 +733,9 @@ class AuthStore:
             raise ValueError("Ungültige Nutzer-ID für Rate-Limit")
         if limit < 1 or limit > 240:
             raise ValueError("Provider-Rate-Limit muss zwischen 1 und 240 liegen")
-        if window_seconds < 1 or window_seconds > 3600:
-            raise ValueError("Provider-Rate-Fenster muss zwischen 1 und 3600 Sekunden liegen")
+        max_window = 86_400 if provider_n == "openrouter_free_daily" else 3600
+        if window_seconds < 1 or window_seconds > max_window:
+            raise ValueError("Ungültiges Provider-Rate-Fenster")
 
         current = (now or _utcnow()).astimezone(timezone.utc)
         cutoff = current - timedelta(seconds=window_seconds)
