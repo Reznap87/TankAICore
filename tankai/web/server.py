@@ -58,6 +58,7 @@ from tankai.web.auth import (
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
+from tankai.web.owner_recovery import apply_owner_recovery
 
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
@@ -355,6 +356,13 @@ class AppContext:
         if owner_config and auth_state is None:
             raise RuntimeError("Owner bootstrap requires durable auth state")
         bootstrap_owner(auth, owner_config)
+        recovery_config = _env("TANKAI_OWNER_RECOVERY")
+        if recovery_config:
+            if auth_state is None:
+                raise RuntimeError("Owner recovery requires durable auth state")
+            apply_owner_recovery(
+                auth, bootstrap_config=owner_config, recovery_config=recovery_config
+            )
         if auth_state is not None:
             auth_state.save(auth)
         job_queue = None
