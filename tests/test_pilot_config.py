@@ -18,7 +18,8 @@ from tankai.core.monetary_budget import (
     PilotPolicy,
     PriceQuote,
 )
-from tankai.web.pilot_config import load_owner_pilot_from_env
+from tankai.web.pilot_config import _input_token_bound, load_owner_pilot_from_env
+from tankai.core.request_dispatch import DispatchDenied, FrozenTextRequest, _freeze
 
 #: Laufzeitgesteuert, weil der Ledger die echte Zeit prueft: Eine statische
 #: Vergangenheitsangabe wuerde jeden Piloten sofort als abgelaufen markieren.
@@ -56,6 +57,7 @@ def _env(tmp_path: Path, **over: str) -> dict[str, str]:
         "TANKAI_PILOT_DAILY_MICRO_EUR": "200000",
         "TANKAI_PILOT_LEDGER_PATH": str(data / "monetary.sqlite"),
         "TANKAI_PILOT_APPROVALS_JSON": _approvals(),
+        "TANKAI_PILOT_SPEND_APPROVED": "1",
     }
     base.update(over)
     return base
@@ -84,6 +86,56 @@ def test_unvollstaendige_umgebung_bleibt_fail_closed():
     warnings: list[str] = []
     assert load_owner_pilot_from_env(environ=env, log=warnings.append) is None
     assert warnings and "TANKAI_PILOT_DAILY_MICRO_EUR" in warnings[0]
+
+
+
+def test_explicit_spending_approval_required_even_with_valid_budget(tmp_path):
+    env = _env(tmp_path)
+    ledger = Path(env["TANKAI_PILOT_LEDGER_PATH"])
+    env.pop("TANKAI_PILOT_SPEND_APPROVED")
+    assert load_owner_pilot_from_env(environ=env) is None
+    assert not ledger.exists()  # no side effect when approval is absent
+
+
+def test_nonliteral_spending_approval_is_denied(tmp_path):
+    env = _env(tmp_path, TANKAI_PILOT_SPEND_APPROVED="true")
+    assert load_owner_pilot_from_env(environ=env) is None
+
+
+def test_empty_tariff_approvals_are_denied_before_ledger_create(tmp_path):
+    env = _env(tmp_path, TANKAI_PILOT_APPROVALS_JSON="{}")
+    assert load_owner_pilot_from_env(environ=env) is None
+    assert not Path(env["TANKAI_PILOT_LEDGER_PATH"]).exists()
+
+
+def test_unpinned_source_manifest_is_denied_before_ledger_create(tmp_path):
+    env = _env(tmp_path, TANKAI_PILOT_SOURCE_MANIFESTS_JSON='[{"path": "local.json"}]')
+    assert load_owner_pilot_from_env(environ=env) is None
+    assert not Path(env["TANKAI_PILOT_LEDGER_PATH"]).exists()
+
+
+def test_token_ceiling_is_not_unsafe_character_estimate():
+    req = _freeze("openai", "main-v1", "https://openai.example.test/v1", {
+        "model": "main-v1", "messages": [{"role": "user", "content": "😀" * 100}],
+        "max_tokens": 128, "temperature": 0,
+    })
+    assert _input_token_bound(req) == 12_000  # upper bound, not len(text)//4
+
+
+def test_oversized_request_denied_instead_of_underreserved():
+    req = _freeze("openai", "main-v1", "https://openai.example.test/v1", {
+        "model": "main-v1", "messages": [{"role": "user", "content": "😀" * 5_000}],
+        "max_tokens": 128, "temperature": 0,
+    })
+    with pytest.raises(DispatchDenied, match="offline token ceiling"):
+        _input_token_bound(req)
+
+
+def test_unencodable_counter_input_fails_closed():
+    invalid = FrozenTextRequest("openai", "main-v1",
+                                "https://openai.example.test/v1", "\\ud800")
+    with pytest.raises(DispatchDenied, match="token ceiling unavailable"):
+        _input_token_bound(invalid)
 
 
 def test_vollstaendige_umgebung_baut_piloten(tmp_path):
