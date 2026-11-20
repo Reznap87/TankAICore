@@ -80,6 +80,9 @@ def apply_owner_recovery(
         if now_epoch > expiry:
             conn.execute("ROLLBACK")
             raise ValueError("Owner recovery policy expired")
+        if expiry > now_epoch + 900:
+            conn.execute("ROLLBACK")
+            raise ValueError("Owner recovery policy exceeds fifteen-minute lifetime")
         conn.execute(
             "UPDATE users SET password_hash=?, password_changed_at=? WHERE id=?",
             (new_hash, timestamp, owner_id),
