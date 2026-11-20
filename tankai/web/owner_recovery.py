@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 
 from .auth import AuthStore, _iso, _utcnow, normalize_email
 
-_HASH = re.compile(r"scrypt\\$16384\\$8\\$1\\$[0-9a-f]{32}\\$[0-9a-f]{64}")
+_HASH = re.compile(r"scrypt\$16384\$8\$1\$[0-9a-f]{32}\$[0-9a-f]{64}")
 _REQUIRED = frozenset({"recovery_id", "email", "expires_at", "password_hash"})
 
 
