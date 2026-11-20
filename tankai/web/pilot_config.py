@@ -8,8 +8,8 @@ Tages-/Gesamtbudgets und die Laufzeit duerfen nicht automatisch vergeben werden
 OpenRouter-Free und Geldpilot sind strikt getrennte Betriebsmodi:
 ``AppContext._from_env_unlocked`` lehnt beide gemeinsam ab.
 
-Ohne ``TANKAI_PILOT_APPROVALS_JSON`` sind Tarife und Endpunkte leer. Der Pilot
-ist dann aktiv, lehnt aber jeden bezahlten Aufruf ab (fail-closed).
+Ohne explizite Freigabe, Tarif-/Endpoint-Dokument oder belastbare
+Anfrageobergrenze bleibt die monetare Zulassung gesperrt (fail-closed).
 """
 from __future__ import annotations
 
@@ -19,9 +19,10 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from tankai.core.monetary_budget import MonetaryBudget, PilotPolicy
-from tankai.core.request_dispatch import FrozenTextRequest
+from tankai.core.request_dispatch import DispatchDenied, FrozenTextRequest
 from tankai.core.request_pricing import TextTariff
 from tankai.web.owner_pilot import OwnerPilot
+from tankai.web.source_manifest import load_source_manifest
 
 #: Identitaet des Piloten. Alle drei muessen gesetzt sein.
 IDENTITY_KEYS = (
@@ -44,6 +45,8 @@ LEDGER_KEY = "TANKAI_PILOT_LEDGER_PATH"
 
 #: Explizit freigegebene Tarife/Endpunkte - Pflicht, siehe REQUIRED_KEYS.
 APPROVALS_KEY = "TANKAI_PILOT_APPROVALS_JSON"
+SPEND_APPROVAL_KEY = "TANKAI_PILOT_SPEND_APPROVED"
+SOURCE_MANIFESTS_KEY = "TANKAI_PILOT_SOURCE_MANIFESTS_JSON"
 
 #: Pflichtwerte. ``APPROVALS_KEY`` gehoert dazu, weil ``OwnerPilot`` ohne
 #: mindestens ein freigegebenes Tarif/Endpoint-Paar nicht existiert
@@ -99,6 +102,7 @@ def _ledger(path: Path, policy: PilotPolicy) -> MonetaryBudget:
     if path.exists():
         ledger = MonetaryBudget(path)
         if ledger.policy != policy:
+            ledger.close()
             raise ValueError("TANKAI_PILOT_LEDGER_PATH hat eine abweichende Policy")
         return ledger
     return MonetaryBudget.create(path, policy)
@@ -150,27 +154,40 @@ def _approvals(raw: str) -> tuple[dict[tuple[str, str], str], dict[tuple[str, st
     return endpoints, tariffs
 
 
+def _source_manifests(raw: str) -> tuple:
+    """Optionale, explizit SHA-256-gepinnte Workspace-Quellenfreigaben."""
+    if not raw:
+        return ()
+    document = json.loads(raw)
+    if not isinstance(document, list) or not 1 <= len(document) <= 32:
+        raise ValueError("source manifest list must contain 1-32 entries")
+    manifests = []
+    for entry in document:
+        if (not isinstance(entry, dict) or set(entry) != {"path", "sha256"}
+                or not all(isinstance(v, str) and v for v in entry.values())):
+            raise ValueError("source manifest requires path and pinned sha256")
+        manifests.append(load_source_manifest(entry["path"], expected_sha256=entry["sha256"]))
+    return tuple(manifests)
+
+
 def _input_token_bound(request: FrozenTextRequest) -> int:
-    """Konservativer Offline-Obergrenzenzaehler (Zeichen/4, Minimum 1)."""
-    total = 0
+    """Fail-closed fuer den Pilot: voller Request muss in den harten Byte-Rahmen.
 
-    def walk(value: object) -> None:
-        nonlocal total
-        if isinstance(value, str):
-            total += len(value)
-        elif isinstance(value, dict):
-            for item in value.values():
-                walk(item)
-        elif isinstance(value, (list, tuple)):
-            for item in value:
-                walk(item)
-
+    Kein Zeichen/4-Schaetzer: Fuer einen eingefrorenen Textrequest mit maximal
+    zwei Nachrichten reservieren wir pauschal 12_000 Eingabetokens (Obergrenze
+    des TextRequestBounds-Vertrags). Zulassung nur bis 10_000 UTF-8-Bytes;
+    der Abstand deckt strukturellen Provider-Framing-Aufwand konservativ ab.
+    Die Modell-/Tokenizer-Annahme muss vor einer echten Freigabe geprueft werden.
+    """
+    if type(request) is not FrozenTextRequest:
+        raise DispatchDenied("verified frozen text request required")
     try:
-        walk(request.parameters())
-    except Exception:
-        return 1
-    return max(1, total // 4 + 1)
-
+        size = len(request._canonical_json.encode("utf-8"))
+    except (AttributeError, UnicodeError) as exc:
+        raise DispatchDenied("input token ceiling unavailable") from exc
+    if size < 1 or size > 10_000:
+        raise DispatchDenied("request exceeds reviewed offline token ceiling")
+    return 12_000
 
 def load_owner_pilot_from_env(
     *,
@@ -187,22 +204,36 @@ def load_owner_pilot_from_env(
     present = {key for key in REQUIRED_KEYS if _text(env, key)}
     if not present:
         return None
+    # Ein eigener, explizit gesetzter Freigabeschalter ist zwingend. Weder
+    # Budgets noch hinterlegte Tarife duerfen den Pilot selbst aktivieren.
+    if _text(env, SPEND_APPROVAL_KEY) != "1":
+        _warn(log, "keine ausdrueckliche Ausgabenfreigabe - Zulassung bleibt aus")
+        return None
     missing = [key for key in REQUIRED_KEYS if key not in present]
     if missing:
         _warn(log, "unvollstaendig (" + ", ".join(missing) + ") - Zulassung bleibt aus")
         return None
+    ledger = None
     try:
         policy = _policy(env)
-        ledger = _ledger(Path(_text(env, LEDGER_KEY)), policy)
+        # Jede andere Freigabe muss gueltig sein, bevor ein Ledger entsteht.
         endpoints, tariffs = _approvals(_text(env, APPROVALS_KEY))
+        if not endpoints:
+            raise ValueError("mindestens ein freigegebener Endpoint/Tarif erforderlich")
+        workspaces = _workspaces(env)
+        manifests = _source_manifests(_text(env, SOURCE_MANIFESTS_KEY))
+        ledger = _ledger(Path(_text(env, LEDGER_KEY)), policy)
         return OwnerPilot(
             ledger,
             tenant_id=_text(env, "TANKAI_PILOT_TENANT_ID"),
-            workspace_ids=_workspaces(env),
+            workspace_ids=workspaces,
             tariffs=tariffs,
             endpoints=endpoints,
             input_token_bound=_input_token_bound,
+            source_manifests=manifests,
         )
     except Exception as error:
+        if ledger is not None:
+            ledger.close()
         _warn(log, f"ungueltig ({type(error).__name__}: {error}) - Zulassung bleibt aus")
         return None
