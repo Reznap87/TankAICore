@@ -31,10 +31,11 @@ def setup_owner(tmp_path):
 
 def recovery(owner, *, expires_at=None, **changes):
     now = datetime.now(timezone.utc)
+    expiry = expires_at if expires_at is not None else now + timedelta(minutes=15)
     policy = {
         "recovery_id": str(uuid4()),
         "email": owner["email"],
-        "expires_at": int((expires_at or (now + timedelta(minutes=15))).timestamp()),
+        "expires_at": int(expiry.timestamp()) if isinstance(expiry, datetime) else expiry,
         "password_hash": hash_password(NEW_PASSWORD),
     }
     policy.update(changes)
