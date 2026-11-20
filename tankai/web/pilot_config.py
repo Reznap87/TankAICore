@@ -147,9 +147,7 @@ def _approvals(raw: str) -> tuple[dict[tuple[str, str], str], dict[tuple[str, st
             surcharge_rate=str(tariff["surcharge_rate"]),
             fixed_surcharge_eur=str(tariff["fixed_surcharge_eur"]),
             fx_source_url=tariff.get("fx_source_url"),
-            all_billable_usage_and_fees_verified=bool(
-                tariff["all_billable_usage_and_fees_verified"]
-            ),
+            all_billable_usage_and_fees_verified=tariff["all_billable_usage_and_fees_verified"],
         )
     return endpoints, tariffs
 
