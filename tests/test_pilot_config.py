@@ -133,7 +133,7 @@ def test_oversized_request_denied_instead_of_underreserved():
 
 def test_unencodable_counter_input_fails_closed():
     invalid = FrozenTextRequest("openai", "main-v1",
-                                "https://openai.example.test/v1", "\\ud800")
+                                "https://openai.example.test/v1", chr(0xD800))
     with pytest.raises(DispatchDenied, match="token ceiling unavailable"):
         _input_token_bound(invalid)
 
