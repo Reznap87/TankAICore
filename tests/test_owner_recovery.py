@@ -87,6 +87,7 @@ def test_recovery_replay_is_idempotent_including_after_expiry(tmp_path):
     {"email": "attacker@synthetic.example"},
     {"password_hash": "not-a-scrypt-hash"},
     {"expires_at": "tomorrow"},
+    {"expires_at": datetime.now(timezone.utc) + timedelta(days=1)},
     {"recovery_id": "not-a-uuid"},
     {"unexpected": "field"},
 ])
