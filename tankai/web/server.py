@@ -43,6 +43,7 @@ from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.core.request_pricing import PricingError
 from tankai.web.owner_pilot import OwnerPilot, OwnerPilotForbidden
+from tankai.web.pilot_config import load_owner_pilot_from_env
 from tankai.dev_orchestrator.job_queue import (
     DevelopmentJobQueue,
     JobState,
@@ -2808,7 +2809,12 @@ def main() -> None:
     host = _env("TANKAI_HOST", "127.0.0.1") or "127.0.0.1"
     port = _safe_int("TANKAI_PORT", 8765, 1, 65535)
     try:
-        app = AppContext.from_env(host)
+        # Geldpilot aus der Umgebung; unvollstaendig oder ungueltig bleibt die
+        # monetare Zulassung aus (fail-closed) und der Free-Chat weiter nutzbar.
+        owner_pilot = load_owner_pilot_from_env(log=print)
+        if owner_pilot is None:
+            print("[web] monetare Zulassung: aus (keine GELD-Pilot-Konfiguration)")
+        app = AppContext.from_env(host, owner_pilot=owner_pilot)
     except Exception as error:
         print("[web] startup failed; account access remains disabled")
         traceback.print_exc()
