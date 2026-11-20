@@ -108,6 +108,16 @@ def test_empty_tariff_approvals_are_denied_before_ledger_create(tmp_path):
     assert not Path(env["TANKAI_PILOT_LEDGER_PATH"]).exists()
 
 
+def test_unverified_tariff_string_is_not_truthy_approval(tmp_path):
+    approvals = _approvals().replace(
+        '"all_billable_usage_and_fees_verified": true',
+        '"all_billable_usage_and_fees_verified": "false"'
+    )
+    env = _env(tmp_path, TANKAI_PILOT_APPROVALS_JSON=approvals)
+    assert load_owner_pilot_from_env(environ=env) is None
+    assert not Path(env["TANKAI_PILOT_LEDGER_PATH"]).exists()
+
+
 def test_unpinned_source_manifest_is_denied_before_ledger_create(tmp_path):
     env = _env(tmp_path, TANKAI_PILOT_SOURCE_MANIFESTS_JSON='[{"path": "local.json"}]')
     assert load_owner_pilot_from_env(environ=env) is None
