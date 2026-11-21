@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "vars": {
-    "TANKAI_ALLOW_REGISTRATION": "0"
+    "TANKAI_ALLOW_REGISTRATION": "1"
   },
   "routes": [
     {
