@@ -8,6 +8,8 @@ The secret must contain a JSON object with exactly four fields: `recovery_id` (c
 
 `TANKAI_BOOTSTRAP_OWNER` supplies the authoritative existing user, tenant and workspace IDs. The current DB must contain this active user with the specified email and owner membership in that workspace. A malformed, expired, or mismatched policy fails closed.
 
+While `TANKAI_OWNER_RECOVERY` is present, ordinary first-run owner bootstrap is disabled. A missing or empty durable auth snapshot therefore fails recovery instead of silently creating a replacement account that happens to reuse the configured IDs. Recovery proves continuity of the restored owner record; it is not an account-creation path.
+
 The password update, existing-session revocation, audit row and one-shot nonce marker in `auth_meta` are committed in one SQLite transaction. A replay of that nonce is a no-op, including after expiration or container restart. `AppContext.from_env()` must persist the entire updated auth DB through `AuthState.save()` before serving requests.
 
 ## Production rollout gate

@@ -355,7 +355,6 @@ class AppContext:
         owner_config = _env("TANKAI_BOOTSTRAP_OWNER")
         if owner_config and auth_state is None:
             raise RuntimeError("Owner bootstrap requires durable auth state")
-        bootstrap_owner(auth, owner_config)
         recovery_config = _env("TANKAI_OWNER_RECOVERY")
         if recovery_config:
             if auth_state is None:
@@ -363,6 +362,11 @@ class AppContext:
             apply_owner_recovery(
                 auth, bootstrap_config=owner_config, recovery_config=recovery_config
             )
+        else:
+            # Recovery is valid only for an owner restored from durable state.
+            # Never let the ordinary first-run bootstrap manufacture the very
+            # identity whose continued existence recovery is meant to prove.
+            bootstrap_owner(auth, owner_config)
         if auth_state is not None:
             auth_state.save(auth)
         job_queue = None

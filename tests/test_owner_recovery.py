@@ -133,3 +133,45 @@ def test_recovery_requires_bootstrap(tmp_path):
     store, owner = setup_owner(tmp_path)
     with pytest.raises(ValueError, match="bootstrap"):
         apply_owner_recovery(store, bootstrap_config="", recovery_config=recovery(owner))
+
+
+def test_recovery_cannot_create_owner_when_durable_snapshot_is_missing(
+    tmp_path, monkeypatch
+):
+    """A recovery secret must not turn a missing backup into a fresh account."""
+    from tankai.web import server as web
+
+    class MissingSnapshotState:
+        def restore(self, path):
+            assert not path.exists()
+
+        def save(self, store):
+            pass
+
+    owner = {
+        "email": EMAIL,
+        "password_hash": hash_password(OLD_PASSWORD),
+        "user_id": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "workspace_id": str(uuid4()),
+    }
+    root = tmp_path / "web"
+    database = root / "auth.db"
+    monkeypatch.setattr(
+        web.AuthState,
+        "from_env",
+        classmethod(lambda cls: MissingSnapshotState()),
+    )
+    monkeypatch.setenv("TANKAI_AUTH_MODE", "session")
+    monkeypatch.setenv("TANKAI_DATA_ROOT", str(root))
+    monkeypatch.setenv("TANKAI_AUTH_DB", str(database))
+    monkeypatch.setenv("TANKAI_BOOTSTRAP_OWNER", json.dumps(owner))
+    monkeypatch.setenv("TANKAI_OWNER_RECOVERY", recovery(owner))
+    monkeypatch.setenv("TANKAI_LLM", "mock")
+    monkeypatch.setenv("TANKAI_EMBEDDER", "hashing")
+    monkeypatch.setenv("TANKAI_DEV_QUEUE_ENABLED", "0")
+
+    with pytest.raises(ValueError, match="does not match recovery policy"):
+        web.AppContext._from_env_unlocked("127.0.0.1")
+
+    assert AuthStore(database).user_count() == 0
