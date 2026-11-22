@@ -113,6 +113,13 @@ solche Referenz scheitert vor Geldreservierung und Provideraufruf ebenfalls mit
 HTTP 409 (`conversation_unavailable`); der Nutzer kann mit `Neuer Chat` ohne
 den ungeprüften Kontext fortfahren.
 
+Die Oberfläche bietet für einen solchen Altverlauf keine Folgefrage mit
+`reply_to` an: Der eingegebene Text bleibt erhalten und ein klarer Hinweis
+fordert zum Start eines neuen Chats auf. Unbestätigte Vorfahren werden außerdem
+nicht als scheinbar vertrauenswürdige Gesprächszüge über einer neueren Antwort
+gerendert. Damit erzeugt die UI keinen Request, den der Server aufgrund des
+fehlenden Provider-Nachweises zwingend zurückweisen muss.
+
 Dies ist ein begrenzter Gesprächsfaden auf Basis einzelner Runs, **keine
 unbegrenzte Chat-Session**: Nur die letzten 100 serverseitigen Workspace-Einträge
 stehen für die Rekonstruktion zur Verfügung; ältere Verweise können mit 409

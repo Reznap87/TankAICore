@@ -116,7 +116,7 @@ const root=byId('threadHistory'), index=new Map(historyItems.filter(sameWs).map(
 const turns=[], seen=new Set(); let id=d.answer_mode==='direct'?d.reply_to:null;
 while(id && turns.length<4 && !seen.has(id)){
 seen.add(id); const x=index.get(id);
-if(!x || x.answer_mode!=='direct' || typeof x.goal!=='string' || typeof x.final_answer!=='string')break;
+if(!x || x.answer_mode!=='direct' || x.execution_mode!=='live' || !providerIdentityVerified(x,false) || typeof x.goal!=='string' || typeof x.final_answer!=='string')break;
 turns.unshift(x); id=x.reply_to;
 }
 root.replaceChildren();
@@ -152,7 +152,8 @@ requestAnimationFrame(() => { byId('messages').scrollTop = byId('messages').scro
 }
 async function runTank(event) {
 event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
-const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked; const parentRun = !advanced && selectedResult?.answer_mode === 'direct' && typeof selectedResult.run_id === 'string' && /^[0-9a-f]{32}$/.test(selectedResult.run_id) ? selectedResult.run_id : null;
+const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked; const selectedDirect = !advanced && selectedResult?.answer_mode === 'direct'; const parentRun = selectedDirect && selectedResult.execution_mode === 'live' && providerIdentityVerified(selectedResult,false) && typeof selectedResult.run_id === 'string' && /^[0-9a-f]{32}$/.test(selectedResult.run_id) ? selectedResult.run_id : null;
+if(selectedDirect&&!parentRun){byId('status').textContent='Dieser ältere Verlauf hat keinen providerbestätigten Modellnachweis und kann nicht als Kontext verwendet werden. Bitte starte einen neuen Chat.';return}
 resetResult(); setBusy(true); renderHistory();
 byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
 byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : 'TankAI fragt das Live-Modell …';
