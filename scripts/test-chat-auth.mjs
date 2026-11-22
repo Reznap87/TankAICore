@@ -42,7 +42,7 @@ async function fetch(url, options = {}) {
         : healthCalls === 5
           ? { ok: true, registration_enabled: true, execution_mode: 'live', direct_chat_available: true, llm: 'openai:synthetic-main', user: 'synthetic@example.invalid', workspace: 'Test', workspace_id: 'other-workspace' }
           : healthCalls >= 6
-            ? { ok: true, registration_enabled: true, execution_mode: 'live', direct_chat_available: true, llm: 'openai:synthetic-main', user: 'synthetic@example.invalid', workspace: 'Test', workspace_id: 'synthetic' }
+            ? { ok: true, registration_enabled: true, execution_mode: 'live', direct_chat_available: healthCalls !== 7, llm: 'openai:synthetic-main', user: 'synthetic@example.invalid', workspace: 'Test', workspace_id: 'synthetic' }
         : { ok: true, registration_enabled: true };
   }
   else if (url === '/api/auth/me') { status = 401; data = { error: 'Anmeldung erforderlich' }; }
@@ -127,6 +127,9 @@ assert.match(byId('sysInfo').textContent, /^Konfiguriertes Hauptmodell: openai:s
 assert.match(byId('sysInfo').textContent, /^Konfiguriertes Prüfmodell: unbekannt$/m);
 assert.match(byId('sysInfo').textContent, /^Konfigurierte Modellrollen getrennt: Nein$/m);
 assert.doesNotMatch(byId('sysInfo').textContent, /providerbestätigt/i, 'health must not claim per-response provider attestation');
+await refreshInterval();
+assert.equal(byId('model-label').textContent, 'Live-Modell konfiguriert · Chat derzeit nicht freigegeben', 'configured live model and admission state must remain distinguishable');
+assert.match(byId('sysInfo').textContent, /Pilot: gemeinsame Budgetfreigabe fehlt/);
 assert.deepEqual(calls.filter(c => c.url.startsWith('/api/auth/') && c.url !== '/api/auth/me').map(c => c.url), ['/api/auth/register', '/api/auth/logout', '/api/auth/login', '/api/auth/login', '/api/auth/login', '/api/auth/login']);
 assert.equal(byId('history').children.some(child => child.textContent === 'Eigenes Gespräch'), true, 'active-workspace history must remain available');
 byId('search-open').handlers.click();

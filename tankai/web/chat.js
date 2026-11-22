@@ -60,7 +60,7 @@ if(data.user!==currentUser.user.email||data.workspace_id!==currentUser.workspace
 const m=String(data.llm||'').trim(),mode=data.execution_mode==='live'&&!m?'unknown':data.execution_mode||'unknown';
 const label=mode==='live'?'Core verbunden':mode==='simulation'?'Simulation':mode==='mixed'?'Teilweise Simulation':'Modellstatus unbekannt';
 byId('health').textContent=label;byId('connection-info').dataset.mode=mode;
-byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat bereit · konfiguriert: '+m:'Kein Live-Modell verbunden';
+byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat bereit · konfiguriert: '+m:mode==='live'&&m?'Live-Modell konfiguriert · Chat derzeit nicht freigegeben':'Kein Live-Modell verbunden';
 byId('sysInfo').textContent='Konfiguriertes Hauptmodell: '+(m||'unbekannt')+'\nKonfiguriertes Prüfmodell: '+(data.critic_llm||'unbekannt')+'\nKonfigurierte Modellrollen getrennt: '+(data.critic_independent?'Ja':'Nein')+'\nRecherche: '+(data.web_research||'disabled')+'\nModus: '+mode+'\nVersion: '+String(data.version||'');
 if(data.monetary_admission_configured){try{const p=await jsonFetch('/api/pilot/preflight');if(e!==epoch)return;
 const R={source_approval_unavailable:'Quelle fehlt',concurrent_job_limit:'Auftrag aktiv',pilot_not_started:'Pilot nicht begonnen',pilot_expired:'Pilot beendet',pilot_halted:'Pilot angehalten',daily_budget:'Tagesbudget aufgebraucht',total_budget:'Gesamtbudget aufgebraucht',daily_job_quota:'Tagesauftragsgrenze',total_job_quota:'Auftragsgrenze',clock_regression:'Serverzeit prüfen',main_target_not_current:'Hauptmodell prüfen',critic_target_not_current:'Prüfmodell prüfen',independent_critic_required:'Prüfmodell fehlt'};

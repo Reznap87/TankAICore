@@ -154,6 +154,10 @@ weiterhin keinen erfolgreichen Modellaufruf. Das Backend meldet
 `direct_chat_available=true` jetzt nur für nicht simulierte Hauptmodelle mit
 explizit vorhandenem und aktuell autorisiertem OwnerPilot. Dies ist kein
 Nachweis über freie Restbudgets oder die Erreichbarkeit der Provider-API;
+ist ein Live-Modell konfiguriert, aber diese Zulassung nicht gegeben, unterscheidet
+die Oberfläche deshalb ausdrücklich `Live-Modell konfiguriert · Chat derzeit
+nicht freigegeben` von `Kein Live-Modell verbunden`. Der konkrete Grund bleibt
+in den Pilotdetails sichtbar.
 ein kontrollierter echter Login → `/api/chat` → Modellantwort-Smoke ist separat nötig. Simulationen, gemischte Ausführung
 und fehlende Freigabe sind gesondert markiert.
 
