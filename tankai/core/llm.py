@@ -978,7 +978,7 @@ def get_critic_llm(default: BaseLLM | None = None) -> BaseLLM:
     Umgebungsvariablen:
       TANKAI_CRITIC_LLM=openai|anthropic|mock|echo
       TANKAI_CRITIC_MODEL=<Modell>
-      TANKAI_CRITIC_API_KEY=<optionaler separater Key>
+      TANKAI_CRITIC_API_KEY=<separater Key; Pflicht bei erzwungener Unabhängigkeit>
       TANKAI_CRITIC_BASE_URL=<nur OpenAI-kompatibel>
     """
     import os
@@ -997,6 +997,16 @@ def get_critic_llm(default: BaseLLM | None = None) -> BaseLLM:
     if model:
         kwargs["model"] = model
     api_key = os.environ.get("TANKAI_CRITIC_API_KEY", "").strip()
+    independent_required = os.environ.get(
+        "TANKAI_REQUIRE_INDEPENDENT_CRITIC", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if independent_required and provider.lower() in {
+        "openai", "oai", "gpt", "anthropic", "claude"
+    } and not api_key:
+        raise RuntimeError(
+            "TANKAI_CRITIC_API_KEY fehlt; ein erzwungen unabhängiger Critic "
+            "darf nicht auf den allgemeinen Provider-Key zurückfallen"
+        )
     if api_key:
         kwargs["api_key"] = api_key
     base_url = os.environ.get("TANKAI_CRITIC_BASE_URL", "").strip()
@@ -1011,6 +1021,9 @@ def describe_llm_setup() -> str:
     lines.append(f"  TANKAI_LLM={os.environ.get('TANKAI_LLM', 'nicht gesetzt')}")
     lines.append(f"  TANKAI_CRITIC_LLM={os.environ.get('TANKAI_CRITIC_LLM', 'nicht gesetzt (gleich Hauptmodell)')}")
     lines.append(f"  TANKAI_CRITIC_MODEL={os.environ.get('TANKAI_CRITIC_MODEL', 'nicht gesetzt')}")
+    lines.append(
+        f"  TANKAI_CRITIC_API_KEY={'gesetzt' if os.environ.get('TANKAI_CRITIC_API_KEY') else 'fehlt'}"
+    )
     lines.append(
         f"  OPENAI_API_KEY={'gesetzt' if os.environ.get('OPENAI_API_KEY') else 'fehlt'}"
     )

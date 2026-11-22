@@ -74,6 +74,14 @@ sudo chmod 700 /opt/tankai/.tankai /opt/tankai/.tankai/data
 sudo chown -R tankai:tankai /opt/tankai
 ```
 
+Bei `TANKAI_REQUIRE_INDEPENDENT_CRITIC=1` ist
+`TANKAI_CRITIC_API_KEY` für OpenAI-/Anthropic-Critics ein eigenes
+Fail-closed-Gate. Fehlt der Name, startet der Modellruntime-Pfad nicht und darf
+nicht auf `OPENAI_API_KEY` oder `ANTHROPIC_API_KEY` zurückfallen. Das belegt nur
+die getrennte Credential-Konfiguration; Providererreichbarkeit und tatsächlich
+beobachtete Modellidentitäten müssen weiterhin durch einen autorisierten
+Pre-Production-Smoke nachgewiesen werden.
+
 `TANKAI_COOKIE_SECURE=1` ist für HTTPS verbindlich. In diesem Modus sendet TankAI zusätzlich
 `Strict-Transport-Security: max-age=31536000`; `TANKAI_HSTS_SECONDS` ist auf 0 bis 63072000
 Sekunden begrenzt. `includeSubDomains` und `preload` werden bewusst nicht gesetzt. Direkter
