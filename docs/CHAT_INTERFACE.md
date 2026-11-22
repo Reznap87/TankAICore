@@ -77,12 +77,17 @@ Versand. Ein echter Provider-/Browser-End-to-End-Test ist weiterhin
 ein gesonderter Nachweis, kein Ergebnis der Offline-CI.
 
 Eine neue direkte Antwort wird außerdem nur gerendert, wenn ihr eigener Payload
-eine vom Provider-Response bestätigte Hauptmodellidentität in `main_llm` und einen nicht leeren
-Antworttext in `final_answer` enthält. Fehlt einer dieser per-Run-Nachweise,
+eine vom Provider-Response bestätigte Hauptmodellidentität in `main_llm`, genau
+dieselbe einzelne Identität in `observed_main_llms` und einen nicht leeren
+Antworttext in `final_answer` enthält. Erweiterte Live-Runs müssen denselben
+Nachweis zusätzlich für den unabhängigen Critic liefern. Fehlt einer dieser
+per-Run-Nachweise,
 bleibt die Antwortkarte verborgen und die Oberfläche meldet den Fehler; die
 globale Health-Anzeige kann ihn nicht ersetzen. Damit wird eine formal
 erfolgreiche HTTP-Antwort ohne benutzbare Modellantwort nicht als Live-Erfolg
-dargestellt.
+dargestellt. Bereits gespeicherte Live-Ergebnisse ohne diesen Vertrag bleiben
+lesbar, tragen aber sichtbar `Live-Modellnachweis nicht bestätigt`; auch ihr
+Text-Export kennzeichnet die Modellidentität als nicht providerbestätigt.
 
 Jede Nachricht startet einen einzelnen, budgetierten Core-Run. Der
 Direktchat unterstützt nun **begrenzte Folgefragen**: Der Browser übermittelt

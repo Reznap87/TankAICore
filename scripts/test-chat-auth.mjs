@@ -63,9 +63,9 @@ async function fetch(url, options = {}) {
     const payload = JSON.parse(options.body);
     assert.equal(payload.message, 'Direkte Frage');
     const call = directCalls++;
-    if (call === 4) assert.equal(payload.reply_to, firstDirectRun, 'the follow-up must reference the preceding server run');
+    if (call === 5) assert.equal(payload.reply_to, firstDirectRun, 'the follow-up must reference the preceding server run');
     else assert.equal('reply_to' in payload, false, 'new chats and rejected responses must not send a parent');
-    data = { workspace_id: call === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: call === 2 ? '' : 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: call === 1 ? '' : 'openai:synthetic-main', critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1, run_id: call === 4 ? secondDirectRun : firstDirectRun, reply_to: call === 4 ? firstDirectRun : null };
+    data = { workspace_id: call === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: call === 2 ? '' : 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: call === 1 ? '' : 'openai:synthetic-main', observed_main_llms: call >= 4 ? ['openai:synthetic-main'] : undefined, model_identity_verified: call >= 4 ? true : undefined, critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1, run_id: call === 5 ? secondDirectRun : firstDirectRun, reply_to: call === 5 ? firstDirectRun : null };
   }
   else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { workspace_id: 'synthetic', goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; }
   else throw new Error('Unexpected endpoint: ' + url);
@@ -151,10 +151,20 @@ assert.equal(byId('outCard').hidden, true, 'live response without answer text mu
 assert.match(byId('status').textContent, /Antworttext/);
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
+assert.equal(byId('outCard').hidden, true, 'live response without provider-confirmed identity proof must not be displayed');
+assert.match(byId('status').textContent, /Provider-bestätigte Modellidentität/);
+byId('goal').value = 'Direkte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Modellidentität providerbestätigt', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
 byId('export-chat').handlers.click();
 assert.match(exportedText, /Prüfmodell: nicht verwendet/);
+assert.match(exportedText, /Modellidentität providerbestätigt: Ja/);
 assert.match(exportedText, /Prüfmodell unabhängig: Nicht geprüft/);
+byId('history').children[0].handlers.click();
+assert.equal(byId('badges').children[0].textContent, 'Live-Modellnachweis nicht bestätigt', 'legacy live history must not claim a verified model identity');
+assert.equal(byId('badges').children[1].textContent, 'Modellidentität nicht providerbestätigt');
+byId('export-chat').handlers.click();
+assert.match(exportedText, /Modellidentität providerbestätigt: Nein/);
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(byId('threadHistory').hidden, false, 'prior turns should be shown for a follow-up');
@@ -164,7 +174,7 @@ byId('new-chat').handlers.click();
 assert.equal(byId('threadHistory').hidden, true, 'New Chat must clear prior messages');
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.equal(directCalls, 6, 'new chat should be sent without a parent');
+assert.equal(directCalls, 7, 'new chat should be sent without a parent');
 byId('goal').value = 'Geprüfte Frage'; byId('advanced').checked = true;
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.deepEqual(byId('badges').children.map(child => child.textContent), ['Teilweise Simulation · keine verifizierte Live-Antwort', 'Hauptmodell: nicht belegt', 'Prüfmodell: nicht belegt', 'Prüfmodell-Unabhängigkeit nicht belegt', '2 s']);
