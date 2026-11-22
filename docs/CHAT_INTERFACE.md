@@ -103,6 +103,16 @@ Workspace-Mitgliedschaft, OwnerPilot und Geldreservierung bleibt unverändert
 erforderlich. Die letzte Antwort und ihr `reply_to` werden dauerhaft
 gespeichert. `Neuer Chat` startet wieder ohne Verweis.
 
+Ein gespeicherter Dialogzug wird nur erneut als Modellkontext versendet, wenn
+sein eigener Payload `model_identity_verified=true` enthält und
+`observed_main_llms` genau der einzelnen `main_llm`-Identität entspricht.
+Ältere Live-Verläufe ohne diesen Provider-Nachweis bleiben für den Menschen
+sichtbar und als unbestätigt markiert, dürfen aber weder als unmittelbarer
+Elternzug noch als älterer Vorfahr in einen neuen Modellprompt gelangen. Eine
+solche Referenz scheitert vor Geldreservierung und Provideraufruf ebenfalls mit
+HTTP 409 (`conversation_unavailable`); der Nutzer kann mit `Neuer Chat` ohne
+den ungeprüften Kontext fortfahren.
+
 Dies ist ein begrenzter Gesprächsfaden auf Basis einzelner Runs, **keine
 unbegrenzte Chat-Session**: Nur die letzten 100 serverseitigen Workspace-Einträge
 stehen für die Rekonstruktion zur Verfügung; ältere Verweise können mit 409

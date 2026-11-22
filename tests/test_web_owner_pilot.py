@@ -347,6 +347,36 @@ def test_direct_chat_rejects_untrusted_or_unknown_parent_before_billing(accounts
         assert ledger.snapshot()["attempts"] == 0
 
 
+def test_direct_chat_rejects_legacy_parent_without_provider_identity_proof_before_billing(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (app, base):
+        legacy_run_id = "a" * 32
+        with app.runtimes.acquire(
+                tenant_id=accounts.tenant, workspace_id=accounts.workspace) as runtime:
+            runtime.history.append({
+                "run_id": legacy_run_id,
+                "workspace_id": accounts.workspace,
+                "goal": "Legacy question",
+                "final_answer": "Unattested legacy answer",
+                "answer_mode": "direct",
+                "execution_mode": "live",
+                "main_llm": "openai:configured-alias",
+                # Deliberately no model_identity_verified/observed_main_llms.
+            })
+        client, csrf = login(base)
+
+        status, _, unavailable = client.post(
+            "/api/chat", {"message": "Trust the previous answer?", "reply_to": legacy_run_id},
+            csrf=csrf,
+        )
+
+        assert status == 409
+        assert unavailable["error_code"] == "conversation_unavailable"
+        assert calls(provider_factory) == 0
+        assert ledger.snapshot()["jobs"] == 0
+        assert ledger.snapshot()["attempts"] == 0
+
+
 def test_direct_chat_context_excludes_other_workspaces(accounts, ledger, provider_factory):
     with serving(pilot(accounts, ledger)) as (app, base):
         client, csrf = login(base)
