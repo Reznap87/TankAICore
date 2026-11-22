@@ -56,8 +56,10 @@ Antworten; sie sind ausdrücklich kein Live-Nachweis.
 Ein erfolgreicher `--run`-Nachweis verlangt zusätzlich, dass `/api/run` die
 beiden konfigurierten Health-Identitäten unverändert referenziert und getrennte,
 vom jeweiligen Provider-Response bestätigte Haupt-/Critic-Modellidentitäten
-liefert. Ein konfigurierter Alias allein oder dieselbe beobachtete Identität für
-beide Rollen besteht den Smoke nicht.
+liefert. Alle internen Aufrufe einer Rolle müssen dabei dieselbe bestätigte
+Identität melden. Ein konfigurierter Alias allein, ein Modellwechsel innerhalb
+des Runs oder dieselbe beobachtete Identität für beide Rollen besteht den Smoke
+nicht.
 
 ## Trennlinie zur Realität
 

@@ -17,7 +17,9 @@ from tankai.core.llm import (
     BudgetedLLM,
     LLMCallBudget,
     OpenAILLM,
+    llm_response_identities,
     llm_response_identity,
+    reset_llm_response_identities,
 )
 from tankai.core.monetary_budget import BudgetDenied, BudgetStateError, MonetaryBudget, PilotPolicy
 from tankai.core.request_dispatch import DispatchDenied, FrozenTextRequest, MonetaryDispatch
@@ -93,6 +95,7 @@ def sdks(monkeypatch, ledger):
                 self.calls, self.options, self.exposures = [], [], []
                 self.error, self.ignore_retry_override, self.malformed = None, False, False
                 self.response_model = None
+                self.response_models = []
                 roots.append(self)
             self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
             self.messages = SimpleNamespace(create=self.create)
@@ -114,13 +117,16 @@ def sdks(monkeypatch, ledger):
             if self.root.malformed:
                 return SimpleNamespace(choices=[])
             text = answer(parameters)
+            response_model = (
+                self.root.response_models.pop(0)
+                if self.root.response_models
+                else parameters["model"] if self.root.response_model is None else self.root.response_model
+            )
             if self.provider == "openai":
-                return SimpleNamespace(model=(parameters["model"] if self.root.response_model is None
-                                              else self.root.response_model),
+                return SimpleNamespace(model=response_model,
                     choices=[SimpleNamespace(message=SimpleNamespace(content=text))],
                     usage=SimpleNamespace(prompt_tokens=100, completion_tokens=20))
-            return SimpleNamespace(model=(parameters["model"] if self.root.response_model is None
-                                          else self.root.response_model),
+            return SimpleNamespace(model=response_model,
                                    content=[SimpleNamespace(text=text)],
                                    usage=SimpleNamespace(input_tokens=100, output_tokens=20))
 
@@ -163,6 +169,20 @@ def test_actual_adapters_record_provider_response_models_for_result_provenance(l
 
     assert llm_response_identity(main).startswith("openai:main-resolved-2026-11-22:")
     assert llm_response_identity(critic).startswith("anthropic:critic-resolved-2026-11-22:")
+
+
+def test_actual_adapter_collects_all_response_models_until_request_reset(ledger, sdks):
+    main, _, _ = wrapped(ledger, sdks)
+    sdks[0].response_models = ["main-resolved-a", "main-resolved-b"]
+
+    main.complete("first task")
+    main.complete("second task")
+
+    assert [identity.split(":")[1] for identity in llm_response_identities(main)] == [
+        "main-resolved-a", "main-resolved-b",
+    ]
+    reset_llm_response_identities(main)
+    assert llm_response_identities(main) == ()
 
 
 def test_counter_receives_complete_final_parameters_including_default_system(ledger, sdks):

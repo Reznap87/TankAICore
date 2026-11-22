@@ -578,9 +578,23 @@ def _provider_response_model(response: Any) -> str:
 def _recording_parser(adapter: BaseLLM, parser: Callable[[Any], str]) -> Callable[[Any], str]:
     def parse(response: Any) -> str:
         text = parser(response)
-        adapter.observed_model = _provider_response_model(response)
+        _record_response_model(adapter, response)
         return text
     return parse
+
+
+def _record_response_model(adapter: BaseLLM, response: Any) -> str:
+    model = _provider_response_model(response)
+    adapter.observed_model = model
+    if not model:
+        return ""
+    lock = getattr(adapter, "_observed_models_lock", None)
+    observed = getattr(adapter, "observed_models", None)
+    if lock is not None and isinstance(observed, list):
+        with lock:
+            if model not in observed:
+                observed.append(model)
+    return model
 
 
 class OpenAILLM(BaseLLM):
@@ -622,6 +636,8 @@ class OpenAILLM(BaseLLM):
             raise RuntimeError("OPENAI_MODEL fehlt; Modell muss explizit konfiguriert werden")
         self.model_name = self.model
         self.observed_model = ""
+        self.observed_models: list[str] = []
+        self._observed_models_lock = threading.Lock()
         self.temperature = temperature
         self.max_tokens = _bounded_int(
             "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192
@@ -732,6 +748,7 @@ class OpenRouterFreeLLM(OpenAILLM):
         if type(selected) is not str or not selected.endswith(":free"):
             raise DispatchDenied("OpenRouter did not confirm a free model in the response")
         self.resolved_model = selected
+        _record_response_model(self, response)
         return bounded_text(_openai_text(response))
 
 
@@ -772,6 +789,8 @@ class AnthropicLLM(BaseLLM):
             raise RuntimeError("ANTHROPIC_MODEL fehlt; Modell muss explizit konfiguriert werden")
         self.model_name = self.model
         self.observed_model = ""
+        self.observed_models: list[str] = []
+        self._observed_models_lock = threading.Lock()
         self.temperature = temperature
         self.max_tokens = _bounded_int(
             "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192
@@ -897,6 +916,51 @@ def llm_identity(llm: BaseLLM) -> str:
     return f"{provider}:{model}:{base_url}"
 
 
+def _response_identity_parts(llm: BaseLLM) -> tuple[BaseLLM, str, str]:
+    delegate = getattr(llm, "delegate", None)
+    if isinstance(delegate, BaseLLM):
+        llm = delegate
+    provider = str(getattr(llm, "provider_name", type(llm).__name__)).strip().lower()
+    client = getattr(llm, "client", None)
+    base_url = str(getattr(client, "base_url", "")).rstrip("/").lower() if client else ""
+    return llm, provider, base_url
+
+
+def reset_llm_response_identities(llm: BaseLLM) -> None:
+    """Begin a request-scoped provider identity observation window."""
+    llm, _, _ = _response_identity_parts(llm)
+    llm.observed_model = ""
+    lock = getattr(llm, "_observed_models_lock", None)
+    observed = getattr(llm, "observed_models", None)
+    if lock is not None and isinstance(observed, list):
+        with lock:
+            observed.clear()
+    if hasattr(llm, "resolved_model"):
+        llm.resolved_model = ""
+
+
+def llm_response_identities(llm: BaseLLM) -> tuple[str, ...]:
+    """All unique provider-attested identities in the current request window."""
+    llm, provider, base_url = _response_identity_parts(llm)
+    lock = getattr(llm, "_observed_models_lock", None)
+    observed = getattr(llm, "observed_models", None)
+    if lock is not None and isinstance(observed, list):
+        with lock:
+            models = tuple(observed)
+    else:
+        models = ()
+    if not models:
+        latest = getattr(llm, "observed_model", "") or getattr(llm, "resolved_model", "")
+        models = (latest,) if latest else ()
+    identities = []
+    for candidate in models:
+        model = str(candidate).strip()
+        if not model or len(model) > 256 or any(character.isspace() for character in model):
+            continue
+        identities.append(f"{provider}:{model.lower()}:{base_url}")
+    return tuple(dict.fromkeys(identities))
+
+
 def llm_response_identity(llm: BaseLLM) -> str | None:
     """Identity attested by the latest successful provider response.
 
@@ -904,16 +968,8 @@ def llm_response_identity(llm: BaseLLM) -> str | None:
     provider response did not confirm. Callers must not present such aliases
     as proof of the model that actually answered.
     """
-    delegate = getattr(llm, "delegate", None)
-    if isinstance(delegate, BaseLLM):
-        llm = delegate
-    model = str(getattr(llm, "observed_model", "") or getattr(llm, "resolved_model", "")).strip()
-    if not model or len(model) > 256 or any(character.isspace() for character in model):
-        return None
-    provider = str(getattr(llm, "provider_name", type(llm).__name__)).strip().lower()
-    client = getattr(llm, "client", None)
-    base_url = str(getattr(client, "base_url", "")).rstrip("/").lower() if client else ""
-    return f"{provider}:{model.lower()}:{base_url}"
+    identities = llm_response_identities(llm)
+    return identities[-1] if identities else None
 
 
 def get_critic_llm(default: BaseLLM | None = None) -> BaseLLM:

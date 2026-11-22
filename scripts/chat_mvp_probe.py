@@ -116,6 +116,8 @@ def checked_result(data: dict, models: dict) -> dict:
         raise ProbeError("Provider-confirmed main or critic model identity is missing")
     if main == critic:
         raise ProbeError("Provider-confirmed critic identity is not independent")
+    if data.get("observed_main_llms") != [main] or data.get("observed_critic_llms") != [critic]:
+        raise ProbeError("Provider-confirmed model identity was not stable throughout the run")
     if not models.get("workspace_id") or data.get("workspace_id") != models["workspace_id"]:
         raise ProbeError("Run response is bound to a different workspace")
     answer = data.get("final_answer")

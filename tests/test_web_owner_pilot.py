@@ -168,6 +168,8 @@ def test_authenticated_run_reports_provider_observed_main_and_critic_models(
         assert body["configured_critic_llm"] == health["critic_llm"]
         assert body["main_llm"].startswith("openai:main-resolved-2026-11-22:")
         assert body["critic_llm"].startswith("anthropic:critic-resolved-2026-11-22:")
+        assert body["observed_main_llms"] == [body["main_llm"]]
+        assert body["observed_critic_llms"] == [body["critic_llm"]]
         assert body["main_llm"] != health["llm"]
         assert body["critic_llm"] != health["critic_llm"]
         assert body["model_identity_verified"] is True
@@ -194,6 +196,29 @@ def test_authenticated_live_run_rejects_unattested_critic_identity(
         assert calls(provider_factory) == 5
 
 
+def test_authenticated_live_run_rejects_model_switch_within_main_role(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, _ = client.get("/api/health")
+        assert status == 200
+        provider_factory[0].response_models = [
+            "main-resolved-a-2026-11-22",
+            "main-resolved-b-2026-11-22",
+            "main-resolved-b-2026-11-22",
+        ]
+
+        status, _, body = client.post(
+            "/api/run", {"goal": "Reject an unstable main model identity"}, csrf=csrf
+        )
+
+        assert status == 502
+        assert body["error_code"] == "model_identity_changed_during_run"
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
+        assert calls(provider_factory) == 5
+
+
 def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, ledger, provider_factory):
     configured = pilot(accounts, ledger)
     with serving(configured) as (app, base):
@@ -207,6 +232,7 @@ def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, led
         assert body["final_answer"] == "step result"
         assert body["answer_mode"] == "direct" and body["status"] == "unverified"
         assert body["critic_used"] is False and body["critic_llm"] is None
+        assert body["observed_main_llms"] == [body["main_llm"]]
         assert body["verification_passed"] is False and body["release_ready"] is False
         assert calls(provider_factory) == 1
         assert len(provider_factory[0].calls) == 1
