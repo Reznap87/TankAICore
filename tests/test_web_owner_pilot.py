@@ -174,6 +174,8 @@ def test_authenticated_run_reports_provider_observed_main_and_critic_models(
         assert body["critic_llm"] != health["critic_llm"]
         assert body["model_identity_verified"] is True
         assert body["critic_independent"] is True
+        assert body["goal"] == "Prove both response model identities"
+        assert str(UUID(body["run_id"])) == body["run_id"]
         assert calls(provider_factory) == 5
 
 

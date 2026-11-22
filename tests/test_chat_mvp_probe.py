@@ -31,7 +31,9 @@ def live_health():
 
 def live_result():
     return {
+        "run_id": "11111111-2222-4333-8444-555555555555",
         "workspace_id": "workspace-id",
+        "goal": "Synthetic smoke goal",
         "status": "completed",
         "execution_mode": "live",
         "release_ready": True,
@@ -134,18 +136,31 @@ def test_readiness_rejects_same_named_workspace_with_different_id():
     {"observed_critic_llms": []},
     {"observed_critic_llms": ["anthropic:other"]},
     {"main_llm": "anthropic:critic-resolved-2026-11-22"},
+    {"run_id": ""},
+    {"run_id": "not-a-run-id"},
+    {"goal": "Different smoke goal"},
     {"workspace_id": "other-workspace-id"},
     {"final_answer": "  "},
 ])
 def test_result_fails_closed(delta):
     models = probe.checked_health(live_health(), expected_workspace_id="workspace-id")
     with pytest.raises(probe.ProbeError):
-        probe.checked_result(live_result() | delta, models)
+        probe.checked_result(
+            live_result() | delta,
+            models,
+            expected_goal="Synthetic smoke goal",
+        )
 
 
 def test_offline_contract_succeeds_for_valid_live_response():
     models = probe.checked_health(live_health(), expected_workspace_id="workspace-id")
-    assert probe.checked_result(live_result(), models)["live_answer_verified"] is True
+    receipt = probe.checked_result(
+        live_result(),
+        models,
+        expected_goal="Synthetic smoke goal",
+    )
+    assert receipt["live_answer_verified"] is True
+    assert receipt["run_id"] == "11111111-2222-4333-8444-555555555555"
 
 
 def test_readonly_preflight_never_sends_run(monkeypatch, capsys):
@@ -205,7 +220,7 @@ def test_approved_live_path_checks_final_model_identity(monkeypatch, capsys):
             return login_payload()
         if path.endswith("health"):
             return live_health()
-        return live_result()
+        return live_result() | {"goal": body["goal"]}
 
     monkeypatch.setattr(probe, "request_json", fake_request)
     assert probe.main(["--run", "--approve-provider-cost"]) == 0

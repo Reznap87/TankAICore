@@ -21,8 +21,10 @@ nachvollziehbaren Modellidentitäten.
    `execution_mode=live`, `release_ready=true`,
    `verification_passed=true`, nichtleere Antwort und unveränderte
    Modellidentitäten. Die Antwort muss außerdem dieselbe Workspace-ID wie
-   die Login-Sitzung tragen; ein Ergebnis aus einem anderen Workspace ist
-   kein gültiger E2E-Nachweis.
+   die Login-Sitzung, das exakt abgesendete randomisierte Smoke-Ziel und eine
+   kanonische UUIDv4-`run_id` tragen. Damit bestehen weder ein Ergebnis aus
+   einem anderen Workspace noch eine alte oder fehlgeleitete Run-Antwort als
+   gültiger E2E-Nachweis.
 4. Anschließend im realen Browser prüfen, dass genau diese Antwort im Chat
    lesbar erscheint. Das CLI-Skript beweist **nicht** die Browser-Darstellung.
 
@@ -62,7 +64,9 @@ vom jeweiligen Provider-Response bestätigte Haupt-/Critic-Modellidentitäten
 liefert. Alle internen Aufrufe einer Rolle müssen dabei dieselbe bestätigte
 Identität melden. Ein konfigurierter Alias allein, ein Modellwechsel innerhalb
 des Runs oder dieselbe beobachtete Identität für beide Rollen besteht den Smoke
-nicht.
+nicht. Zusätzlich versieht das Skript jede autorisierte Anfrage mit einer
+zufälligen Smoke-ID und akzeptiert nur die exakt dazugehörige Antwort mit einer
+kanonischen UUIDv4-Run-ID.
 
 ## Trennlinie zur Realität
 

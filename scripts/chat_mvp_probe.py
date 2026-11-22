@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+from uuid import UUID
 
 
 class ProbeError(RuntimeError):
@@ -103,7 +105,7 @@ def checked_health(
     }
 
 
-def checked_result(data: dict, models: dict) -> dict:
+def checked_result(data: dict, models: dict, *, expected_goal: str) -> dict:
     if data.get("execution_mode") != "live" or data.get("status") != "completed":
         raise ProbeError("The chat did not complete as a live model run")
     if data.get("release_ready") is not True or data.get("verification_passed") is not True:
@@ -125,10 +127,25 @@ def checked_result(data: dict, models: dict) -> dict:
         raise ProbeError("Provider-confirmed model identity was not stable throughout the run")
     if not models.get("workspace_id") or data.get("workspace_id") != models["workspace_id"]:
         raise ProbeError("Run response is bound to a different workspace")
+    if data.get("goal") != expected_goal:
+        raise ProbeError("Run response is not bound to the submitted smoke goal")
+    run_id = data.get("run_id")
+    try:
+        parsed_run_id = UUID(run_id) if isinstance(run_id, str) else None
+    except ValueError:
+        parsed_run_id = None
+    if parsed_run_id is None or parsed_run_id.version != 4 or str(parsed_run_id) != run_id:
+        raise ProbeError("Run response has no valid new run id")
     answer = data.get("final_answer")
     if not isinstance(answer, str) or not answer.strip():
         raise ProbeError("No answer was returned")
-    return {"live_answer_verified": True, "mode": "live", "main_llm": main, "critic_llm": critic}
+    return {
+        "live_answer_verified": True,
+        "mode": "live",
+        "main_llm": main,
+        "critic_llm": critic,
+        "run_id": run_id,
+    }
 
 
 def request_json(opener, origin: str, path: str, *, body: dict | None = None, csrf: str = "") -> dict:
@@ -186,13 +203,18 @@ def main(argv: list[str] | None = None) -> int:
         receipt = {"gate": "chat_mvp", "readiness": "passed", **models, "live_answer_verified": False}
         if args.run:
             # This application-level check cannot enforce provider-side billing.
+            challenge = secrets.token_hex(8)
+            goal = (
+                "Antworte in genau einem kurzen deutschen Satz: Ist TankAI erreichbar? "
+                f"Smoke-ID: {challenge}"
+            )
             result = request_json(
                 opener, origin, "/api/run", csrf=session["csrf_token"],
-                body={"goal": "Antworte in genau einem kurzen deutschen Satz: Ist TankAI erreichbar?",
+                body={"goal": goal,
                       "definition_of_done": "Ein geprüfter deutscher Satz, ohne erfundene Quellen.",
                       "parallel": False},
             )
-            receipt.update(checked_result(result, models))
+            receipt.update(checked_result(result, models, expected_goal=goal))
         print(json.dumps(receipt, ensure_ascii=False, sort_keys=True))
         return 0
     except ProbeError as exc:

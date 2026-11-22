@@ -2697,6 +2697,7 @@ class Handler(BaseHTTPRequestHandler):
                     "details": receipt.details,
                 } for receipt in result.receipts]
                 payload = {
+                    "run_id": result.goal_id,
                     "workspace_id": context.workspace_id,
                     "goal": goal,
                     "final_answer": result.final_answer,
