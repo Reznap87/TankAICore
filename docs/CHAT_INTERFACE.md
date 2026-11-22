@@ -77,7 +77,7 @@ Versand. Ein echter Provider-/Browser-End-to-End-Test ist weiterhin
 ein gesonderter Nachweis, kein Ergebnis der Offline-CI.
 
 Eine neue direkte Antwort wird außerdem nur gerendert, wenn ihr eigener Payload
-eine nicht leere Hauptmodellidentität in `main_llm` und einen nicht leeren
+eine vom Provider-Response bestätigte Hauptmodellidentität in `main_llm` und einen nicht leeren
 Antworttext in `final_answer` enthält. Fehlt einer dieser per-Run-Nachweise,
 bleibt die Antwortkarte verborgen und die Oberfläche meldet den Fehler; die
 globale Health-Anzeige kann ihn nicht ersetzen. Damit wird eine formal

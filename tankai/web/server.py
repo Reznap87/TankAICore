@@ -31,7 +31,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tankai import __version__
-from tankai.core.llm import LLMRateLimitExceeded, OpenRouterFreeLLM, openrouter_free_scope
+from tankai.core.llm import (
+    LLMRateLimitExceeded,
+    OpenRouterFreeLLM,
+    llm_response_identity,
+    openrouter_free_scope,
+)
 from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.core.request_pricing import PricingError
@@ -2463,6 +2468,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(answer, str) or not answer.strip():
                     self._json({"error": "Das KI-Modell hat keine Antwort geliefert"}, 502)
                     return
+                response_identity = llm_response_identity(tank.llm)
+                if response_identity is None:
+                    self._json({
+                        "error": "Der Provider hat keine belastbare Modellidentität bestätigt",
+                        "error_code": "model_identity_unconfirmed",
+                    }, 502)
+                    return
                 payload = {
                     "run_id": secrets.token_hex(16),
                     "workspace_id": context.workspace_id,
@@ -2477,11 +2489,7 @@ class Handler(BaseHTTPRequestHandler):
                     "receipts_count": 0,
                     "receipts": [],
                     "plan": None,
-                    "main_llm": (
-                        "openrouter_free:" + tank.llm.delegate.resolved_model
-                        + ":https://openrouter.ai/api/v1"
-                        if free_route else tank.main_llm_identity
-                    ),
+                    "main_llm": response_identity,
                     # The direct path performs exactly one main-model call. Do
                     # not attach the configured critic's identity to a result
                     # that the critic never inspected.

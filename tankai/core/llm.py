@@ -564,6 +564,25 @@ def _anthropic_text(response: Any) -> str:
     return "\n".join(parts).strip()
 
 
+def _provider_response_model(response: Any) -> str:
+    """Return a bounded provider-confirmed model id, or no attestation."""
+    model = getattr(response, "model", None)
+    if type(model) is not str:
+        return ""
+    model = model.strip()
+    if not model or len(model) > 256 or any(character.isspace() for character in model):
+        return ""
+    return model
+
+
+def _recording_parser(adapter: BaseLLM, parser: Callable[[Any], str]) -> Callable[[Any], str]:
+    def parse(response: Any) -> str:
+        text = parser(response)
+        adapter.observed_model = _provider_response_model(response)
+        return text
+    return parse
+
+
 class OpenAILLM(BaseLLM):
     """
     OpenAI Chat Completions Adapter.
@@ -602,6 +621,7 @@ class OpenAILLM(BaseLLM):
         if not self.model:
             raise RuntimeError("OPENAI_MODEL fehlt; Modell muss explizit konfiguriert werden")
         self.model_name = self.model
+        self.observed_model = ""
         self.temperature = temperature
         self.max_tokens = _bounded_int(
             "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192
@@ -624,6 +644,7 @@ class OpenAILLM(BaseLLM):
         self.client = OpenAI(**client_kwargs)
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
+        self.observed_model = ""
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -631,11 +652,12 @@ class OpenAILLM(BaseLLM):
         parameters = {"model": self.model, "messages": messages,
                       "temperature": kwargs.get("temperature", self.temperature),
                       "max_tokens": kwargs.get("max_tokens", self.max_tokens)}
+        parser = _recording_parser(self, _openai_text)
         if "_budget_dispatch" in kwargs:
-            return _request_with_admission(self, parameters, kwargs["_budget_dispatch"], _openai_text)
+            return _request_with_admission(self, parameters, kwargs["_budget_dispatch"], parser)
         if self.requires_request_admission:
             raise DispatchDenied("protected adapter requires request admission")
-        return _openai_text(self.client.chat.completions.create(**parameters))
+        return parser(self.client.chat.completions.create(**parameters))
 
 
 # This opt-in route must never inherit a payable model fallback.
@@ -749,6 +771,7 @@ class AnthropicLLM(BaseLLM):
         if not self.model:
             raise RuntimeError("ANTHROPIC_MODEL fehlt; Modell muss explizit konfiguriert werden")
         self.model_name = self.model
+        self.observed_model = ""
         self.temperature = temperature
         self.max_tokens = _bounded_int(
             "TANKAI_LLM_MAX_TOKENS", max_tokens, default=2048, minimum=1, maximum=8192
@@ -766,6 +789,7 @@ class AnthropicLLM(BaseLLM):
         )
 
     def complete(self, prompt: str, *, system: str = "", **kwargs: Any) -> str:
+        self.observed_model = ""
         # New SDKs removed sampling controls. Count/price the parameters that
         # will actually be sent, and never silently discard an explicit override.
         fields = inspect.signature(self.client.messages.create).parameters
@@ -779,12 +803,13 @@ class AnthropicLLM(BaseLLM):
             parameters["temperature"] = kwargs.get("temperature", self.temperature)
         elif "temperature" in kwargs or self.temperature != 0.2:
             raise ValueError("installed Anthropic SDK does not support temperature")
+        parser = _recording_parser(self, _anthropic_text)
         if "_budget_dispatch" in kwargs:
             return _request_with_admission(self, parameters, kwargs["_budget_dispatch"],
-                                           _anthropic_text, anthropic=True)
+                                           parser, anthropic=True)
         if self.requires_request_admission:
             raise DispatchDenied("protected adapter requires request admission")
-        return _anthropic_text(self.client.messages.create(**parameters))
+        return parser(self.client.messages.create(**parameters))
 
 
 
@@ -870,6 +895,25 @@ def llm_identity(llm: BaseLLM) -> str:
     if client is not None:
         base_url = str(getattr(client, "base_url", "")).rstrip("/").lower()
     return f"{provider}:{model}:{base_url}"
+
+
+def llm_response_identity(llm: BaseLLM) -> str | None:
+    """Identity attested by the latest successful provider response.
+
+    This intentionally returns ``None`` for configured aliases that the
+    provider response did not confirm. Callers must not present such aliases
+    as proof of the model that actually answered.
+    """
+    delegate = getattr(llm, "delegate", None)
+    if isinstance(delegate, BaseLLM):
+        llm = delegate
+    model = str(getattr(llm, "observed_model", "") or getattr(llm, "resolved_model", "")).strip()
+    if not model or len(model) > 256 or any(character.isspace() for character in model):
+        return None
+    provider = str(getattr(llm, "provider_name", type(llm).__name__)).strip().lower()
+    client = getattr(llm, "client", None)
+    base_url = str(getattr(client, "base_url", "")).rstrip("/").lower() if client else ""
+    return f"{provider}:{model.lower()}:{base_url}"
 
 
 def get_critic_llm(default: BaseLLM | None = None) -> BaseLLM:

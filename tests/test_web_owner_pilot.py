@@ -184,6 +184,44 @@ def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, led
         assert history[0]["run_id"] == body["run_id"]
 
 
+def test_direct_chat_reports_provider_observed_model_not_configured_alias(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["llm"].startswith("openai:main-v1:")
+        provider_factory[0].response_model = "main-v1-resolved-2026-11-22"
+
+        status, _, body = client.post(
+            "/api/chat", {"message": "Which model answered?"}, csrf=csrf
+        )
+
+        assert status == 200, body
+        assert body["main_llm"].startswith(
+            "openai:main-v1-resolved-2026-11-22:"
+        )
+        assert body["main_llm"] != health["llm"]
+
+
+def test_direct_chat_rejects_answer_without_provider_model_attestation(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, _ = client.get("/api/health")
+        assert status == 200
+        provider_factory[0].response_model = ""
+
+        status, _, body = client.post(
+            "/api/chat", {"message": "Do not mislabel this answer"}, csrf=csrf
+        )
+
+        assert status == 502
+        assert body["error_code"] == "model_identity_unconfirmed"
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
+
+
 def test_direct_chat_replays_only_server_owned_workspace_history(accounts, ledger, provider_factory):
     with serving(pilot(accounts, ledger)) as (_, base):
         client, csrf = login(base)
