@@ -36,8 +36,11 @@ def live_result():
         "release_ready": True,
         "verification_passed": True,
         "critic_independent": True,
-        "main_llm": "openai:main",
-        "critic_llm": "anthropic:critic",
+        "main_llm": "openai:main-resolved-2026-11-22",
+        "critic_llm": "anthropic:critic-resolved-2026-11-22",
+        "configured_main_llm": "openai:main",
+        "configured_critic_llm": "anthropic:critic",
+        "model_identity_verified": True,
         "final_answer": "TankAI ist erreichbar.",
     }
 
@@ -107,8 +110,12 @@ def test_readiness_fails_closed(delta):
     {"release_ready": False},
     {"verification_passed": False},
     {"critic_independent": False},
-    {"main_llm": "other"},
-    {"critic_llm": "other"},
+    {"model_identity_verified": False},
+    {"configured_main_llm": "other"},
+    {"configured_critic_llm": "other"},
+    {"main_llm": ""},
+    {"critic_llm": ""},
+    {"main_llm": "anthropic:critic-resolved-2026-11-22"},
     {"workspace_id": "other-workspace-id"},
     {"final_answer": "  "},
 ])

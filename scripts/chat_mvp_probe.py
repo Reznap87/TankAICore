@@ -105,14 +105,23 @@ def checked_result(data: dict, models: dict) -> dict:
         raise ProbeError("Live response did not pass release and verification gates")
     if data.get("critic_independent") is not True:
         raise ProbeError("Run did not use an independent critic")
-    if data.get("main_llm") != models["main_llm"] or data.get("critic_llm") != models["critic_llm"]:
-        raise ProbeError("Model identity changed between readiness and run")
+    if data.get("model_identity_verified") is not True:
+        raise ProbeError("Run did not confirm response model identities")
+    if (data.get("configured_main_llm") != models["main_llm"]
+            or data.get("configured_critic_llm") != models["critic_llm"]):
+        raise ProbeError("Configured model identity changed between readiness and run")
+    main, critic = data.get("main_llm"), data.get("critic_llm")
+    if (not isinstance(main, str) or not main.strip()
+            or not isinstance(critic, str) or not critic.strip()):
+        raise ProbeError("Provider-confirmed main or critic model identity is missing")
+    if main == critic:
+        raise ProbeError("Provider-confirmed critic identity is not independent")
     if not models.get("workspace_id") or data.get("workspace_id") != models["workspace_id"]:
         raise ProbeError("Run response is bound to a different workspace")
     answer = data.get("final_answer")
     if not isinstance(answer, str) or not answer.strip():
         raise ProbeError("No answer was returned")
-    return {"live_answer_verified": True, "mode": "live", "main_llm": models["main_llm"], "critic_llm": models["critic_llm"]}
+    return {"live_answer_verified": True, "mode": "live", "main_llm": main, "critic_llm": critic}
 
 
 def request_json(opener, origin: str, path: str, *, body: dict | None = None, csrf: str = "") -> dict:

@@ -53,6 +53,12 @@ Provider, DNS-Konfiguration, Produktion oder Deployment und startet keinen
 Server. Die aktuellen Python-Tests verwenden ausschließlich synthetische
 Antworten; sie sind ausdrücklich kein Live-Nachweis.
 
+Ein erfolgreicher `--run`-Nachweis verlangt zusätzlich, dass `/api/run` die
+beiden konfigurierten Health-Identitäten unverändert referenziert und getrennte,
+vom jeweiligen Provider-Response bestätigte Haupt-/Critic-Modellidentitäten
+liefert. Ein konfigurierter Alias allein oder dieselbe beobachtete Identität für
+beide Rollen besteht den Smoke nicht.
+
 ## Trennlinie zur Realität
 
 Zum unabhängigen Lesecheck am 11. November 2026 lief der

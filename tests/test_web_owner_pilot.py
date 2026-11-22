@@ -148,6 +148,52 @@ def test_authenticated_owner_http_core_run_binds_server_job_and_preserves_holds(
         assert calls(provider_factory) == 5
 
 
+def test_authenticated_run_reports_provider_observed_main_and_critic_models(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["llm"].startswith("openai:main-v1:")
+        assert health["critic_llm"].startswith("anthropic:critic-v1:")
+        provider_factory[0].response_model = "main-resolved-2026-11-22"
+        provider_factory[1].response_model = "critic-resolved-2026-11-22"
+
+        status, _, body = client.post(
+            "/api/run", {"goal": "Prove both response model identities"}, csrf=csrf
+        )
+
+        assert status == 200, body
+        assert body["configured_main_llm"] == health["llm"]
+        assert body["configured_critic_llm"] == health["critic_llm"]
+        assert body["main_llm"].startswith("openai:main-resolved-2026-11-22:")
+        assert body["critic_llm"].startswith("anthropic:critic-resolved-2026-11-22:")
+        assert body["main_llm"] != health["llm"]
+        assert body["critic_llm"] != health["critic_llm"]
+        assert body["model_identity_verified"] is True
+        assert body["critic_independent"] is True
+        assert calls(provider_factory) == 5
+
+
+def test_authenticated_live_run_rejects_unattested_critic_identity(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, _ = client.get("/api/health")
+        assert status == 200
+        provider_factory[1].response_model = ""
+
+        status, _, body = client.post(
+            "/api/run", {"goal": "Do not accept an unattested critic"}, csrf=csrf
+        )
+
+        assert status == 502
+        assert body["error_code"] == "model_identity_unconfirmed"
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
+        assert calls(provider_factory) == 5
+
+
 def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, ledger, provider_factory):
     configured = pilot(accounts, ledger)
     with serving(configured) as (app, base):

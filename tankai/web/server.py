@@ -2490,6 +2490,8 @@ class Handler(BaseHTTPRequestHandler):
                     "receipts": [],
                     "plan": None,
                     "main_llm": response_identity,
+                    "configured_main_llm": tank.main_llm_identity,
+                    "model_identity_verified": True,
                     # The direct path performs exactly one main-model call. Do
                     # not attach the configured critic's identity to a result
                     # that the critic never inspected.
@@ -2640,6 +2642,26 @@ class Handler(BaseHTTPRequestHandler):
                             result = tank.run(goal_description=goal, definition_of_done=dod)
                 finally:
                     tank.llm_call_budget.set_call_guard(None)
+                configured_main_llm = tank.main_llm_identity
+                configured_critic_llm = tank.critic_llm_identity
+                response_main_llm = llm_response_identity(tank.llm)
+                response_critic_llm = llm_response_identity(tank.critic_llm)
+                model_identity_verified = result.execution_mode == "live"
+                if model_identity_verified and (
+                        response_main_llm is None or response_critic_llm is None):
+                    self._json({
+                        "error": "Hauptmodell oder Critic hat keine belastbare Modellidentität bestätigt",
+                        "error_code": "model_identity_unconfirmed",
+                    }, 502)
+                    return
+                if model_identity_verified and response_main_llm == response_critic_llm:
+                    self._json({
+                        "error": "Hauptmodell und Critic haben dieselbe Modellidentität bestätigt",
+                        "error_code": "critic_identity_not_independent",
+                    }, 502)
+                    return
+                displayed_main_llm = response_main_llm or configured_main_llm
+                displayed_critic_llm = response_critic_llm or configured_critic_llm
                 plan_data = None
                 if result.plan:
                     plan_data = {
@@ -2669,9 +2691,15 @@ class Handler(BaseHTTPRequestHandler):
                     "receipts_count": len(result.receipts),
                     "receipts": receipts,
                     "plan": plan_data,
-                    "main_llm": tank.main_llm_identity,
-                    "critic_llm": tank.critic_llm_identity,
-                    "critic_independent": tank.critic_independent,
+                    "main_llm": displayed_main_llm,
+                    "critic_llm": displayed_critic_llm,
+                    "configured_main_llm": configured_main_llm,
+                    "configured_critic_llm": configured_critic_llm,
+                    "model_identity_verified": model_identity_verified,
+                    "critic_independent": (
+                        displayed_main_llm != displayed_critic_llm
+                        if model_identity_verified else tank.critic_independent
+                    ),
                     "verification_passed": result.verification_passed,
                     "release_ready": result.release_ready,
                     "plan_gate_passed": result.plan_gate_passed,
