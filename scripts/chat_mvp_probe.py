@@ -75,24 +75,29 @@ def checked_health(
     if data.get("verification_ready") is not True:
         raise ProbeError("Core verification is not ready")
     user, workspace = data.get("user"), data.get("workspace")
+    workspace_id = data.get("workspace_id")
     if (
         not isinstance(user, str)
         or not user.strip()
         or not isinstance(workspace, str)
         or not workspace.strip()
+        or not isinstance(workspace_id, str)
+        or not workspace_id.strip()
     ):
         raise ProbeError("Health response is not bound to an authenticated workspace")
     if expected_email and user.strip().casefold() != expected_email.strip().casefold():
         raise ProbeError("Health response is bound to a different account")
     if expected_workspace_name and workspace.strip() != expected_workspace_name.strip():
         raise ProbeError("Health response is bound to a different workspace")
+    if expected_workspace_id and workspace_id.strip() != expected_workspace_id.strip():
+        raise ProbeError("Health response is bound to a different workspace id")
     main, critic = data.get("llm"), data.get("critic_llm")
     if not isinstance(main, str) or not main.strip() or not isinstance(critic, str) or not critic.strip():
         raise ProbeError("Main or critic model identity is missing")
     return {
         "main_llm": main,
         "critic_llm": critic,
-        "workspace_id": expected_workspace_id,
+        "workspace_id": workspace_id.strip(),
         "mode": "live",
         "configured": True,
     }

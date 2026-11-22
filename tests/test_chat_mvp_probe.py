@@ -23,6 +23,7 @@ def live_health():
         "verification_ready": True,
         "user": "synthetic@example.test",
         "workspace": "Synthetic workspace",
+        "workspace_id": "workspace-id",
         "llm": "openai:main",
         "critic_llm": "anthropic:critic",
     }
@@ -93,6 +94,7 @@ def test_login_must_be_bound_to_requested_account_and_workspace(delta):
     {"user": "other@example.test"},
     {"workspace": ""},
     {"workspace": "Other workspace"},
+    {"workspace_id": ""},
     {"ok": False},
 ])
 def test_readiness_fails_closed(delta):
@@ -101,6 +103,16 @@ def test_readiness_fails_closed(delta):
         probe.checked_health(
             data,
             expected_email="synthetic@example.test",
+            expected_workspace_name="Synthetic workspace",
+        )
+
+
+def test_readiness_rejects_same_named_workspace_with_different_id():
+    with pytest.raises(probe.ProbeError, match="different workspace"):
+        probe.checked_health(
+            live_health() | {"workspace_id": "other-workspace-id"},
+            expected_email="synthetic@example.test",
+            expected_workspace_id="workspace-id",
             expected_workspace_name="Synthetic workspace",
         )
 

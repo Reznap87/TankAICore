@@ -14,6 +14,9 @@ nachvollziehbaren Modellidentitäten.
    `execution_mode=live`,
    `live_provider=true`, `critic_independent=true`,
    `verification_ready=true`, eindeutige Haupt- und Critic-Modellidentität.
+   E-Mail, Workspace-Name **und unveränderliche `workspace_id`** müssen exakt
+   zum Login-Receipt passen; ein gleichnamiger fremder Workspace besteht die
+   Readiness nicht und löst insbesondere keinen Live-Run aus.
 3. Separat autorisierter `/api/run`: `status=completed`,
    `execution_mode=live`, `release_ready=true`,
    `verification_passed=true`, nichtleere Antwort und unveränderte
