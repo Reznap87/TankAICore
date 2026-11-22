@@ -137,7 +137,12 @@ dafür, welches Modell eine einzelne Antwort erzeugt hat. Gemischte Ausführung 
 ausdrücklich als nicht verifizierte Live-Antwort markiert.
 
 `Core verbunden` bestätigt eine erfolgreiche Health-Antwort nur dann, wenn der
-Core zugleich den Live-Modus und eine nicht leere Hauptmodellidentität meldet.
+Core zugleich den Live-Modus und eine nicht leere konfigurierte
+Hauptmodellidentität meldet. Der Modellhinweis bezeichnet diesen Wert deshalb
+ausdrücklich als `konfiguriert`; auch Hauptmodell, Prüfmodell und Trennung der
+Modellrollen in den Systemdetails sind ausschließlich Konfigurations- und
+Readiness-Angaben. Providerbestätigte Identitäten erscheinen erst an einer
+konkreten Antwort mit deren per-Run-Nachweis.
 Bei angemeldeten Konten muss der Health-Nachweis außerdem exakt die E-Mail des
 aktiven Kontos und die unveränderliche `workspace_id` des aktiven Workspace tragen;
 ein bloß gleicher Workspace-Name genügt nicht. Ein Nachweis für ein anderes Konto
