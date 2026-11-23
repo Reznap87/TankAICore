@@ -26,6 +26,7 @@ let historyCalls = 0;
 const firstDirectRun = 'a'.repeat(32);
 const secondDirectRun = 'b'.repeat(32);
 const thirdDirectRun = 'c'.repeat(32);
+const fourthDirectRun = 'e'.repeat(32);
 const legacyRun = 'd'.repeat(32);
 const advancedRun = '11111111-2222-4333-8444-555555555555';
 const failedAdvancedRun = '66666666-7777-4888-8999-aaaaaaaaaaaa';
@@ -76,10 +77,11 @@ async function fetch(url, options = {}) {
     assert.equal(payload.message, 'Direkte Frage');
     const call = directCalls++;
     if (call === 6) assert.equal(payload.reply_to, secondDirectRun, 'a provider-attested turn remains eligible for a follow-up');
+    else if (call === 7) assert.equal(payload.reply_to, thirdDirectRun, 'the next provider-attested turn remains eligible for a follow-up');
     else assert.equal('reply_to' in payload, false, 'new chats and rejected responses must not send a parent');
-    data = { workspace_id: call === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: call === 2 ? '' : 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: call === 1 ? '' : 'openai:synthetic-main', observed_main_llms: call >= 4 ? ['openai:synthetic-main'] : undefined, model_identity_verified: call >= 4 ? true : undefined, critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1, run_id: call === 6 ? thirdDirectRun : call === 5 ? secondDirectRun : firstDirectRun, reply_to: call === 6 ? secondDirectRun : null };
+    data = { workspace_id: call === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: call === 2 ? '' : 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: call === 1 ? '' : 'openai:synthetic-main', observed_main_llms: call >= 4 ? ['openai:synthetic-main'] : undefined, model_identity_verified: call >= 4 ? true : undefined, critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1, run_id: call === 7 ? fourthDirectRun : call === 6 ? thirdDirectRun : call === 5 ? secondDirectRun : firstDirectRun, reply_to: call === 7 ? thirdDirectRun : call === 6 ? secondDirectRun : null };
     latestChatResult = data;
-    if (call >= 5) storedHistory.unshift(data);
+    if (call >= 5) storedHistory.unshift(call === 7 ? { ...data, reply_to: firstDirectRun } : data);
   }
   else if (url === '/api/run') {
     assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage');
@@ -208,6 +210,11 @@ assert.match(exportedText, /Prüfmodell unabhängig: Nicht geprüft/);
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(directCalls, 7, 'a provider-attested direct answer should remain eligible for follow-up');
+byId('goal').value = 'Direkte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(directCalls, 8, 'a direct answer with a mismatched persisted parent must reach the history check');
+assert.equal(byId('outCard').hidden, true, 'a reply parent differing from persisted history must not be displayed as completed');
+assert.match(byId('status').textContent, /Verlauf/i);
 byId('goal').value = 'Geprüfte Frage'; byId('advanced').checked = true;
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(byId('badges').children[0].textContent, 'Nicht freigegeben', 'release_ready alone must not claim a passed independent verification');

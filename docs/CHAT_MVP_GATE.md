@@ -32,9 +32,10 @@ nachvollziehbaren Modellidentitäten.
    lesbar erscheint. Die Oberfläche rendert eine neue Antwort erst dann als
    Ergebnis, wenn `/api/history` genau ein in den sicherheitsrelevanten Feldern
    identisches Receipt zurückliefert. Dazu gehört insbesondere, ob der Critic
-   tatsächlich verwendet wurde, welche Laufzeit angezeigt wird, welche
-   sichtbaren Ausführungsbelege die Receipt-Tabelle enthält und welcher Plan
-   samt Begründung angezeigt wird.
+   tatsächlich verwendet wurde, welchem Elternlauf eine Direktantwort
+   zugeordnet ist, welche Laufzeit angezeigt wird, welche sichtbaren
+   Ausführungsbelege die Receipt-Tabelle enthält und welcher Plan samt
+   Begründung angezeigt wird.
    Fehlt dieser Persistenznachweis, bleibt
    die Antwortkarte verborgen und die Oberfläche fordert zur Verlaufskontrolle
    vor erneutem Senden auf. `Prüfung bestanden` wird nur bei `status=completed` gemeinsam mit
