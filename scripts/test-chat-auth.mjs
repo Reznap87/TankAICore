@@ -25,6 +25,11 @@ let historyCalls = 0;
 const firstDirectRun = 'a'.repeat(32);
 const secondDirectRun = 'b'.repeat(32);
 const thirdDirectRun = 'c'.repeat(32);
+const legacyRun = 'd'.repeat(32);
+const advancedRun = '11111111-2222-4333-8444-555555555555';
+const legacyHistory = { workspace_id: 'synthetic', run_id: legacyRun, goal: 'Eigenes Gespräch', final_answer: 'Darf erscheinen', answer_mode: 'direct', execution_mode: 'live' };
+const storedHistory = [legacyHistory];
+let latestChatResult;
 let releaseInitialHealth;
 let refreshInterval;
 const delayedHealth = new Promise(resolve => { releaseInitialHealth = resolve; });
@@ -54,11 +59,9 @@ async function fetch(url, options = {}) {
     const call = historyCalls++;
     data = call === 0
       ? [{ workspace_id: 'other-workspace', goal: 'Fremdes Gespräch', final_answer: 'Darf nicht erscheinen' }]
-      : call === 1
-        ? [{ workspace_id: 'synthetic', goal: 'Eigenes Gespräch', final_answer: 'Darf erscheinen' }]
-        : directCalls >= 4
-          ? [{ workspace_id: 'synthetic', run_id: firstDirectRun, goal: 'Direkte Frage', final_answer: 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live' }]
-          : [];
+      : call === 2
+        ? [{ ...latestChatResult, final_answer: 'Abweichend gespeicherte Antwort' }, ...storedHistory]
+        : [...storedHistory];
   }
   else if (url === '/api/chat') {
     const payload = JSON.parse(options.body);
@@ -67,8 +70,10 @@ async function fetch(url, options = {}) {
     if (call === 6) assert.equal(payload.reply_to, secondDirectRun, 'a provider-attested turn remains eligible for a follow-up');
     else assert.equal('reply_to' in payload, false, 'new chats and rejected responses must not send a parent');
     data = { workspace_id: call === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: call === 2 ? '' : 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: call === 1 ? '' : 'openai:synthetic-main', observed_main_llms: call >= 4 ? ['openai:synthetic-main'] : undefined, model_identity_verified: call >= 4 ? true : undefined, critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1, run_id: call === 6 ? thirdDirectRun : call === 5 ? secondDirectRun : firstDirectRun, reply_to: call === 6 ? secondDirectRun : null };
+    latestChatResult = data;
+    if (call >= 5) storedHistory.unshift(data);
   }
-  else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { workspace_id: 'synthetic', goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; }
+  else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { workspace_id: 'synthetic', run_id: advancedRun, goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', status: 'completed', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; storedHistory.unshift(data); }
   else throw new Error('Unexpected endpoint: ' + url);
   return { ok: status < 400, status, json: async () => data };
 }
@@ -163,12 +168,9 @@ assert.equal(byId('outCard').hidden, true, 'live response without provider-confi
 assert.match(byId('status').textContent, /Provider-bestätigte Modellidentität/);
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Modellidentität providerbestätigt', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
-byId('export-chat').handlers.click();
-assert.match(exportedText, /Prüfmodell: nicht verwendet/);
-assert.match(exportedText, /Modellidentität providerbestätigt: Ja/);
-assert.match(exportedText, /Prüfmodell unabhängig: Nicht geprüft/);
-byId('history').children[0].handlers.click();
+assert.equal(byId('outCard').hidden, true, 'an answer differing from its chat history receipt must not be displayed as completed');
+assert.match(byId('status').textContent, /Verlauf/i);
+byId('history').children.find(child => child.textContent === 'Eigenes Gespräch').handlers.click();
 assert.equal(byId('badges').children[0].textContent, 'Live-Modellnachweis nicht bestätigt', 'legacy live history must not claim a verified model identity');
 assert.equal(byId('badges').children[1].textContent, 'Modellidentität nicht providerbestätigt');
 byId('export-chat').handlers.click();
@@ -184,6 +186,11 @@ assert.equal(byId('threadHistory').hidden, true, 'New Chat must clear prior mess
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(directCalls, 6, 'new chat should be sent without a parent');
+assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Modellidentität providerbestätigt', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
+byId('export-chat').handlers.click();
+assert.match(exportedText, /Prüfmodell: nicht verwendet/);
+assert.match(exportedText, /Modellidentität providerbestätigt: Ja/);
+assert.match(exportedText, /Prüfmodell unabhängig: Nicht geprüft/);
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(directCalls, 7, 'a provider-attested direct answer should remain eligible for follow-up');

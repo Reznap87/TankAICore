@@ -29,7 +29,12 @@ nachvollziehbaren Modellidentitäten.
    zurückliefern. Das belegt den vom Chat verwendeten Rücklesepfad, aber noch
    keine tatsächliche Browserdarstellung.
 4. Anschließend im realen Browser prüfen, dass genau diese Antwort im Chat
-   lesbar erscheint. Das CLI-Skript beweist **nicht** die Browser-Darstellung.
+   lesbar erscheint. Die Oberfläche rendert eine neue Antwort erst dann als
+   Ergebnis, wenn `/api/history` genau ein in den sicherheitsrelevanten Feldern
+   identisches Receipt zurückliefert. Fehlt dieser Persistenznachweis, bleibt
+   die Antwortkarte verborgen und die Oberfläche fordert zur Verlaufskontrolle
+   vor erneutem Senden auf. Das CLI-Skript und der synthetische DOM-Test beweisen
+   trotzdem **nicht** die Darstellung in einem realen Produktionsbrowser.
 
 ## CLI: zuerst ohne Modellaufruf
 

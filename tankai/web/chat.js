@@ -104,10 +104,17 @@ historyItems.forEach((item, index) => { const button = element('button', 'histor
 }
 function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
 function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
-async function loadHistory() {
+const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'release_ready', 'verification_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent'];
+function historyReceiptIndex(data, expected) {
+if(!expected||typeof expected.run_id!=='string'||!expected.run_id)return -1;
+const matches=data.map((item,index)=>({item,index})).filter(({item})=>item&&item.run_id===expected.run_id);
+if(matches.length!==1)return -1;
+return historyReceiptFields.every(key=>JSON.stringify(matches[0].item[key])===JSON.stringify(expected[key]))?matches[0].index:-1;
+}
+async function loadHistory(expectedResult = null) {
 const e = epoch;
-try { const data = await jsonFetch('/api/history'); if (e !== epoch) return; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; if (selectedResult) renderThread(selectedResult); renderHistory(); }
-catch (error) { if (e !== epoch) return; if (error.status === 401) showLogin(); else { historyItems = []; selectedIndex = -1; byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); } }
+try { const data = await jsonFetch('/api/history'); if (e !== epoch) return false; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = expectedResult ? historyReceiptIndex(data, expectedResult) : selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; if (selectedResult) renderThread(selectedResult); renderHistory(); return !expectedResult || selectedIndex >= 0; }
+catch (error) { if (e !== epoch) return false; if (error.status === 401) showLogin(); else { historyItems = []; selectedIndex = -1; byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); } return false; }
 }
 function textCell(value) { return element('td', '', value ?? ''); }
 function badge(value, className) { return element('span', 'badge ' + className, value); }
@@ -163,9 +170,10 @@ if (requestEpoch !== epoch) return;
 if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
 if((!advanced||data.execution_mode==='live')&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
 if(data.execution_mode==='live'&&!providerIdentityVerified(data,advanced))throw new Error('Provider-bestätigte Modellidentität fehlt oder ist innerhalb des Runs nicht stabil');
-if (!data.goal) data.goal = goal; renderResult(data); byId('goal').value = '';
+if (!data.goal) data.goal = goal;
+if(!await loadHistory(data))throw new Error('Antwort konnte nicht identisch aus dem Chat-Verlauf bestätigt werden');
+renderResult(data); byId('goal').value = '';
 byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.answer_mode === 'direct' ? 'Live-Antwort erhalten · nicht unabhängig geprüft.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
-await loadHistory();
 } catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
 finally { if (requestEpoch === epoch) { setBusy(false); renderHistory(); byId('goal').focus(); } }
 }
