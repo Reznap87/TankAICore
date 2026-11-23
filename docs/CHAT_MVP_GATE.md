@@ -33,8 +33,12 @@ nachvollziehbaren Modellidentitäten.
    Ergebnis, wenn `/api/history` genau ein in den sicherheitsrelevanten Feldern
    identisches Receipt zurückliefert. Fehlt dieser Persistenznachweis, bleibt
    die Antwortkarte verborgen und die Oberfläche fordert zur Verlaufskontrolle
-   vor erneutem Senden auf. Das CLI-Skript und der synthetische DOM-Test beweisen
-   trotzdem **nicht** die Darstellung in einem realen Produktionsbrowser.
+   vor erneutem Senden auf. `Prüfung bestanden` wird nur gemeinsam mit
+   providerbestätigten getrennten Modellidentitäten, unabhängigem Critic sowie
+   `verification_passed=true` und `release_ready=true` angezeigt; ein einzelnes
+   widersprüchliches Freigabefeld erzeugt keinen Erfolgsstatus. Das CLI-Skript
+   und der synthetische DOM-Test beweisen trotzdem **nicht** die Darstellung in
+   einem realen Produktionsbrowser.
 
 ## CLI: zuerst ohne Modellaufruf
 

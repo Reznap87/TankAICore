@@ -73,7 +73,7 @@ async function fetch(url, options = {}) {
     latestChatResult = data;
     if (call >= 5) storedHistory.unshift(data);
   }
-  else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { workspace_id: 'synthetic', run_id: advancedRun, goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', status: 'completed', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; storedHistory.unshift(data); }
+  else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { workspace_id: 'synthetic', run_id: advancedRun, goal: 'Geprüfte Frage', final_answer: 'Widersprüchliches Live-Ergebnis', status: 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: false, verification_passed: false, release_ready: true, duration_seconds: 2 }; storedHistory.unshift(data); }
   else throw new Error('Unexpected endpoint: ' + url);
   return { ok: status < 400, status, json: async () => data };
 }
@@ -196,7 +196,9 @@ await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(directCalls, 7, 'a provider-attested direct answer should remain eligible for follow-up');
 byId('goal').value = 'Geprüfte Frage'; byId('advanced').checked = true;
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.deepEqual(byId('badges').children.map(child => child.textContent), ['Teilweise Simulation · keine verifizierte Live-Antwort', 'Hauptmodell: nicht belegt', 'Prüfmodell: nicht belegt', 'Prüfmodell-Unabhängigkeit nicht belegt', '2 s']);
+assert.equal(byId('badges').children[0].textContent, 'Nicht freigegeben', 'release_ready alone must not claim a passed independent verification');
+assert.equal(byId('badges').children[4].textContent, 'Prüfmodell nicht unabhängig');
+assert.doesNotMatch(byId('status').textContent, /Prüfung abgeschlossen/, 'contradictory verification fields must not claim a completed review');
 
 const restoreElements = new Map();
 const restoreById = id => { if (!restoreElements.has(id)) restoreElements.set(id, new Element()); return restoreElements.get(id); };
