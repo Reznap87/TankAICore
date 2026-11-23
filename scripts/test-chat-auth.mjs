@@ -32,6 +32,7 @@ const failedAdvancedRun = '66666666-7777-4888-8999-aaaaaaaaaaaa';
 const planGateAdvancedRun = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 const verifiedAdvancedRun = '12345678-1234-4abc-8def-123456789abc';
 const criticMismatchAdvancedRun = 'fedcba98-7654-4cba-9876-fedcba987654';
+const receiptsMismatchAdvancedRun = '0f0f0f0f-1e1e-4d2d-8c3c-4b4b4b4b4b4b';
 const legacyHistory = { workspace_id: 'synthetic', run_id: legacyRun, goal: 'Eigenes Gespräch', final_answer: 'Darf erscheinen', answer_mode: 'direct', execution_mode: 'live' };
 const storedHistory = [legacyHistory];
 let latestChatResult;
@@ -81,9 +82,9 @@ async function fetch(url, options = {}) {
   else if (url === '/api/run') {
     assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage');
     const call = advancedCalls++;
-    const runIds = [advancedRun, failedAdvancedRun, planGateAdvancedRun, verifiedAdvancedRun, criticMismatchAdvancedRun];
-    data = { workspace_id: 'synthetic', run_id: runIds[call], goal: 'Geprüfte Frage', final_answer: ['Widersprüchliches Live-Ergebnis', 'Fehlgeschlagenes Live-Ergebnis', 'Plan-Gate nicht bestanden', 'Verifiziertes Live-Ergebnis', 'Abweichende Critic-Nutzung'][call], status: call === 1 ? 'failed' : 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: call > 0, verification_passed: call > 0, plan_gate_passed: call >= 2 ? call !== 2 : undefined, release_ready: true, duration_seconds: 2 };
-    storedHistory.unshift(call === 4 ? { ...data, critic_used: false } : data);
+    const runIds = [advancedRun, failedAdvancedRun, planGateAdvancedRun, verifiedAdvancedRun, criticMismatchAdvancedRun, receiptsMismatchAdvancedRun];
+    data = { workspace_id: 'synthetic', run_id: runIds[call], goal: 'Geprüfte Frage', final_answer: ['Widersprüchliches Live-Ergebnis', 'Fehlgeschlagenes Live-Ergebnis', 'Plan-Gate nicht bestanden', 'Verifiziertes Live-Ergebnis', 'Abweichende Critic-Nutzung', 'Abweichender Receipt-Beleg'][call], status: call === 1 ? 'failed' : 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: call > 0, verification_passed: call > 0, plan_gate_passed: call >= 2 ? call !== 2 : undefined, release_ready: true, duration_seconds: 2, receipts_count: call === 5 ? 1 : undefined, receipts: call === 5 ? [{ actor: 'critic', action: 'verify', success: true, output_summary: 'Bestätigt' }] : undefined };
+    storedHistory.unshift(call === 4 ? { ...data, critic_used: false } : call === 5 ? { ...data, receipts: [{ actor: 'critic', action: 'verify', success: false, output_summary: 'Fehlgeschlagen' }] } : data);
   }
   else throw new Error('Unexpected endpoint: ' + url);
   return { ok: status < 400, status, json: async () => data };
@@ -225,6 +226,11 @@ assert.match(byId('status').textContent, /Prüfung abgeschlossen/);
 byId('goal').value = 'Geprüfte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(byId('outCard').hidden, true, 'critic usage differing from persisted history must not be displayed as completed');
+assert.match(byId('status').textContent, /Verlauf/i);
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('outCard').hidden, true, 'receipt evidence differing from persisted history must not be displayed as completed');
+assert.equal(byId('receiptCard').hidden, true, 'unpersisted positive receipt evidence must stay hidden');
 assert.match(byId('status').textContent, /Verlauf/i);
 
 const restoreElements = new Map();
