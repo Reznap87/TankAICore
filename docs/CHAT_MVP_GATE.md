@@ -24,7 +24,10 @@ nachvollziehbaren Modellidentitäten.
    die Login-Sitzung, das exakt abgesendete randomisierte Smoke-Ziel und eine
    kanonische UUIDv4-`run_id` tragen. Damit bestehen weder ein Ergebnis aus
    einem anderen Workspace noch eine alte oder fehlgeleitete Run-Antwort als
-   gültiger E2E-Nachweis.
+   gültiger E2E-Nachweis. Anschließend muss `/api/history` genau einen Eintrag
+   mit derselben Run-ID und identischem Antwort-, Workspace- und Modell-Receipt
+   zurückliefern. Das belegt den vom Chat verwendeten Rücklesepfad, aber noch
+   keine tatsächliche Browserdarstellung.
 4. Anschließend im realen Browser prüfen, dass genau diese Antwort im Chat
    lesbar erscheint. Das CLI-Skript beweist **nicht** die Browser-Darstellung.
 
@@ -67,6 +70,11 @@ des Runs oder dieselbe beobachtete Identität für beide Rollen besteht den Smok
 nicht. Zusätzlich versieht das Skript jede autorisierte Anfrage mit einer
 zufälligen Smoke-ID und akzeptiert nur die exakt dazugehörige Antwort mit einer
 kanonischen UUIDv4-Run-ID.
+Nach dem Run liest das Skript den authentifizierten Chatverlauf zurück und
+vergleicht die sicherheitsrelevanten Felder bytegenau mit dem unmittelbaren
+Run-Receipt. `history_verified=true` bedeutet daher nur, dass die Antwort über
+denselben API-Pfad abrufbar ist, den die Oberfläche nutzt; der manuelle oder
+browserautomatisierte Sichtnachweis aus Schritt 4 bleibt separat erforderlich.
 
 ## Trennlinie zur Realität
 

@@ -148,7 +148,50 @@ def checked_result(data: dict, models: dict, *, expected_goal: str) -> dict:
     }
 
 
-def request_json(opener, origin: str, path: str, *, body: dict | None = None, csrf: str = "") -> dict:
+_HISTORY_RECEIPT_FIELDS = (
+    "run_id",
+    "workspace_id",
+    "goal",
+    "final_answer",
+    "status",
+    "execution_mode",
+    "release_ready",
+    "verification_passed",
+    "main_llm",
+    "critic_llm",
+    "observed_main_llms",
+    "observed_critic_llms",
+    "configured_main_llm",
+    "configured_critic_llm",
+    "model_identity_verified",
+    "critic_independent",
+)
+
+
+def checked_history(data: list, result: dict) -> dict:
+    if not isinstance(data, list):
+        raise ProbeError("Chat history response is not a JSON array")
+    matching = [
+        item for item in data
+        if isinstance(item, dict) and item.get("run_id") == result.get("run_id")
+    ]
+    if len(matching) != 1:
+        raise ProbeError("The completed run is not uniquely readable from chat history")
+    stored = matching[0]
+    if any(stored.get(field) != result.get(field) for field in _HISTORY_RECEIPT_FIELDS):
+        raise ProbeError("The chat history receipt differs from the completed run")
+    return {"history_verified": True}
+
+
+def request_json(
+    opener,
+    origin: str,
+    path: str,
+    *,
+    body: dict | None = None,
+    csrf: str = "",
+    expected_type: type = dict,
+) -> dict | list:
     payload = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"Accept": "application/json"}
     if payload is not None:
@@ -173,8 +216,11 @@ def request_json(opener, origin: str, path: str, *, body: dict | None = None, cs
         data = json.loads(raw)
     except (ValueError, UnicodeError):
         raise ProbeError(f"{path}: invalid JSON response") from None
-    if not isinstance(data, dict):
-        raise ProbeError(f"{path}: expected JSON object")
+    if expected_type not in (dict, list):
+        raise ValueError("expected_type must be dict or list")
+    if not isinstance(data, expected_type):
+        expected_name = "object" if expected_type is dict else "array"
+        raise ProbeError(f"{path}: expected JSON {expected_name}")
     return data
 
 
@@ -215,6 +261,13 @@ def main(argv: list[str] | None = None) -> int:
                       "parallel": False},
             )
             receipt.update(checked_result(result, models, expected_goal=goal))
+            history = request_json(
+                opener,
+                origin,
+                "/api/history",
+                expected_type=list,
+            )
+            receipt.update(checked_history(history, result))
         print(json.dumps(receipt, ensure_ascii=False, sort_keys=True))
         return 0
     except ProbeError as exc:

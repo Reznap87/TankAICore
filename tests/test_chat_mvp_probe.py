@@ -163,6 +163,24 @@ def test_offline_contract_succeeds_for_valid_live_response():
     assert receipt["run_id"] == "11111111-2222-4333-8444-555555555555"
 
 
+@pytest.mark.parametrize("history", [
+    [],
+    [live_result(), live_result()],
+    [live_result() | {"run_id": "22222222-3333-4444-8555-666666666666"}],
+    [live_result() | {"final_answer": "Different stored answer"}],
+    [live_result() | {"observed_main_llms": ["openai:other"]}],
+])
+def test_history_must_contain_one_identical_completed_run(history):
+    with pytest.raises(probe.ProbeError):
+        probe.checked_history(history, live_result())
+
+
+def test_history_contract_succeeds_for_identical_completed_run():
+    assert probe.checked_history([live_result()], live_result()) == {
+        "history_verified": True,
+    }
+
+
 def test_readonly_preflight_never_sends_run(monkeypatch, capsys):
     monkeypatch.setenv("TANKAI_SMOKE_EMAIL", "synthetic@example.test")
     monkeypatch.setenv("TANKAI_SMOKE_PASSWORD", "synthetic-password")
@@ -213,14 +231,19 @@ def test_approved_live_path_checks_final_model_identity(monkeypatch, capsys):
     monkeypatch.setenv("TANKAI_SMOKE_PASSWORD", "synthetic-password")
     monkeypatch.setenv("TANKAI_ALLOW_BILLED_SMOKE", "1")
     paths = []
+    submitted_goal = []
 
-    def fake_request(opener, origin, path, *, body=None, csrf=""):
+    def fake_request(opener, origin, path, *, body=None, csrf="", expected_type=dict):
         paths.append((path, csrf))
         if path.endswith("login"):
             return login_payload()
         if path.endswith("health"):
             return live_health()
-        return live_result() | {"goal": body["goal"]}
+        if path.endswith("run"):
+            submitted_goal.append(body["goal"])
+            return live_result() | {"goal": body["goal"]}
+        assert expected_type is list
+        return [live_result() | {"goal": submitted_goal[0]}]
 
     monkeypatch.setattr(probe, "request_json", fake_request)
     assert probe.main(["--run", "--approve-provider-cost"]) == 0
@@ -228,5 +251,8 @@ def test_approved_live_path_checks_final_model_identity(monkeypatch, capsys):
         ("/api/auth/login", ""),
         ("/api/health", ""),
         ("/api/run", "synthetic-token"),
+        ("/api/history", ""),
     ]
-    assert '"live_answer_verified": true' in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert '"live_answer_verified": true' in output
+    assert '"history_verified": true' in output
