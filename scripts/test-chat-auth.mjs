@@ -34,6 +34,7 @@ const verifiedAdvancedRun = '12345678-1234-4abc-8def-123456789abc';
 const criticMismatchAdvancedRun = 'fedcba98-7654-4cba-9876-fedcba987654';
 const receiptsMismatchAdvancedRun = '0f0f0f0f-1e1e-4d2d-8c3c-4b4b4b4b4b4b';
 const planMismatchAdvancedRun = '13572468-2468-4ace-8bdf-135724681357';
+const durationMismatchAdvancedRun = 'abcdef01-2345-4abc-8def-0123456789ab';
 const legacyHistory = { workspace_id: 'synthetic', run_id: legacyRun, goal: 'Eigenes Gespräch', final_answer: 'Darf erscheinen', answer_mode: 'direct', execution_mode: 'live' };
 const storedHistory = [legacyHistory];
 let latestChatResult;
@@ -83,9 +84,9 @@ async function fetch(url, options = {}) {
   else if (url === '/api/run') {
     assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage');
     const call = advancedCalls++;
-    const runIds = [advancedRun, failedAdvancedRun, planGateAdvancedRun, verifiedAdvancedRun, criticMismatchAdvancedRun, receiptsMismatchAdvancedRun, planMismatchAdvancedRun];
-    data = { workspace_id: 'synthetic', run_id: runIds[call], goal: 'Geprüfte Frage', final_answer: ['Widersprüchliches Live-Ergebnis', 'Fehlgeschlagenes Live-Ergebnis', 'Plan-Gate nicht bestanden', 'Verifiziertes Live-Ergebnis', 'Abweichende Critic-Nutzung', 'Abweichender Receipt-Beleg', 'Abweichender Plan'][call], status: call === 1 ? 'failed' : 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: call > 0, verification_passed: call > 0, plan_gate_passed: call >= 2 ? call !== 2 : undefined, release_ready: true, duration_seconds: 2, receipts_count: call === 5 ? 1 : undefined, receipts: call === 5 ? [{ actor: 'critic', action: 'verify', success: true, output_summary: 'Bestätigt' }] : undefined, plan: call === 6 ? { rationale: 'Persistierbarer Plan', steps: [{ specialist_type: 'critic', description: 'Antwort prüfen', status: 'completed' }] } : undefined };
-    storedHistory.unshift(call === 4 ? { ...data, critic_used: false } : call === 5 ? { ...data, receipts: [{ actor: 'critic', action: 'verify', success: false, output_summary: 'Fehlgeschlagen' }] } : call === 6 ? { ...data, plan: { rationale: 'Abweichend gespeichert', steps: [{ specialist_type: 'critic', description: 'Antwort prüfen', status: 'failed' }] } } : data);
+    const runIds = [advancedRun, failedAdvancedRun, planGateAdvancedRun, verifiedAdvancedRun, criticMismatchAdvancedRun, receiptsMismatchAdvancedRun, planMismatchAdvancedRun, durationMismatchAdvancedRun];
+    data = { workspace_id: 'synthetic', run_id: runIds[call], goal: 'Geprüfte Frage', final_answer: ['Widersprüchliches Live-Ergebnis', 'Fehlgeschlagenes Live-Ergebnis', 'Plan-Gate nicht bestanden', 'Verifiziertes Live-Ergebnis', 'Abweichende Critic-Nutzung', 'Abweichender Receipt-Beleg', 'Abweichender Plan', 'Abweichende Laufzeit'][call], status: call === 1 ? 'failed' : 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: call > 0, verification_passed: call > 0, plan_gate_passed: call >= 2 ? call !== 2 : undefined, release_ready: true, duration_seconds: 2, receipts_count: call === 5 ? 1 : undefined, receipts: call === 5 ? [{ actor: 'critic', action: 'verify', success: true, output_summary: 'Bestätigt' }] : undefined, plan: call === 6 ? { rationale: 'Persistierbarer Plan', steps: [{ specialist_type: 'critic', description: 'Antwort prüfen', status: 'completed' }] } : undefined };
+    storedHistory.unshift(call === 4 ? { ...data, critic_used: false } : call === 5 ? { ...data, receipts: [{ actor: 'critic', action: 'verify', success: false, output_summary: 'Fehlgeschlagen' }] } : call === 6 ? { ...data, plan: { rationale: 'Abweichend gespeichert', steps: [{ specialist_type: 'critic', description: 'Antwort prüfen', status: 'failed' }] } } : call === 7 ? { ...data, duration_seconds: 999 } : data);
   }
   else throw new Error('Unexpected endpoint: ' + url);
   return { ok: status < 400, status, json: async () => data };
@@ -237,6 +238,10 @@ byId('goal').value = 'Geprüfte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(byId('outCard').hidden, true, 'plan evidence differing from persisted history must not be displayed as completed');
 assert.equal(byId('planCard').hidden, true, 'unpersisted plan evidence must stay hidden');
+assert.match(byId('status').textContent, /Verlauf/i);
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('outCard').hidden, true, 'duration differing from persisted history must not be displayed as completed');
 assert.match(byId('status').textContent, /Verlauf/i);
 
 const restoreElements = new Map();

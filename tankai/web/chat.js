@@ -104,7 +104,7 @@ historyItems.forEach((item, index) => { const button = element('button', 'histor
 }
 function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
 function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
-const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'critic_used', 'release_ready', 'verification_passed', 'plan_gate_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent', 'receipts_count', 'receipts', 'plan'];
+const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'critic_used', 'release_ready', 'verification_passed', 'plan_gate_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent', 'duration_seconds', 'receipts_count', 'receipts', 'plan'];
 function historyReceiptIndex(data, expected) {
 if(!expected||typeof expected.run_id!=='string'||!expected.run_id)return -1;
 const matches=data.map((item,index)=>({item,index})).filter(({item})=>item&&item.run_id===expected.run_id);
