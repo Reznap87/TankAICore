@@ -31,7 +31,8 @@ nachvollziehbaren Modellidentitäten.
 4. Anschließend im realen Browser prüfen, dass genau diese Antwort im Chat
    lesbar erscheint. Die Oberfläche rendert eine neue Antwort erst dann als
    Ergebnis, wenn `/api/history` genau ein in den sicherheitsrelevanten Feldern
-   identisches Receipt zurückliefert. Fehlt dieser Persistenznachweis, bleibt
+   identisches Receipt zurückliefert. Dazu gehört insbesondere, ob der Critic
+   tatsächlich verwendet wurde. Fehlt dieser Persistenznachweis, bleibt
    die Antwortkarte verborgen und die Oberfläche fordert zur Verlaufskontrolle
    vor erneutem Senden auf. `Prüfung bestanden` wird nur bei `status=completed` gemeinsam mit
    providerbestätigten getrennten Modellidentitäten, unabhängigem Critic sowie
