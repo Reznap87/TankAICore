@@ -138,7 +138,7 @@ const critic=String(data.critic_llm||'').trim(), observedCritic=data.observed_cr
 return !!critic&&Array.isArray(observedCritic)&&observedCritic.length===1&&observedCritic[0]===critic&&critic!==main;
 }
 function releaseVerified(data) {
-return data.answer_mode!=='direct'&&data.execution_mode==='live'&&data.critic_used!==false&&providerIdentityVerified(data,true)&&data.critic_independent===true&&data.verification_passed===true&&data.release_ready===true;
+return data.answer_mode!=='direct'&&data.status==='completed'&&data.execution_mode==='live'&&data.critic_used!==false&&providerIdentityVerified(data,true)&&data.critic_independent===true&&data.verification_passed===true&&data.release_ready===true;
 }
 function renderResult(data) {
 selectedResult = data; renderThread(data); byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
