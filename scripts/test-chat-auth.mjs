@@ -29,6 +29,8 @@ const thirdDirectRun = 'c'.repeat(32);
 const legacyRun = 'd'.repeat(32);
 const advancedRun = '11111111-2222-4333-8444-555555555555';
 const failedAdvancedRun = '66666666-7777-4888-8999-aaaaaaaaaaaa';
+const planGateAdvancedRun = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+const verifiedAdvancedRun = '12345678-1234-4abc-8def-123456789abc';
 const legacyHistory = { workspace_id: 'synthetic', run_id: legacyRun, goal: 'Eigenes Gespräch', final_answer: 'Darf erscheinen', answer_mode: 'direct', execution_mode: 'live' };
 const storedHistory = [legacyHistory];
 let latestChatResult;
@@ -78,7 +80,8 @@ async function fetch(url, options = {}) {
   else if (url === '/api/run') {
     assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage');
     const call = advancedCalls++;
-    data = { workspace_id: 'synthetic', run_id: call ? failedAdvancedRun : advancedRun, goal: 'Geprüfte Frage', final_answer: call ? 'Fehlgeschlagenes Live-Ergebnis' : 'Widersprüchliches Live-Ergebnis', status: call ? 'failed' : 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: call ? true : false, verification_passed: call ? true : false, release_ready: true, duration_seconds: 2 };
+    const runIds = [advancedRun, failedAdvancedRun, planGateAdvancedRun, verifiedAdvancedRun];
+    data = { workspace_id: 'synthetic', run_id: runIds[call], goal: 'Geprüfte Frage', final_answer: ['Widersprüchliches Live-Ergebnis', 'Fehlgeschlagenes Live-Ergebnis', 'Plan-Gate nicht bestanden', 'Verifiziertes Live-Ergebnis'][call], status: call === 1 ? 'failed' : 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: call > 0, verification_passed: call > 0, plan_gate_passed: call >= 2 ? call === 3 : undefined, release_ready: true, duration_seconds: 2 };
     storedHistory.unshift(data);
   }
   else throw new Error('Unexpected endpoint: ' + url);
@@ -210,6 +213,14 @@ byId('goal').value = 'Geprüfte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(byId('badges').children[0].textContent, 'Nicht freigegeben', 'a failed run must never claim a passed verification');
 assert.doesNotMatch(byId('status').textContent, /Prüfung abgeschlossen/, 'a failed run must not claim a completed review');
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('badges').children[0].textContent, 'Nicht freigegeben', 'a failed plan gate must never claim a passed verification');
+assert.doesNotMatch(byId('status').textContent, /Prüfung abgeschlossen/, 'a failed plan gate must not claim a completed review');
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('badges').children[0].textContent, 'Prüfung bestanden', 'a fully consistent advanced receipt must retain its success status');
+assert.match(byId('status').textContent, /Prüfung abgeschlossen/);
 
 const restoreElements = new Map();
 const restoreById = id => { if (!restoreElements.has(id)) restoreElements.set(id, new Element()); return restoreElements.get(id); };

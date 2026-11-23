@@ -35,7 +35,8 @@ nachvollziehbaren Modellidentitäten.
    die Antwortkarte verborgen und die Oberfläche fordert zur Verlaufskontrolle
    vor erneutem Senden auf. `Prüfung bestanden` wird nur bei `status=completed` gemeinsam mit
    providerbestätigten getrennten Modellidentitäten, unabhängigem Critic sowie
-   `verification_passed=true` und `release_ready=true` angezeigt; ein einzelnes
+   bestandenem `plan_gate_passed=true`, `verification_passed=true` und
+   `release_ready=true` angezeigt; ein einzelnes
    widersprüchliches Status- oder Freigabefeld erzeugt keinen Erfolgsstatus. Das CLI-Skript
    und der synthetische DOM-Test beweisen trotzdem **nicht** die Darstellung in
    einem realen Produktionsbrowser.

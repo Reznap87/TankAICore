@@ -104,7 +104,7 @@ historyItems.forEach((item, index) => { const button = element('button', 'histor
 }
 function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
 function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
-const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'release_ready', 'verification_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent'];
+const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'release_ready', 'verification_passed', 'plan_gate_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent'];
 function historyReceiptIndex(data, expected) {
 if(!expected||typeof expected.run_id!=='string'||!expected.run_id)return -1;
 const matches=data.map((item,index)=>({item,index})).filter(({item})=>item&&item.run_id===expected.run_id);
@@ -138,7 +138,7 @@ const critic=String(data.critic_llm||'').trim(), observedCritic=data.observed_cr
 return !!critic&&Array.isArray(observedCritic)&&observedCritic.length===1&&observedCritic[0]===critic&&critic!==main;
 }
 function releaseVerified(data) {
-return data.answer_mode!=='direct'&&data.status==='completed'&&data.execution_mode==='live'&&data.critic_used!==false&&providerIdentityVerified(data,true)&&data.critic_independent===true&&data.verification_passed===true&&data.release_ready===true;
+return data.answer_mode!=='direct'&&data.status==='completed'&&data.execution_mode==='live'&&data.critic_used!==false&&providerIdentityVerified(data,true)&&data.critic_independent===true&&data.plan_gate_passed===true&&data.verification_passed===true&&data.release_ready===true;
 }
 function renderResult(data) {
 selectedResult = data; renderThread(data); byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
