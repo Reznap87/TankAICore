@@ -6,7 +6,11 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "vars": {
-    "TANKAI_ALLOW_REGISTRATION": "0"
+    "TANKAI_ALLOW_REGISTRATION": "0",
+    "TANKAI_LIVE_PROVIDER_ENABLED": "1",
+    "TANKAI_LLM": "openrouter",
+    "TANKAI_OPENROUTER_FREE_ENABLED": "1",
+    "OPENROUTER_MODEL": "openrouter/free"
   },
   "routes": [
     {
