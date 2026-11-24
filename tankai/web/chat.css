@@ -12,3 +12,43 @@ dialog{background:var(--surface);color:var(--text);border:1px solid var(--border
 @media(max-height:670px){.welcome{padding-top:10px;margin-bottom:23px}.welcome-mark{margin-bottom:18px}.welcome h1{font-size:29px}.suggestions{margin-top:18px;padding-bottom:17px}.app-footer{padding:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 .login-card .registration-toggle{display:block;width:100%;margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:9px;color:var(--text)}.login-card .registration-toggle:hover:not(:disabled){background:var(--hover)}
+
+/* TankAI Studio — neutral surfaces, blue brand accent, accessible controls. */
+:root{--bg:#171b22;--sidebar:#11151c;--surface:#202630;--raised:#2b3441;--border:#364151;--text:#edf2fa;--muted:#aab7c9;--subtle:#8b9aaf;--accent:#82d8f7;--accent-ink:#102b37;--hover:#28313e;--bubble:#263b4b}
+html[data-theme=light]{--bg:#f6f8fc;--sidebar:#eaf0f7;--surface:#fff;--raised:#edf3fa;--border:#d4deea;--text:#192b3d;--muted:#4c6076;--subtle:#596c82;--accent:#086b92;--accent-ink:#fff;--hover:#dce8f4;--bubble:#e0eef8}
+.sidebar{border-right:1px solid var(--border)}
+.topbar{border-bottom:1px solid var(--border);height:66px}
+.new-chat{box-shadow:0 4px 18px #0002;transition:filter .15s}
+.new-chat:hover{filter:brightness(1.08)}
+.plugin-nav{margin-top:2px}
+.history-heading{margin-top:24px}
+.welcome-mark img{box-shadow:0 0 36px #48c8ff26}
+.welcome h1{font-weight:650;letter-spacing:-1.5px}
+.composer{box-shadow:0 12px 40px #0002}
+.composer:focus-within{border-color:var(--accent)}
+.suggestions button{background:var(--surface);transition:background .15s,border-color .15s}
+.suggestions button:hover{border-color:var(--accent)}
+.settings-dialog{max-width:680px;border-radius:22px}
+.settings-dialog .dialog-heading{padding:22px 26px;background:var(--surface);position:sticky;top:0;z-index:1}
+.settings-kicker{font-size:10px;letter-spacing:1.8px;color:var(--accent);font-weight:700;margin-bottom:6px}
+.settings-dialog .dialog-heading h2{font-size:23px;letter-spacing:-.6px;font-weight:650}
+.settings-dialog .settings-content{padding:0 26px 26px}
+.settings-intro{padding:23px 0 18px}
+.settings-intro h3{font-size:20px;letter-spacing:-.4px;font-weight:600;margin:0 0 8px}
+.settings-intro p,.plugin-card p{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 12px}
+.section-title,.settings-section h3{font-size:14px;font-weight:650;margin:0 0 12px}
+.settings-dialog .setting{padding:16px 0;border-top:1px solid var(--border)}
+.settings-dialog .setting strong{font-size:14px}
+.settings-dialog select{min-width:120px}
+.settings-dialog .settings-section{padding:20px 0}
+.settings-dialog .parallel-label{padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:9px}
+.settings-dialog input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+.settings-dialog .secondary-button{border:1px solid var(--border);font-weight:600}
+.settings-dialog .secondary-button:hover{border-color:var(--accent)}
+.plugin-card{display:grid;grid-template-columns:44px minmax(0,1fr);gap:15px;padding:18px;margin-bottom:12px;background:var(--bg);border:1px solid var(--border);border-radius:14px}
+.plugin-icon{width:44px;height:44px;display:grid;place-items:center;background:var(--raised);color:var(--accent);border-radius:12px}
+.plugin-card h3{font-size:15px;margin:0 0 8px}
+#plugin-result:empty{display:none}
+#plugin-result{margin:12px 0 0;color:var(--accent)}
+html[data-chat-size=large] .answer-content,html[data-chat-size=large] .message-bubble,html[data-chat-size=large] .composer textarea{font-size:18px;line-height:1.85}
+@media(max-width:780px){.settings-dialog .dialog-heading{padding:16px 18px}.settings-dialog .settings-content{padding:0 18px 18px}.settings-intro h3{font-size:18px}.settings-dialog select{max-width:48%}.settings-dialog .setting{gap:8px}.composer-tools{gap:3px}.composer-tools .icon-button{width:32px}.model-label{max-width:140px}}
