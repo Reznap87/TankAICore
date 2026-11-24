@@ -12,13 +12,22 @@ let historyItems = [];
 let selectedResult = null;
 let selectedIndex = -1;
 let theme = 'dark';
+let chatSize = 'standard';
 let toastTimer;
 try { const stored = localStorage.getItem('tankai.ui.theme'); if (['dark', 'light', 'system'].includes(stored)) theme = stored; }
 catch (error) { console.info('Theme unavailable.'); }
+try { const stored = localStorage.getItem('tankai.ui.chatSize'); if (['standard', 'large'].includes(stored)) chatSize = stored; } catch (error) { console.info('Text size unavailable.'); }
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = String(text); return node; }
 function icon(name) { const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); node.setAttribute('aria-hidden', 'true'); const use = document.createElementNS(node.namespaceURI, 'use'); use.setAttribute('href', '#i-' + name); node.append(use); return node; }
 function toast(message) { clearTimeout(toastTimer); byId('toast').textContent = message; byId('toast').hidden = false; toastTimer = setTimeout(() => { byId('toast').hidden = true; }, 6000); }
-function setTheme() { const value = theme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : theme; document.documentElement.dataset.theme = value; byId('theme').value = theme; document.querySelector('meta[name="theme-color"]').content = value === 'dark' ? '#1b1d1b' : '#f8f9f6'; }
+function setTheme() { const value = theme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : theme; document.documentElement.dataset.theme = value; byId('theme').value = theme; document.querySelector('meta[name="theme-color"]').content = value === 'dark' ? '#171b22' : '#f6f8fc'; }
+function modelDisplay(identity) {
+const raw = String(identity || 'nicht belegt');
+const match = /^([^:]+):(.+):https?:\/\/[^\s]+$/u.exec(raw);
+if (!match) return raw;
+if (match[1] === 'openrouter_free') return 'OpenRouter Free · ' + (['openrouter_free', 'openrouter/free'].includes(match[2]) ? 'Automatische Modellauswahl' : match[2].replace(/:free$/, ''));
+return match[1] + ': ' + match[2];
+}
 async function jsonFetch(url, options = {}) {
 const headers = Object.assign({}, options.headers || {});
 if (csrf && options.method && options.method !== 'GET') headers['X-CSRF-Token'] = csrf;
@@ -33,7 +42,7 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
-historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = '';
+historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
 }
 function showLogin() {
@@ -46,7 +55,7 @@ epoch += 1; currentUser = data; csrf = String(data.csrf_token || ''); resetWorks
 const select = byId('workspace'); select.replaceChildren(); (data.workspaces || []).forEach(w => { const option = element('option', '', w.name + ' (' + w.role + ')'); option.value = w.id; option.selected = w.id === data.workspace?.id; select.append(option); }); setBusy(false); syncSidebar();
 }
 function setBusy(value) {
-busy = value; byId('goal').disabled = value; ['new-chat', 'workspace'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
+busy = value; byId('goal').disabled = value; ['new-chat', 'workspace', 'plugins-open', 'composer-plugins', 'plugin-analyze', 'plugin-structure'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
 }
 async function refreshHealth() {
 const e=epoch;
@@ -60,7 +69,7 @@ if(data.user!==currentUser.user.email||data.workspace_id!==currentUser.workspace
 const m=String(data.llm||'').trim(),mode=data.execution_mode==='live'&&!m?'unknown':data.execution_mode||'unknown';
 const label=mode==='live'?'Core verbunden':mode==='simulation'?'Simulation':mode==='mixed'?'Teilweise Simulation':'Modellstatus unbekannt';
 byId('health').textContent=label;byId('connection-info').dataset.mode=mode;
-byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat bereit · konfiguriert: '+m:mode==='live'&&m?'Live-Modell konfiguriert · Chat derzeit nicht freigegeben':'Kein Live-Modell verbunden';
+byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat bereit · konfiguriert: '+modelDisplay(m):mode==='live'&&m?'Live-Modell konfiguriert · Chat derzeit nicht freigegeben':'Kein Live-Modell verbunden';
 byId('sysInfo').textContent='Konfiguriertes Hauptmodell: '+(m||'unbekannt')+'\nKonfiguriertes Prüfmodell: '+(data.critic_llm||'unbekannt')+'\nKonfigurierte Modellrollen getrennt: '+(data.critic_independent?'Ja':'Nein')+'\nRecherche: '+(data.web_research||'disabled')+'\nModus: '+mode+'\nVersion: '+String(data.version||'');
 if(data.monetary_admission_configured){try{const p=await jsonFetch('/api/pilot/preflight');if(e!==epoch)return;
 const R={source_approval_unavailable:'Quelle fehlt',concurrent_job_limit:'Auftrag aktiv',pilot_not_started:'Pilot nicht begonnen',pilot_expired:'Pilot beendet',pilot_halted:'Pilot angehalten',daily_budget:'Tagesbudget aufgebraucht',total_budget:'Gesamtbudget aufgebraucht',daily_job_quota:'Tagesauftragsgrenze',total_job_quota:'Auftragsgrenze',clock_regression:'Serverzeit prüfen',main_target_not_current:'Hauptmodell prüfen',critic_target_not_current:'Prüfmodell prüfen',independent_critic_required:'Prüfmodell fehlt'};
@@ -148,8 +157,8 @@ const badges = byId('badges'); badges.replaceChildren(); const mode = String(dat
 const resultLabel = mode === 'mixed' ? 'Teilweise Simulation · keine verifizierte Live-Antwort' : simulated ? 'Simulation · keine verifizierte KI-Antwort' : mode !== 'live' ? 'Ausführungsmodus nicht belegt' : !identityVerified ? 'Live-Modellnachweis nicht bestätigt' : direct ? 'KI-Antwort · ungeprüft' : verifiedRelease ? 'Prüfung bestanden' : 'Nicht freigegeben';
 badges.append(badge(resultLabel, verifiedRelease ? 'b-ok' : 'b-warn'));
 if(mode==='live')badges.append(badge(identityVerified?'Modellidentität providerbestätigt':'Modellidentität nicht providerbestätigt',identityVerified?'b-ok':'b-warn'));
-badges.append(badge('Hauptmodell: ' + String(data.main_llm || 'nicht belegt'), data.main_llm ? 'b-info' : 'b-warn'));
-badges.append(badge(criticUsed ? 'Prüfmodell: ' + String(data.critic_llm || 'nicht belegt') : 'Prüfmodell: nicht verwendet', criticUsed && data.critic_llm ? 'b-info' : 'b-warn'));
+badges.append(badge('Hauptmodell: ' + modelDisplay(data.main_llm), data.main_llm ? 'b-info' : 'b-warn'));
+badges.append(badge(criticUsed ? 'Prüfmodell: ' + modelDisplay(data.critic_llm) : 'Prüfmodell: nicht verwendet', criticUsed && data.critic_llm ? 'b-info' : 'b-warn'));
 badges.append(badge(!criticUsed ? 'Keine unabhängige Prüfung' : data.critic_independent === true ? 'Prüfmodell unabhängig' : data.critic_independent === false ? 'Prüfmodell nicht unabhängig' : 'Prüfmodell-Unabhängigkeit nicht belegt', criticUsed && data.critic_independent === true ? 'b-ok' : 'b-warn'));
 badges.append(badge(String(data.duration_seconds ?? 0) + ' s', 'b-info'));
 const steps = data.plan?.steps; const planBody = byId('planBody'); planBody.replaceChildren(); byId('planCard').hidden = !Array.isArray(steps) || !steps.length;
@@ -184,6 +193,25 @@ function newChat() { if (busy) return; resetResult(); byId('goal').value = ''; b
 function sidebar(open) { if (mobile.matches) { byId('appView').classList.toggle('sidebar-open', open); byId('backdrop').hidden = !open; byId('sidebar').inert = !open; byId('main').inert = open; } else { byId('appView').classList.toggle('sidebar-collapsed', !open); byId('sidebar').inert = !open; } byId('open-sidebar').setAttribute('aria-expanded', String(open)); if (open && mobile.matches) byId('close-sidebar').focus(); if (!open && !byId('appView').hidden) byId('open-sidebar').focus({ preventScroll: true }); }
 function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId('main').inert = false; byId('backdrop').hidden = true; const open = !mobile.matches && !byId('appView').classList.contains('sidebar-collapsed'); byId('sidebar').inert = !open; byId('open-sidebar').setAttribute('aria-expanded', String(open)); }
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
+function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
+function analyzeDraft() {
+if (!currentUser || busy) return;
+const value = byId('goal').value; const trimmed = value.trim();
+const words = trimmed ? trimmed.split(/\s+/u).length : 0;
+byId('plugin-result').textContent = words + ' Wörter · ' + Array.from(value).length + ' Zeichen';
+}
+function structureDraft() {
+if (!currentUser || busy) return;
+const goal = byId('goal'); const value = goal.value;
+if (!value.trim()) { byId('plugin-result').textContent = 'Schreibe zuerst eine Nachricht.'; return; }
+const suffix = '\n\nBitte antworte klar strukturiert: Kernaussage, Begründung und konkrete nächste Schritte. Kennzeichne Unsicherheiten.';
+if (!value.endsWith(suffix)) {
+if (value.length + suffix.length > 20000) { byId('plugin-result').textContent = 'Der Entwurf ist zu lang. Kürze ihn zuerst.'; return; }
+goal.value = value + suffix;
+}
+setBusy(false); byId('plugins-dialog').close(); goal.focus();
+}
 function renderSearch() {
 const query = byId('search-input').value.trim().toLocaleLowerCase('de'); const root = byId('search-results'); root.replaceChildren();
 const matches = historyItems.map((item, index) => ({ item, index })).filter(({ item }) => (String(item.goal || '') + ' ' + String(item.final_answer || '')).toLocaleLowerCase('de').includes(query));
@@ -198,6 +226,9 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('plugins-open').addEventListener('click', openPlugins); byId('composer-plugins').addEventListener('click', openPlugins);
+byId('plugin-analyze').addEventListener('click', analyzeDraft); byId('plugin-structure').addEventListener('click', structureDraft);
+byId('chat-size').addEventListener('change', () => { const value = byId('chat-size').value; if (!['standard', 'large'].includes(value)) return; chatSize = value; applyChatSize(); try { localStorage.setItem('tankai.ui.chatSize', chatSize); } catch (error) { toast('Textgröße kann nicht dauerhaft gespeichert werden.'); } });
 byId('theme').addEventListener('change', () => { theme = byId('theme').value; setTheme(); try { localStorage.setItem('tankai.ui.theme', theme); } catch (error) { toast('Erscheinungsbild kann in diesem Browser nicht dauerhaft gespeichert werden.'); } }); systemTheme.addEventListener('change', setTheme); mobile.addEventListener('change', syncSidebar);
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => byId(button.dataset.close).close()));
 document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { if (!busy) { byId('goal').value = button.dataset.prompt; setBusy(false); byId('goal').focus(); } }));
@@ -206,5 +237,5 @@ if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && curre
 if (event.key === 'Escape' && mobile.matches && byId('appView').classList.contains('sidebar-open') && !document.querySelector('dialog[open]')) sidebar(false);
 if (event.key === 'Tab' && mobile.matches && byId('appView').classList.contains('sidebar-open') && !document.querySelector('dialog[open]')) { const buttons = [...byId('sidebar').querySelectorAll('button:not(:disabled),a[href]')]; const first = buttons[0]; const last = buttons[buttons.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } }
 });
-setTheme(); syncSidebar(); refreshHealth(); loadMe(); setInterval(refreshHealth, 15000);
+setTheme(); applyChatSize(); syncSidebar(); refreshHealth(); loadMe(); setInterval(refreshHealth, 15000);
 })();

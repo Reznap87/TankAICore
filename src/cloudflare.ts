@@ -86,7 +86,8 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     BRAVE_SEARCH_API_KEY: this.liveProviderEnabled ? clean(this.env.BRAVE_SEARCH_API_KEY) : "",
     TAVILY_API_KEY: this.liveProviderEnabled ? clean(this.env.TAVILY_API_KEY) : "",
     TANKAI_REQUIRE_RESEARCH_EVIDENCE: "1",
-    TANKAI_STRICT_WEB_RESEARCH: this.liveProviderEnabled ? "1" : "0",
+    // Free chat must work without a search provider; research evidence remains required.
+    TANKAI_STRICT_WEB_RESEARCH: (this.liveProviderEnabled && (!this.openRouterFreeEnabled || Boolean(clean(this.env.TANKAI_SEARCH_PROVIDER)))) ? "1" : "0",
 
     TANKAI_LLM_MAX_TOKENS: clean(this.env.TANKAI_LLM_MAX_TOKENS, "2048"),
     TANKAI_LLM_TIMEOUT_SECONDS: clean(this.env.TANKAI_LLM_TIMEOUT_SECONDS, "30"),
