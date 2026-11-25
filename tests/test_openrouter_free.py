@@ -203,6 +203,9 @@ def test_empty_free_chat_returns_diagnostic_and_no_history(monkeypatch, tmp_path
             "email": "free-owner@example.test",
             "password": "Safe-free-test-password-123",
         })
+        # The authenticated health check initializes the lazy workspace runtime.
+        status, _, health = client.get("/api/health")
+        assert status == 200 and health["direct_chat_available"] is True
         fake_openrouter.clients[0].reply_content = ""
         fake_openrouter.clients[0].finish_reason = "length"
         status, _, result = client.post("/api/chat", {"message": "test"}, csrf=login["csrf_token"])
