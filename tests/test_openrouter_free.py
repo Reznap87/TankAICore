@@ -11,7 +11,8 @@ import sys
 import pytest
 
 from tankai.core.llm import (
-    LLMRateLimitExceeded, OpenRouterFreeLLM, get_llm, openrouter_free_scope,
+    LLMRateLimitExceeded, OpenRouterFreeLLM, OpenRouterFreeEmptyCompletion,
+    get_llm, openrouter_free_scope,
 )
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.web import auth as auth_module
@@ -45,6 +46,8 @@ def fake_openrouter(monkeypatch):
                 assert kwargs["max_retries"] == 0
                 self.root = self
                 self.reply_model = "nvidia/synthetic-free:free"
+                self.reply_content = "Antwort vom kostenlosen Testmodell"
+                self.finish_reason = "stop"
                 clients.append(self)
             else:
                 self.root = root
@@ -64,7 +67,8 @@ def fake_openrouter(monkeypatch):
             return SimpleNamespace(
                 model=self.root.reply_model,
                 choices=[SimpleNamespace(
-                    message=SimpleNamespace(content="Antwort vom kostenlosen Testmodell")
+                    message=SimpleNamespace(content=self.root.reply_content),
+                    finish_reason=self.root.finish_reason,
                 )],
             )
 
@@ -93,6 +97,9 @@ def test_free_adapter_accepts_only_free_models_and_requires_scope(fake_openroute
     assert len(fake_openrouter.calls) == 1
     assert fake_openrouter.calls[0]["model"] == "openrouter/free"
     assert fake_openrouter.calls[0]["max_tokens"] == 512
+    assert fake_openrouter.calls[0]["extra_body"] == {
+        "reasoning": {"effort": "low", "exclude": True}
+    }
     assert model.resolved_model == "nvidia/synthetic-free:free"
 
     with pytest.raises(ValueError):
@@ -113,6 +120,18 @@ def test_free_adapter_rejects_unproved_response_model(fake_openrouter):
     fake_openrouter.clients[0].reply_model = "openai/synthetic-paid"
     with openrouter_free_scope(), pytest.raises(DispatchDenied):
         adapter.complete("test")
+    assert adapter.resolved_model == ""
+
+
+@pytest.mark.parametrize("finish_reason", ["length", "stop"])
+def test_free_adapter_rejects_empty_completion_without_retry(fake_openrouter, finish_reason):
+    adapter = get_llm("openrouter")
+    fake_openrouter.clients[0].reply_content = None
+    fake_openrouter.clients[0].finish_reason = finish_reason
+    with openrouter_free_scope(), pytest.raises(OpenRouterFreeEmptyCompletion) as error:
+        adapter.complete("test")
+    assert error.value.token_limit is (finish_reason == "length")
+    assert len(fake_openrouter.calls) == 1
     assert adapter.resolved_model == ""
 
 
@@ -174,6 +193,25 @@ def test_authenticated_free_chat_returns_real_model_identity_and_history(
             with pytest.raises(DispatchDenied):
                 runtime.tank.llm.complete("unapproved extra request")
         assert len(fake_openrouter.calls) == 2
+
+
+def test_empty_free_chat_returns_diagnostic_and_no_history(monkeypatch, tmp_path, fake_openrouter):
+    _setup_free(monkeypatch, tmp_path)
+    with serving(None) as (_, base):
+        client = Client(base)
+        _, _, login = client.post("/api/auth/login", {
+            "email": "free-owner@example.test",
+            "password": "Safe-free-test-password-123",
+        })
+        fake_openrouter.clients[0].reply_content = ""
+        fake_openrouter.clients[0].finish_reason = "length"
+        status, _, result = client.post("/api/chat", {"message": "test"}, csrf=login["csrf_token"])
+        assert status == 502
+        assert result["error_code"] == "free_completion_token_limit"
+        assert "final_answer" not in result
+        assert len(fake_openrouter.calls) == 1
+        status, _, history = client.get("/api/history")
+        assert status == 200 and not history
 
 
 def test_free_mode_rejects_paid_critic_before_runtime_start(monkeypatch, tmp_path):
