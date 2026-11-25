@@ -21,6 +21,13 @@ function element(tag, className, text) { const node = document.createElement(tag
 function icon(name) { const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); node.setAttribute('aria-hidden', 'true'); const use = document.createElementNS(node.namespaceURI, 'use'); use.setAttribute('href', '#i-' + name); node.append(use); return node; }
 function toast(message) { clearTimeout(toastTimer); byId('toast').textContent = message; byId('toast').hidden = false; toastTimer = setTimeout(() => { byId('toast').hidden = true; }, 6000); }
 function setTheme() { const value = theme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : theme; document.documentElement.dataset.theme = value; byId('theme').value = theme; document.querySelector('meta[name="theme-color"]').content = value === 'dark' ? '#171b22' : '#f6f8fc'; }
+function modelDisplay(identity) {
+const raw = String(identity || 'nicht belegt');
+const match = /^([^:]+):(.+):https?:\/\/[^\s]+$/u.exec(raw);
+if (!match) return raw;
+if (match[1] === 'openrouter_free') return 'OpenRouter Free · ' + (['openrouter_free', 'openrouter/free'].includes(match[2]) ? 'Automatische Modellauswahl' : match[2].replace(/:free$/, ''));
+return match[1] + ': ' + match[2];
+}
 async function jsonFetch(url, options = {}) {
 const headers = Object.assign({}, options.headers || {});
 if (csrf && options.method && options.method !== 'GET') headers['X-CSRF-Token'] = csrf;
@@ -62,8 +69,8 @@ if(data.user!==currentUser.user.email||data.workspace_id!==currentUser.workspace
 const m=String(data.llm||'').trim(),mode=data.execution_mode==='live'&&!m?'unknown':data.execution_mode||'unknown';
 const label=mode==='live'?'Core verbunden':mode==='simulation'?'Simulation':mode==='mixed'?'Teilweise Simulation':'Modellstatus unbekannt';
 byId('health').textContent=label;byId('connection-info').dataset.mode=mode;
-byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat · '+m:'Kein Live-Modell verbunden';
-byId('sysInfo').textContent='Hauptmodell: '+(m||'unbekannt')+'\nPrüfmodell: '+(data.critic_llm||'unbekannt')+'\nUnabhängige Prüfung: '+(data.critic_independent?'Ja':'Nein')+'\nRecherche: '+(data.web_research||'disabled')+'\nModus: '+mode+'\nVersion: '+String(data.version||'');
+byId('model-label').textContent=data.direct_chat_available&&m?'Live-Chat bereit · konfiguriert: '+modelDisplay(m):mode==='live'&&m?'Live-Modell konfiguriert · Chat derzeit nicht freigegeben':'Kein Live-Modell verbunden';
+byId('sysInfo').textContent='Konfiguriertes Hauptmodell: '+(m||'unbekannt')+'\nKonfiguriertes Prüfmodell: '+(data.critic_llm||'unbekannt')+'\nKonfigurierte Modellrollen getrennt: '+(data.critic_independent?'Ja':'Nein')+'\nRecherche: '+(data.web_research||'disabled')+'\nModus: '+mode+'\nVersion: '+String(data.version||'');
 if(data.monetary_admission_configured){try{const p=await jsonFetch('/api/pilot/preflight');if(e!==epoch)return;
 const R={source_approval_unavailable:'Quelle fehlt',concurrent_job_limit:'Auftrag aktiv',pilot_not_started:'Pilot nicht begonnen',pilot_expired:'Pilot beendet',pilot_halted:'Pilot angehalten',daily_budget:'Tagesbudget aufgebraucht',total_budget:'Gesamtbudget aufgebraucht',daily_job_quota:'Tagesauftragsgrenze',total_job_quota:'Auftragsgrenze',clock_regression:'Serverzeit prüfen',main_target_not_current:'Hauptmodell prüfen',critic_target_not_current:'Prüfmodell prüfen',independent_critic_required:'Prüfmodell fehlt'};
 const d=(p.blockers||[]).map(r=>R[r]||'Bedingung offen');
@@ -106,10 +113,17 @@ historyItems.forEach((item, index) => { const button = element('button', 'histor
 }
 function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
 function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
-async function loadHistory() {
+const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'reply_to', 'critic_used', 'release_ready', 'verification_passed', 'plan_gate_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent', 'duration_seconds', 'receipts_count', 'receipts', 'plan'];
+function historyReceiptIndex(data, expected) {
+if(!expected||typeof expected.run_id!=='string'||!expected.run_id)return -1;
+const matches=data.map((item,index)=>({item,index})).filter(({item})=>item&&item.run_id===expected.run_id);
+if(matches.length!==1)return -1;
+return historyReceiptFields.every(key=>JSON.stringify(matches[0].item[key])===JSON.stringify(expected[key]))?matches[0].index:-1;
+}
+async function loadHistory(expectedResult = null) {
 const e = epoch;
-try { const data = await jsonFetch('/api/history'); if (e !== epoch) return; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; if (selectedResult) renderThread(selectedResult); renderHistory(); }
-catch (error) { if (e !== epoch) return; if (error.status === 401) showLogin(); else { historyItems = []; selectedIndex = -1; byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); } }
+try { const data = await jsonFetch('/api/history'); if (e !== epoch) return false; if (!Array.isArray(data) || !data.every(sameWs)) throw new Error('Fremder Verlauf'); historyItems = data; selectedIndex = expectedResult ? historyReceiptIndex(data, expectedResult) : selectedResult ? data.findIndex(item => resultKey(item) === resultKey(selectedResult)) : -1; if (selectedResult) renderThread(selectedResult); renderHistory(); return !expectedResult || selectedIndex >= 0; }
+catch (error) { if (e !== epoch) return false; if (error.status === 401) showLogin(); else { historyItems = []; selectedIndex = -1; byId('history').textContent = 'Verlauf nicht verfügbar: ' + String(error.message || error); } return false; }
 }
 function textCell(value) { return element('td', '', value ?? ''); }
 function badge(value, className) { return element('span', 'badge ' + className, value); }
@@ -118,22 +132,33 @@ const root=byId('threadHistory'), index=new Map(historyItems.filter(sameWs).map(
 const turns=[], seen=new Set(); let id=d.answer_mode==='direct'?d.reply_to:null;
 while(id && turns.length<4 && !seen.has(id)){
 seen.add(id); const x=index.get(id);
-if(!x || x.answer_mode!=='direct' || typeof x.goal!=='string' || typeof x.final_answer!=='string')break;
+if(!x || x.answer_mode!=='direct' || x.execution_mode!=='live' || !providerIdentityVerified(x,false) || typeof x.goal!=='string' || typeof x.final_answer!=='string')break;
 turns.unshift(x); id=x.reply_to;
 }
 root.replaceChildren();
 for(const x of turns){const q=element('div','message'),a=element('article','answer-card');q.append(element('div','message-bubble',x.goal));a.append(element('div','answer-content',x.final_answer));root.append(q,a)}
 root.hidden=!turns.length;
 }
+function providerIdentityVerified(data, criticUsed) {
+const main=String(data.main_llm||'').trim(), observedMain=data.observed_main_llms;
+if(data.model_identity_verified!==true||!main||!Array.isArray(observedMain)||observedMain.length!==1||observedMain[0]!==main)return false;
+if(!criticUsed)return true;
+const critic=String(data.critic_llm||'').trim(), observedCritic=data.observed_critic_llms;
+return !!critic&&Array.isArray(observedCritic)&&observedCritic.length===1&&observedCritic[0]===critic&&critic!==main;
+}
+function releaseVerified(data) {
+return data.answer_mode!=='direct'&&data.status==='completed'&&data.execution_mode==='live'&&data.critic_used!==false&&providerIdentityVerified(data,true)&&data.critic_independent===true&&data.plan_gate_passed===true&&data.verification_passed===true&&data.release_ready===true;
+}
 function renderResult(data) {
 selectedResult = data; renderThread(data); byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
 byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
 byId('outCard').hidden = false; byId('answer').textContent = String(data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
-const badges = byId('badges'); badges.replaceChildren(); const mode = String(data.execution_mode || 'unknown').toLowerCase(); const simulated = data.status === 'simulated' || mode === 'simulation' || mode === 'mixed'; const direct = data.answer_mode === 'direct'; const criticUsed = !direct && data.critic_used !== false;
-const resultLabel = mode === 'mixed' ? 'Teilweise Simulation · keine verifizierte Live-Antwort' : simulated ? 'Simulation · keine verifizierte KI-Antwort' : mode !== 'live' ? 'Ausführungsmodus nicht belegt' : direct ? 'KI-Antwort · ungeprüft' : data.release_ready ? 'Prüfung bestanden' : 'Nicht freigegeben';
-badges.append(badge(resultLabel, mode === 'live' && !direct && data.release_ready ? 'b-ok' : 'b-warn'));
-badges.append(badge('Hauptmodell: ' + String(data.main_llm || 'nicht belegt'), data.main_llm ? 'b-info' : 'b-warn'));
-badges.append(badge(criticUsed ? 'Prüfmodell: ' + String(data.critic_llm || 'nicht belegt') : 'Prüfmodell: nicht verwendet', criticUsed && data.critic_llm ? 'b-info' : 'b-warn'));
+const badges = byId('badges'); badges.replaceChildren(); const mode = String(data.execution_mode || 'unknown').toLowerCase(); const simulated = data.status === 'simulated' || mode === 'simulation' || mode === 'mixed'; const direct = data.answer_mode === 'direct'; const criticUsed = !direct && data.critic_used !== false; const identityVerified=mode==='live'&&providerIdentityVerified(data,criticUsed); const verifiedRelease=releaseVerified(data);
+const resultLabel = mode === 'mixed' ? 'Teilweise Simulation · keine verifizierte Live-Antwort' : simulated ? 'Simulation · keine verifizierte KI-Antwort' : mode !== 'live' ? 'Ausführungsmodus nicht belegt' : !identityVerified ? 'Live-Modellnachweis nicht bestätigt' : direct ? 'KI-Antwort · ungeprüft' : verifiedRelease ? 'Prüfung bestanden' : 'Nicht freigegeben';
+badges.append(badge(resultLabel, verifiedRelease ? 'b-ok' : 'b-warn'));
+if(mode==='live')badges.append(badge(identityVerified?'Modellidentität providerbestätigt':'Modellidentität nicht providerbestätigt',identityVerified?'b-ok':'b-warn'));
+badges.append(badge('Hauptmodell: ' + modelDisplay(data.main_llm), data.main_llm ? 'b-info' : 'b-warn'));
+badges.append(badge(criticUsed ? 'Prüfmodell: ' + modelDisplay(data.critic_llm) : 'Prüfmodell: nicht verwendet', criticUsed && data.critic_llm ? 'b-info' : 'b-warn'));
 badges.append(badge(!criticUsed ? 'Keine unabhängige Prüfung' : data.critic_independent === true ? 'Prüfmodell unabhängig' : data.critic_independent === false ? 'Prüfmodell nicht unabhängig' : 'Prüfmodell-Unabhängigkeit nicht belegt', criticUsed && data.critic_independent === true ? 'b-ok' : 'b-warn'));
 badges.append(badge(String(data.duration_seconds ?? 0) + ' s', 'b-info'));
 const steps = data.plan?.steps; const planBody = byId('planBody'); planBody.replaceChildren(); byId('planCard').hidden = !Array.isArray(steps) || !steps.length;
@@ -146,7 +171,8 @@ requestAnimationFrame(() => { byId('messages').scrollTop = byId('messages').scro
 }
 async function runTank(event) {
 event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
-const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked; const parentRun = !advanced && selectedResult?.answer_mode === 'direct' && typeof selectedResult.run_id === 'string' && /^[0-9a-f]{32}$/.test(selectedResult.run_id) ? selectedResult.run_id : null;
+const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked; const selectedDirect = !advanced && selectedResult?.answer_mode === 'direct'; const parentRun = selectedDirect && selectedResult.execution_mode === 'live' && providerIdentityVerified(selectedResult,false) && typeof selectedResult.run_id === 'string' && /^[0-9a-f]{32}$/.test(selectedResult.run_id) ? selectedResult.run_id : null;
+if(selectedDirect&&!parentRun){byId('status').textContent='Dieser ältere Verlauf hat keinen providerbestätigten Modellnachweis und kann nicht als Kontext verwendet werden. Bitte starte einen neuen Chat.';return}
 resetResult(); setBusy(true); renderHistory();
 byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
 byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : 'TankAI fragt das Live-Modell …';
@@ -154,10 +180,12 @@ try {
 const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : parentRun ? { message: goal, reply_to: parentRun } : { message: goal }) });
 if (requestEpoch !== epoch) return;
 if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
-if(!advanced&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
-if (!data.goal) data.goal = goal; renderResult(data); byId('goal').value = '';
-byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.answer_mode === 'direct' ? 'Live-Antwort erhalten · nicht unabhängig geprüft.' : data.release_ready ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
-await loadHistory();
+if((!advanced||data.execution_mode==='live')&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
+if(data.execution_mode==='live'&&!providerIdentityVerified(data,advanced))throw new Error('Provider-bestätigte Modellidentität fehlt oder ist innerhalb des Runs nicht stabil');
+if (!data.goal) data.goal = goal;
+if(!await loadHistory(data))throw new Error('Antwort konnte nicht identisch aus dem Chat-Verlauf bestätigt werden');
+renderResult(data); byId('goal').value = '';
+byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.answer_mode === 'direct' ? 'Live-Antwort erhalten · nicht unabhängig geprüft.' : releaseVerified(data) ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
 } catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
 finally { if (requestEpoch === epoch) { setBusy(false); renderHistory(); byId('goal').focus(); } }
 }
@@ -190,7 +218,7 @@ const matches = historyItems.map((item, index) => ({ item, index })).filter(({ i
 if (!matches.length) { root.append(element('div', 'no-results', historyItems.length ? 'Keine passenden Gespräche gefunden.' : 'Noch keine Gespräche in diesem Workspace.')); return; }
 matches.forEach(({ item, index }) => { const button = element('button', 'search-result'); button.type = 'button'; button.disabled = busy; button.append(icon('chat')); const text = element('div'); text.append(element('strong', '', String(item.goal || 'Ohne Titel').slice(0, 90)), element('p', '', String(item.final_answer || '').slice(0, 120))); button.append(text); button.addEventListener('click', () => { byId('search-dialog').close(); selectedIndex = index; renderResult(item); renderHistory(); if (mobile.matches) sidebar(false); }); root.append(button); });
 }
-function exportChat() { if (!selectedResult) return; const data = selectedResult; const criticUsed = data.answer_mode !== 'direct' && data.critic_used !== false; const critic = criticUsed ? String(data.critic_llm || 'nicht belegt') : 'nicht verwendet'; const independence = criticUsed ? (data.critic_independent === true ? 'Ja' : data.critic_independent === false ? 'Nein' : 'Nicht belegt') : 'Nicht geprüft'; const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nHauptmodell: ' + String(data.main_llm || 'nicht belegt') + '\nPrüfmodell: ' + critic + '\nPrüfmodell unabhängig: ' + independence + '\nStatus: ' + String(data.status || 'unbekannt') + '\nFreigegeben: ' + (data.release_ready ? 'Ja' : 'Nein') + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
+function exportChat() { if (!selectedResult) return; const data = selectedResult; const criticUsed = data.answer_mode !== 'direct' && data.critic_used !== false; const critic = criticUsed ? String(data.critic_llm || 'nicht belegt') : 'nicht verwendet'; const independence = criticUsed ? (data.critic_independent === true ? 'Ja' : data.critic_independent === false ? 'Nein' : 'Nicht belegt') : 'Nicht geprüft'; const identityVerified=String(data.execution_mode||'').toLowerCase()==='live'&&providerIdentityVerified(data,criticUsed); const text = 'TankAI\n\nAufgabe\n' + String(data.goal || '') + '\n\nAntwort\n' + String(data.final_answer || '') + '\n\nModus: ' + String(data.execution_mode || 'unbekannt') + '\nHauptmodell: ' + String(data.main_llm || 'nicht belegt') + '\nPrüfmodell: ' + critic + '\nModellidentität providerbestätigt: ' + (identityVerified ? 'Ja' : 'Nein') + '\nPrüfmodell unabhängig: ' + independence + '\nStatus: ' + String(data.status || 'unbekannt') + '\nFreigegeben: ' + (data.release_ready ? 'Ja' : 'Nein') + '\n'; const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const a = element('a'); a.href = url; a.download = 'TankAI-Gespraech.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1500); }
 byId('login-form').addEventListener('submit', login); byId('registration-toggle').addEventListener('click', () => setRegistration(!registering)); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
 byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
 byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });

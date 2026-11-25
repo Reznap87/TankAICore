@@ -99,14 +99,20 @@ class WorkspaceHistory:
                     raise ValueError("Gespräch nicht mehr im verfügbaren Verlauf")
                 break
             goal, answer = previous.get("goal"), previous.get("final_answer")
+            main_llm = previous.get("main_llm")
             if (
                 previous.get("workspace_id") != workspace_id
                 or previous.get("answer_mode") != "direct"
                 or previous.get("execution_mode") != "live"
+                or previous.get("model_identity_verified") is not True
+                or type(main_llm) is not str or not main_llm.strip()
+                or previous.get("observed_main_llms") != [main_llm]
                 or type(goal) is not str or not goal.strip()
                 or type(answer) is not str or not answer.strip()
             ):
-                raise ValueError("Gesprächsverlauf gehört nicht zum aktiven Live-Chat")
+                raise ValueError(
+                    "Gesprächsverlauf gehört nicht zum providerbestätigten Live-Chat"
+                )
             turns.append({"goal": goal[:700], "final_answer": answer[:900]})
             parent = previous.get("reply_to")
             if parent is not None and (type(parent) is not str or len(parent) != 32

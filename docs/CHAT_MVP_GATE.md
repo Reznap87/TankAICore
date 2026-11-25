@@ -14,14 +14,37 @@ nachvollziehbaren Modellidentitäten.
    `execution_mode=live`,
    `live_provider=true`, `critic_independent=true`,
    `verification_ready=true`, eindeutige Haupt- und Critic-Modellidentität.
+   E-Mail, Workspace-Name **und unveränderliche `workspace_id`** müssen exakt
+   zum Login-Receipt passen; ein gleichnamiger fremder Workspace besteht die
+   Readiness nicht und löst insbesondere keinen Live-Run aus.
 3. Separat autorisierter `/api/run`: `status=completed`,
    `execution_mode=live`, `release_ready=true`,
    `verification_passed=true`, nichtleere Antwort und unveränderte
    Modellidentitäten. Die Antwort muss außerdem dieselbe Workspace-ID wie
-   die Login-Sitzung tragen; ein Ergebnis aus einem anderen Workspace ist
-   kein gültiger E2E-Nachweis.
+   die Login-Sitzung, das exakt abgesendete randomisierte Smoke-Ziel und eine
+   kanonische UUIDv4-`run_id` tragen. Damit bestehen weder ein Ergebnis aus
+   einem anderen Workspace noch eine alte oder fehlgeleitete Run-Antwort als
+   gültiger E2E-Nachweis. Anschließend muss `/api/history` genau einen Eintrag
+   mit derselben Run-ID und identischem Antwort-, Workspace- und Modell-Receipt
+   zurückliefern. Das belegt den vom Chat verwendeten Rücklesepfad, aber noch
+   keine tatsächliche Browserdarstellung.
 4. Anschließend im realen Browser prüfen, dass genau diese Antwort im Chat
-   lesbar erscheint. Das CLI-Skript beweist **nicht** die Browser-Darstellung.
+   lesbar erscheint. Die Oberfläche rendert eine neue Antwort erst dann als
+   Ergebnis, wenn `/api/history` genau ein in den sicherheitsrelevanten Feldern
+   identisches Receipt zurückliefert. Dazu gehört insbesondere, ob der Critic
+   tatsächlich verwendet wurde, welchem Elternlauf eine Direktantwort
+   zugeordnet ist, welche Laufzeit angezeigt wird, welche sichtbaren
+   Ausführungsbelege die Receipt-Tabelle enthält und welcher Plan samt
+   Begründung angezeigt wird.
+   Fehlt dieser Persistenznachweis, bleibt
+   die Antwortkarte verborgen und die Oberfläche fordert zur Verlaufskontrolle
+   vor erneutem Senden auf. `Prüfung bestanden` wird nur bei `status=completed` gemeinsam mit
+   providerbestätigten getrennten Modellidentitäten, unabhängigem Critic sowie
+   bestandenem `plan_gate_passed=true`, `verification_passed=true` und
+   `release_ready=true` angezeigt; ein einzelnes
+   widersprüchliches Status- oder Freigabefeld erzeugt keinen Erfolgsstatus. Das CLI-Skript
+   und der synthetische DOM-Test beweisen trotzdem **nicht** die Darstellung in
+   einem realen Produktionsbrowser.
 
 ## CLI: zuerst ohne Modellaufruf
 
@@ -52,6 +75,21 @@ Modellaufrufen, keine Kostenobergrenze. Das Skript ändert keine Secrets,
 Provider, DNS-Konfiguration, Produktion oder Deployment und startet keinen
 Server. Die aktuellen Python-Tests verwenden ausschließlich synthetische
 Antworten; sie sind ausdrücklich kein Live-Nachweis.
+
+Ein erfolgreicher `--run`-Nachweis verlangt zusätzlich, dass `/api/run` die
+beiden konfigurierten Health-Identitäten unverändert referenziert und getrennte,
+vom jeweiligen Provider-Response bestätigte Haupt-/Critic-Modellidentitäten
+liefert. Alle internen Aufrufe einer Rolle müssen dabei dieselbe bestätigte
+Identität melden. Ein konfigurierter Alias allein, ein Modellwechsel innerhalb
+des Runs oder dieselbe beobachtete Identität für beide Rollen besteht den Smoke
+nicht. Zusätzlich versieht das Skript jede autorisierte Anfrage mit einer
+zufälligen Smoke-ID und akzeptiert nur die exakt dazugehörige Antwort mit einer
+kanonischen UUIDv4-Run-ID.
+Nach dem Run liest das Skript den authentifizierten Chatverlauf zurück und
+vergleicht die sicherheitsrelevanten Felder bytegenau mit dem unmittelbaren
+Run-Receipt. `history_verified=true` bedeutet daher nur, dass die Antwort über
+denselben API-Pfad abrufbar ist, den die Oberfläche nutzt; der manuelle oder
+browserautomatisierte Sichtnachweis aus Schritt 4 bleibt separat erforderlich.
 
 ## Trennlinie zur Realität
 

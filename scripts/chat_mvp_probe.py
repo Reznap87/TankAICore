@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 from http.cookiejar import CookieJar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+from uuid import UUID
 
 
 class ProbeError(RuntimeError):
@@ -75,47 +77,121 @@ def checked_health(
     if data.get("verification_ready") is not True:
         raise ProbeError("Core verification is not ready")
     user, workspace = data.get("user"), data.get("workspace")
+    workspace_id = data.get("workspace_id")
     if (
         not isinstance(user, str)
         or not user.strip()
         or not isinstance(workspace, str)
         or not workspace.strip()
+        or not isinstance(workspace_id, str)
+        or not workspace_id.strip()
     ):
         raise ProbeError("Health response is not bound to an authenticated workspace")
     if expected_email and user.strip().casefold() != expected_email.strip().casefold():
         raise ProbeError("Health response is bound to a different account")
     if expected_workspace_name and workspace.strip() != expected_workspace_name.strip():
         raise ProbeError("Health response is bound to a different workspace")
+    if expected_workspace_id and workspace_id.strip() != expected_workspace_id.strip():
+        raise ProbeError("Health response is bound to a different workspace id")
     main, critic = data.get("llm"), data.get("critic_llm")
     if not isinstance(main, str) or not main.strip() or not isinstance(critic, str) or not critic.strip():
         raise ProbeError("Main or critic model identity is missing")
     return {
         "main_llm": main,
         "critic_llm": critic,
-        "workspace_id": expected_workspace_id,
+        "workspace_id": workspace_id.strip(),
         "mode": "live",
         "configured": True,
     }
 
 
-def checked_result(data: dict, models: dict) -> dict:
+def checked_result(data: dict, models: dict, *, expected_goal: str) -> dict:
     if data.get("execution_mode") != "live" or data.get("status") != "completed":
         raise ProbeError("The chat did not complete as a live model run")
     if data.get("release_ready") is not True or data.get("verification_passed") is not True:
         raise ProbeError("Live response did not pass release and verification gates")
     if data.get("critic_independent") is not True:
         raise ProbeError("Run did not use an independent critic")
-    if data.get("main_llm") != models["main_llm"] or data.get("critic_llm") != models["critic_llm"]:
-        raise ProbeError("Model identity changed between readiness and run")
+    if data.get("model_identity_verified") is not True:
+        raise ProbeError("Run did not confirm response model identities")
+    if (data.get("configured_main_llm") != models["main_llm"]
+            or data.get("configured_critic_llm") != models["critic_llm"]):
+        raise ProbeError("Configured model identity changed between readiness and run")
+    main, critic = data.get("main_llm"), data.get("critic_llm")
+    if (not isinstance(main, str) or not main.strip()
+            or not isinstance(critic, str) or not critic.strip()):
+        raise ProbeError("Provider-confirmed main or critic model identity is missing")
+    if main == critic:
+        raise ProbeError("Provider-confirmed critic identity is not independent")
+    if data.get("observed_main_llms") != [main] or data.get("observed_critic_llms") != [critic]:
+        raise ProbeError("Provider-confirmed model identity was not stable throughout the run")
     if not models.get("workspace_id") or data.get("workspace_id") != models["workspace_id"]:
         raise ProbeError("Run response is bound to a different workspace")
+    if data.get("goal") != expected_goal:
+        raise ProbeError("Run response is not bound to the submitted smoke goal")
+    run_id = data.get("run_id")
+    try:
+        parsed_run_id = UUID(run_id) if isinstance(run_id, str) else None
+    except ValueError:
+        parsed_run_id = None
+    if parsed_run_id is None or parsed_run_id.version != 4 or str(parsed_run_id) != run_id:
+        raise ProbeError("Run response has no valid new run id")
     answer = data.get("final_answer")
     if not isinstance(answer, str) or not answer.strip():
         raise ProbeError("No answer was returned")
-    return {"live_answer_verified": True, "mode": "live", "main_llm": models["main_llm"], "critic_llm": models["critic_llm"]}
+    return {
+        "live_answer_verified": True,
+        "mode": "live",
+        "main_llm": main,
+        "critic_llm": critic,
+        "run_id": run_id,
+    }
 
 
-def request_json(opener, origin: str, path: str, *, body: dict | None = None, csrf: str = "") -> dict:
+_HISTORY_RECEIPT_FIELDS = (
+    "run_id",
+    "workspace_id",
+    "goal",
+    "final_answer",
+    "status",
+    "execution_mode",
+    "release_ready",
+    "verification_passed",
+    "main_llm",
+    "critic_llm",
+    "observed_main_llms",
+    "observed_critic_llms",
+    "configured_main_llm",
+    "configured_critic_llm",
+    "model_identity_verified",
+    "critic_independent",
+)
+
+
+def checked_history(data: list, result: dict) -> dict:
+    if not isinstance(data, list):
+        raise ProbeError("Chat history response is not a JSON array")
+    matching = [
+        item for item in data
+        if isinstance(item, dict) and item.get("run_id") == result.get("run_id")
+    ]
+    if len(matching) != 1:
+        raise ProbeError("The completed run is not uniquely readable from chat history")
+    stored = matching[0]
+    if any(stored.get(field) != result.get(field) for field in _HISTORY_RECEIPT_FIELDS):
+        raise ProbeError("The chat history receipt differs from the completed run")
+    return {"history_verified": True}
+
+
+def request_json(
+    opener,
+    origin: str,
+    path: str,
+    *,
+    body: dict | None = None,
+    csrf: str = "",
+    expected_type: type = dict,
+) -> dict | list:
     payload = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"Accept": "application/json"}
     if payload is not None:
@@ -140,8 +216,11 @@ def request_json(opener, origin: str, path: str, *, body: dict | None = None, cs
         data = json.loads(raw)
     except (ValueError, UnicodeError):
         raise ProbeError(f"{path}: invalid JSON response") from None
-    if not isinstance(data, dict):
-        raise ProbeError(f"{path}: expected JSON object")
+    if expected_type not in (dict, list):
+        raise ValueError("expected_type must be dict or list")
+    if not isinstance(data, expected_type):
+        expected_name = "object" if expected_type is dict else "array"
+        raise ProbeError(f"{path}: expected JSON {expected_name}")
     return data
 
 
@@ -170,13 +249,25 @@ def main(argv: list[str] | None = None) -> int:
         receipt = {"gate": "chat_mvp", "readiness": "passed", **models, "live_answer_verified": False}
         if args.run:
             # This application-level check cannot enforce provider-side billing.
+            challenge = secrets.token_hex(8)
+            goal = (
+                "Antworte in genau einem kurzen deutschen Satz: Ist TankAI erreichbar? "
+                f"Smoke-ID: {challenge}"
+            )
             result = request_json(
                 opener, origin, "/api/run", csrf=session["csrf_token"],
-                body={"goal": "Antworte in genau einem kurzen deutschen Satz: Ist TankAI erreichbar?",
+                body={"goal": goal,
                       "definition_of_done": "Ein geprüfter deutscher Satz, ohne erfundene Quellen.",
                       "parallel": False},
             )
-            receipt.update(checked_result(result, models))
+            receipt.update(checked_result(result, models, expected_goal=goal))
+            history = request_json(
+                opener,
+                origin,
+                "/api/history",
+                expected_type=list,
+            )
+            receipt.update(checked_history(history, result))
         print(json.dumps(receipt, ensure_ascii=False, sort_keys=True))
         return 0
     except ProbeError as exc:

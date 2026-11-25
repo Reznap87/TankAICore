@@ -148,6 +148,79 @@ def test_authenticated_owner_http_core_run_binds_server_job_and_preserves_holds(
         assert calls(provider_factory) == 5
 
 
+def test_authenticated_run_reports_provider_observed_main_and_critic_models(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["llm"].startswith("openai:main-v1:")
+        assert health["critic_llm"].startswith("anthropic:critic-v1:")
+        provider_factory[0].response_model = "main-resolved-2026-11-22"
+        provider_factory[1].response_model = "critic-resolved-2026-11-22"
+
+        status, _, body = client.post(
+            "/api/run", {"goal": "Prove both response model identities"}, csrf=csrf
+        )
+
+        assert status == 200, body
+        assert body["configured_main_llm"] == health["llm"]
+        assert body["configured_critic_llm"] == health["critic_llm"]
+        assert body["main_llm"].startswith("openai:main-resolved-2026-11-22:")
+        assert body["critic_llm"].startswith("anthropic:critic-resolved-2026-11-22:")
+        assert body["observed_main_llms"] == [body["main_llm"]]
+        assert body["observed_critic_llms"] == [body["critic_llm"]]
+        assert body["main_llm"] != health["llm"]
+        assert body["critic_llm"] != health["critic_llm"]
+        assert body["model_identity_verified"] is True
+        assert body["critic_independent"] is True
+        assert body["goal"] == "Prove both response model identities"
+        assert str(UUID(body["run_id"])) == body["run_id"]
+        assert calls(provider_factory) == 5
+
+
+def test_authenticated_live_run_rejects_unattested_critic_identity(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, _ = client.get("/api/health")
+        assert status == 200
+        provider_factory[1].response_model = ""
+
+        status, _, body = client.post(
+            "/api/run", {"goal": "Do not accept an unattested critic"}, csrf=csrf
+        )
+
+        assert status == 502
+        assert body["error_code"] == "model_identity_unconfirmed"
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
+        assert calls(provider_factory) == 5
+
+
+def test_authenticated_live_run_rejects_model_switch_within_main_role(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, _ = client.get("/api/health")
+        assert status == 200
+        provider_factory[0].response_models = [
+            "main-resolved-a-2026-11-22",
+            "main-resolved-b-2026-11-22",
+            "main-resolved-b-2026-11-22",
+        ]
+
+        status, _, body = client.post(
+            "/api/run", {"goal": "Reject an unstable main model identity"}, csrf=csrf
+        )
+
+        assert status == 502
+        assert body["error_code"] == "model_identity_changed_during_run"
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
+        assert calls(provider_factory) == 5
+
+
 def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, ledger, provider_factory):
     configured = pilot(accounts, ledger)
     with serving(configured) as (app, base):
@@ -161,6 +234,7 @@ def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, led
         assert body["final_answer"] == "step result"
         assert body["answer_mode"] == "direct" and body["status"] == "unverified"
         assert body["critic_used"] is False and body["critic_llm"] is None
+        assert body["observed_main_llms"] == [body["main_llm"]]
         assert body["verification_passed"] is False and body["release_ready"] is False
         assert calls(provider_factory) == 1
         assert len(provider_factory[0].calls) == 1
@@ -182,6 +256,44 @@ def test_direct_chat_bills_one_real_adapter_call_under_owner_pilot(accounts, led
         status, _, history = client.get("/api/history")
         assert status == 200 and len(history) == 1
         assert history[0]["run_id"] == body["run_id"]
+
+
+def test_direct_chat_reports_provider_observed_model_not_configured_alias(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, health = client.get("/api/health")
+        assert status == 200
+        assert health["llm"].startswith("openai:main-v1:")
+        provider_factory[0].response_model = "main-v1-resolved-2026-11-22"
+
+        status, _, body = client.post(
+            "/api/chat", {"message": "Which model answered?"}, csrf=csrf
+        )
+
+        assert status == 200, body
+        assert body["main_llm"].startswith(
+            "openai:main-v1-resolved-2026-11-22:"
+        )
+        assert body["main_llm"] != health["llm"]
+
+
+def test_direct_chat_rejects_answer_without_provider_model_attestation(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (_, base):
+        client, csrf = login(base)
+        status, _, _ = client.get("/api/health")
+        assert status == 200
+        provider_factory[0].response_model = ""
+
+        status, _, body = client.post(
+            "/api/chat", {"message": "Do not mislabel this answer"}, csrf=csrf
+        )
+
+        assert status == 502
+        assert body["error_code"] == "model_identity_unconfirmed"
+        status, _, history = client.get("/api/history")
+        assert status == 200 and history == []
 
 
 def test_direct_chat_replays_only_server_owned_workspace_history(accounts, ledger, provider_factory):
@@ -230,6 +342,36 @@ def test_direct_chat_rejects_untrusted_or_unknown_parent_before_billing(accounts
         status, _, unavailable = client.post(
             "/api/chat", {"message": "skip", "reply_to": "0" * 32}, csrf=csrf
         )
+        assert status == 409
+        assert unavailable["error_code"] == "conversation_unavailable"
+        assert calls(provider_factory) == 0
+        assert ledger.snapshot()["jobs"] == 0
+        assert ledger.snapshot()["attempts"] == 0
+
+
+def test_direct_chat_rejects_legacy_parent_without_provider_identity_proof_before_billing(
+        accounts, ledger, provider_factory):
+    with serving(pilot(accounts, ledger)) as (app, base):
+        legacy_run_id = "a" * 32
+        with app.runtimes.acquire(
+                tenant_id=accounts.tenant, workspace_id=accounts.workspace) as runtime:
+            runtime.history.append({
+                "run_id": legacy_run_id,
+                "workspace_id": accounts.workspace,
+                "goal": "Legacy question",
+                "final_answer": "Unattested legacy answer",
+                "answer_mode": "direct",
+                "execution_mode": "live",
+                "main_llm": "openai:configured-alias",
+                # Deliberately no model_identity_verified/observed_main_llms.
+            })
+        client, csrf = login(base)
+
+        status, _, unavailable = client.post(
+            "/api/chat", {"message": "Trust the previous answer?", "reply_to": legacy_run_id},
+            csrf=csrf,
+        )
+
         assert status == 409
         assert unavailable["error_code"] == "conversation_unavailable"
         assert calls(provider_factory) == 0

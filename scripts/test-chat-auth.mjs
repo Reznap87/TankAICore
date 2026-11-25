@@ -21,9 +21,24 @@ let healthCalls = 0;
 let loginCalls = 0;
 let workspaceCalls = 0;
 let directCalls = 0;
+let advancedCalls = 0;
 let historyCalls = 0;
 const firstDirectRun = 'a'.repeat(32);
 const secondDirectRun = 'b'.repeat(32);
+const thirdDirectRun = 'c'.repeat(32);
+const fourthDirectRun = 'e'.repeat(32);
+const legacyRun = 'd'.repeat(32);
+const advancedRun = '11111111-2222-4333-8444-555555555555';
+const failedAdvancedRun = '66666666-7777-4888-8999-aaaaaaaaaaaa';
+const planGateAdvancedRun = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+const verifiedAdvancedRun = '12345678-1234-4abc-8def-123456789abc';
+const criticMismatchAdvancedRun = 'fedcba98-7654-4cba-9876-fedcba987654';
+const receiptsMismatchAdvancedRun = '0f0f0f0f-1e1e-4d2d-8c3c-4b4b4b4b4b4b';
+const planMismatchAdvancedRun = '13572468-2468-4ace-8bdf-135724681357';
+const durationMismatchAdvancedRun = 'abcdef01-2345-4abc-8def-0123456789ab';
+const legacyHistory = { workspace_id: 'synthetic', run_id: legacyRun, goal: 'Eigenes Gespräch', final_answer: 'Darf erscheinen', answer_mode: 'direct', execution_mode: 'live' };
+const storedHistory = [legacyHistory];
+let latestChatResult;
 let releaseInitialHealth;
 let refreshInterval;
 const delayedHealth = new Promise(resolve => { releaseInitialHealth = resolve; });
@@ -41,7 +56,7 @@ async function fetch(url, options = {}) {
         : healthCalls === 5
           ? { ok: true, registration_enabled: true, execution_mode: 'live', direct_chat_available: true, llm: 'openai:synthetic-main', user: 'synthetic@example.invalid', workspace: 'Test', workspace_id: 'other-workspace' }
           : healthCalls >= 6
-            ? { ok: true, registration_enabled: true, execution_mode: 'live', direct_chat_available: true, llm: 'openai:synthetic-main', user: 'synthetic@example.invalid', workspace: 'Test', workspace_id: 'synthetic' }
+            ? { ok: true, registration_enabled: true, execution_mode: 'live', direct_chat_available: healthCalls !== 7, llm: 'openai:synthetic-main', user: 'synthetic@example.invalid', workspace: 'Test', workspace_id: 'synthetic' }
         : { ok: true, registration_enabled: true };
   }
   else if (url === '/api/auth/me') { status = 401; data = { error: 'Anmeldung erforderlich' }; }
@@ -53,21 +68,28 @@ async function fetch(url, options = {}) {
     const call = historyCalls++;
     data = call === 0
       ? [{ workspace_id: 'other-workspace', goal: 'Fremdes Gespräch', final_answer: 'Darf nicht erscheinen' }]
-      : call === 1
-        ? [{ workspace_id: 'synthetic', goal: 'Eigenes Gespräch', final_answer: 'Darf erscheinen' }]
-        : directCalls >= 4
-          ? [{ workspace_id: 'synthetic', run_id: firstDirectRun, goal: 'Direkte Frage', final_answer: 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live' }]
-          : [];
+      : call === 2
+        ? [{ ...latestChatResult, final_answer: 'Abweichend gespeicherte Antwort' }, ...storedHistory]
+        : [...storedHistory];
   }
   else if (url === '/api/chat') {
     const payload = JSON.parse(options.body);
     assert.equal(payload.message, 'Direkte Frage');
     const call = directCalls++;
-    if (call === 4) assert.equal(payload.reply_to, firstDirectRun, 'the follow-up must reference the preceding server run');
+    if (call === 6) assert.equal(payload.reply_to, secondDirectRun, 'a provider-attested turn remains eligible for a follow-up');
+    else if (call === 7) assert.equal(payload.reply_to, thirdDirectRun, 'the next provider-attested turn remains eligible for a follow-up');
     else assert.equal('reply_to' in payload, false, 'new chats and rejected responses must not send a parent');
-    data = { workspace_id: call === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: call === 2 ? '' : 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: call === 1 ? '' : 'openai:synthetic-main', critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1, run_id: call === 4 ? secondDirectRun : firstDirectRun, reply_to: call === 4 ? firstDirectRun : null };
+    data = { workspace_id: call === 0 ? 'other-workspace' : 'synthetic', goal: 'Direkte Frage', final_answer: call === 2 ? '' : 'Live-Antwort', answer_mode: 'direct', execution_mode: 'live', main_llm: call === 1 ? '' : 'openai:synthetic-main', observed_main_llms: call >= 4 ? ['openai:synthetic-main'] : undefined, model_identity_verified: call >= 4 ? true : undefined, critic_used: false, critic_llm: null, critic_independent: null, release_ready: false, duration_seconds: 1, run_id: call === 7 ? fourthDirectRun : call === 6 ? thirdDirectRun : call === 5 ? secondDirectRun : firstDirectRun, reply_to: call === 7 ? thirdDirectRun : call === 6 ? secondDirectRun : null };
+    latestChatResult = data;
+    if (call >= 5) storedHistory.unshift(call === 7 ? { ...data, reply_to: firstDirectRun } : data);
   }
-  else if (url === '/api/run') { assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage'); data = { workspace_id: 'synthetic', goal: 'Geprüfte Frage', final_answer: 'Gemischtes Ergebnis', execution_mode: 'mixed', release_ready: false, duration_seconds: 2 }; }
+  else if (url === '/api/run') {
+    assert.equal(JSON.parse(options.body).goal, 'Geprüfte Frage');
+    const call = advancedCalls++;
+    const runIds = [advancedRun, failedAdvancedRun, planGateAdvancedRun, verifiedAdvancedRun, criticMismatchAdvancedRun, receiptsMismatchAdvancedRun, planMismatchAdvancedRun, durationMismatchAdvancedRun];
+    data = { workspace_id: 'synthetic', run_id: runIds[call], goal: 'Geprüfte Frage', final_answer: ['Widersprüchliches Live-Ergebnis', 'Fehlgeschlagenes Live-Ergebnis', 'Plan-Gate nicht bestanden', 'Verifiziertes Live-Ergebnis', 'Abweichende Critic-Nutzung', 'Abweichender Receipt-Beleg', 'Abweichender Plan', 'Abweichende Laufzeit'][call], status: call === 1 ? 'failed' : 'completed', execution_mode: 'live', main_llm: 'openai:synthetic-main', critic_llm: 'anthropic:synthetic-critic', observed_main_llms: ['openai:synthetic-main'], observed_critic_llms: ['anthropic:synthetic-critic'], configured_main_llm: 'openai:configured-main', configured_critic_llm: 'anthropic:configured-critic', model_identity_verified: true, critic_independent: call > 0, verification_passed: call > 0, plan_gate_passed: call >= 2 ? call !== 2 : undefined, release_ready: true, duration_seconds: 2, receipts_count: call === 5 ? 1 : undefined, receipts: call === 5 ? [{ actor: 'critic', action: 'verify', success: true, output_summary: 'Bestätigt' }] : undefined, plan: call === 6 ? { rationale: 'Persistierbarer Plan', steps: [{ specialist_type: 'critic', description: 'Antwort prüfen', status: 'completed' }] } : undefined };
+    storedHistory.unshift(call === 4 ? { ...data, critic_used: false } : call === 5 ? { ...data, receipts: [{ actor: 'critic', action: 'verify', success: false, output_summary: 'Fehlgeschlagen' }] } : call === 6 ? { ...data, plan: { rationale: 'Abweichend gespeichert', steps: [{ specialist_type: 'critic', description: 'Antwort prüfen', status: 'failed' }] } } : call === 7 ? { ...data, duration_seconds: 999 } : data);
+  }
   else throw new Error('Unexpected endpoint: ' + url);
   return { ok: status < 400, status, json: async () => data };
 }
@@ -75,7 +97,8 @@ const media = () => ({ matches: false, addEventListener() {} });
 class Blob { constructor(parts) { this.parts = parts; } }
 const context = { document, fetch, Blob, URL: { createObjectURL(blob) { exportedText = blob.parts.join(''); return 'blob:synthetic'; }, revokeObjectURL() {} }, matchMedia: media, localStorage: { getItem() { return null; }, setItem() {} }, setInterval(fn) { refreshInterval = fn; }, setTimeout() {}, clearTimeout() {}, console, requestAnimationFrame() {} };
 const source = await readFile(new URL('../tankai/web/chat.js', import.meta.url), 'utf8');
-vm.runInNewContext(source, context);
+const displayAssertions = "if (modelDisplay('openrouter_free:openrouter_free:https://openrouter.ai/api/v1') !== 'OpenRouter Free · Automatische Modellauswahl' || modelDisplay('openrouter_free:baidu/ernie:free:https://openrouter.ai/api/v1') !== 'OpenRouter Free · baidu/ernie') throw new Error('OpenRouter model label exposes URL or mislabels router');";
+vm.runInNewContext(source.replace("setTheme(); applyChatSize(); syncSidebar(); refreshHealth(); loadMe();", displayAssertions + "\nsetTheme(); applyChatSize(); syncSidebar(); refreshHealth(); loadMe();"), context);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 await flush(); await flush();
 assert.equal(healthCalls, 2, '401 must trigger a fresh health check');
@@ -121,7 +144,7 @@ assert.match(byId('loginStatus').textContent, /Anmeldenachweis/);
 await byId('login-form').handlers.submit({ preventDefault() {} });
 assert.equal(byId('appView').hidden, false, 'login receipt for the canonical mixed-case address must open the app');
 assert.equal(byId('health').textContent, 'Core verbunden');
-assert.equal(byId('model-label').textContent, 'Live-Chat · openai:synthetic-main');
+assert.equal(byId('model-label').textContent, 'Live-Chat bereit · konfiguriert: openai:synthetic-main');
 const beforeLocalTools = calls.length;
 byId('chat-size').value = 'large';
 byId('chat-size').handlers.change();
@@ -151,6 +174,14 @@ byId('goal').value = '';
 byId('goal').handlers.input();
 assert.equal(calls.length, beforeLocalTools, 'local plugins and settings must never send network requests');
 
+
+assert.match(byId('sysInfo').textContent, /^Konfiguriertes Hauptmodell: openai:synthetic-main$/m);
+assert.match(byId('sysInfo').textContent, /^Konfiguriertes Prüfmodell: unbekannt$/m);
+assert.match(byId('sysInfo').textContent, /^Konfigurierte Modellrollen getrennt: Nein$/m);
+assert.doesNotMatch(byId('sysInfo').textContent, /providerbestätigt/i, 'health must not claim per-response provider attestation');
+await refreshInterval();
+assert.equal(byId('model-label').textContent, 'Live-Modell konfiguriert · Chat derzeit nicht freigegeben', 'configured live model and admission state must remain distinguishable');
+assert.match(byId('sysInfo').textContent, /Pilot: gemeinsame Budgetfreigabe fehlt/);
 assert.deepEqual(calls.filter(c => c.url.startsWith('/api/auth/') && c.url !== '/api/auth/me').map(c => c.url), ['/api/auth/register', '/api/auth/logout', '/api/auth/login', '/api/auth/login', '/api/auth/login', '/api/auth/login']);
 assert.equal(byId('history').children.some(child => child.textContent === 'Eigenes Gespräch'), true, 'active-workspace history must remain available');
 byId('search-open').handlers.click();
@@ -180,23 +211,76 @@ assert.equal(byId('outCard').hidden, true, 'live response without answer text mu
 assert.match(byId('status').textContent, /Antworttext/);
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
-byId('export-chat').handlers.click();
-assert.match(exportedText, /Prüfmodell: nicht verwendet/);
-assert.match(exportedText, /Prüfmodell unabhängig: Nicht geprüft/);
+assert.equal(byId('outCard').hidden, true, 'live response without provider-confirmed identity proof must not be displayed');
+assert.match(byId('status').textContent, /Provider-bestätigte Modellidentität/);
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.equal(byId('threadHistory').hidden, false, 'prior turns should be shown for a follow-up');
-assert.equal(byId('threadHistory').children.length, 2, 'one previous user/assistant pair');
-assert.equal(byId('threadHistory').children[0].children[0].textContent, 'Direkte Frage');
+assert.equal(byId('outCard').hidden, true, 'an answer differing from its chat history receipt must not be displayed as completed');
+assert.match(byId('status').textContent, /Verlauf/i);
+byId('history').children.find(child => child.textContent === 'Eigenes Gespräch').handlers.click();
+assert.equal(byId('badges').children[0].textContent, 'Live-Modellnachweis nicht bestätigt', 'legacy live history must not claim a verified model identity');
+assert.equal(byId('badges').children[1].textContent, 'Modellidentität nicht providerbestätigt');
+byId('export-chat').handlers.click();
+assert.match(exportedText, /Modellidentität providerbestätigt: Nein/);
+const callsBeforeLegacyFollowup = directCalls;
+byId('goal').value = 'Direkte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(directCalls, callsBeforeLegacyFollowup, 'legacy live history must not be sent as follow-up context');
+assert.match(byId('status').textContent, /providerbestätigten Modellnachweis.*neuen Chat/i);
+assert.equal(byId('threadHistory').hidden, true, 'unattested history must not be presented as trusted thread context');
 byId('new-chat').handlers.click();
 assert.equal(byId('threadHistory').hidden, true, 'New Chat must clear prior messages');
 byId('goal').value = 'Direkte Frage';
 await byId('composer').handlers.submit({ preventDefault() {} });
 assert.equal(directCalls, 6, 'new chat should be sent without a parent');
+assert.deepEqual(byId('badges').children.map(child => child.textContent), ['KI-Antwort · ungeprüft', 'Modellidentität providerbestätigt', 'Hauptmodell: openai:synthetic-main', 'Prüfmodell: nicht verwendet', 'Keine unabhängige Prüfung', '1 s']);
+byId('export-chat').handlers.click();
+assert.match(exportedText, /Prüfmodell: nicht verwendet/);
+assert.match(exportedText, /Modellidentität providerbestätigt: Ja/);
+assert.match(exportedText, /Prüfmodell unabhängig: Nicht geprüft/);
+byId('goal').value = 'Direkte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(directCalls, 7, 'a provider-attested direct answer should remain eligible for follow-up');
+byId('goal').value = 'Direkte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(directCalls, 8, 'a direct answer with a mismatched persisted parent must reach the history check');
+assert.equal(byId('outCard').hidden, true, 'a reply parent differing from persisted history must not be displayed as completed');
+assert.match(byId('status').textContent, /Verlauf/i);
 byId('goal').value = 'Geprüfte Frage'; byId('advanced').checked = true;
 await byId('composer').handlers.submit({ preventDefault() {} });
-assert.deepEqual(byId('badges').children.map(child => child.textContent), ['Teilweise Simulation · keine verifizierte Live-Antwort', 'Hauptmodell: nicht belegt', 'Prüfmodell: nicht belegt', 'Prüfmodell-Unabhängigkeit nicht belegt', '2 s']);
+assert.equal(byId('badges').children[0].textContent, 'Nicht freigegeben', 'release_ready alone must not claim a passed independent verification');
+assert.equal(byId('badges').children[4].textContent, 'Prüfmodell nicht unabhängig');
+assert.doesNotMatch(byId('status').textContent, /Prüfung abgeschlossen/, 'contradictory verification fields must not claim a completed review');
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('badges').children[0].textContent, 'Nicht freigegeben', 'a failed run must never claim a passed verification');
+assert.doesNotMatch(byId('status').textContent, /Prüfung abgeschlossen/, 'a failed run must not claim a completed review');
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('badges').children[0].textContent, 'Nicht freigegeben', 'a failed plan gate must never claim a passed verification');
+assert.doesNotMatch(byId('status').textContent, /Prüfung abgeschlossen/, 'a failed plan gate must not claim a completed review');
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('badges').children[0].textContent, 'Prüfung bestanden', 'a fully consistent advanced receipt must retain its success status');
+assert.match(byId('status').textContent, /Prüfung abgeschlossen/);
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('outCard').hidden, true, 'critic usage differing from persisted history must not be displayed as completed');
+assert.match(byId('status').textContent, /Verlauf/i);
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('outCard').hidden, true, 'receipt evidence differing from persisted history must not be displayed as completed');
+assert.equal(byId('receiptCard').hidden, true, 'unpersisted positive receipt evidence must stay hidden');
+assert.match(byId('status').textContent, /Verlauf/i);
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('outCard').hidden, true, 'plan evidence differing from persisted history must not be displayed as completed');
+assert.equal(byId('planCard').hidden, true, 'unpersisted plan evidence must stay hidden');
+assert.match(byId('status').textContent, /Verlauf/i);
+byId('goal').value = 'Geprüfte Frage';
+await byId('composer').handlers.submit({ preventDefault() {} });
+assert.equal(byId('outCard').hidden, true, 'duration differing from persisted history must not be displayed as completed');
+assert.match(byId('status').textContent, /Verlauf/i);
 
 const restoreElements = new Map();
 const restoreById = id => { if (!restoreElements.has(id)) restoreElements.set(id, new Element()); return restoreElements.get(id); };

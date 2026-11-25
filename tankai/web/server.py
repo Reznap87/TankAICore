@@ -31,7 +31,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tankai import __version__
-from tankai.core.llm import LLMRateLimitExceeded, OpenRouterFreeLLM, openrouter_free_scope
+from tankai.core.llm import (
+    LLMRateLimitExceeded,
+    OpenRouterFreeLLM,
+    llm_response_identities,
+    llm_response_identity,
+    openrouter_free_scope,
+    reset_llm_response_identities,
+)
 from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.core.request_pricing import PricingError
@@ -2441,6 +2448,7 @@ class Handler(BaseHTTPRequestHandler):
                         self.app.provider_limiter.consume(context.user_id, identity)
 
                 tank.llm_call_budget.set_call_guard(admit_provider_call)
+                reset_llm_response_identities(tank.llm)
                 started = time.monotonic()
                 try:
                     with (
@@ -2463,6 +2471,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(answer, str) or not answer.strip():
                     self._json({"error": "Das KI-Modell hat keine Antwort geliefert"}, 502)
                     return
+                response_identity = llm_response_identity(tank.llm)
+                if response_identity is None:
+                    self._json({
+                        "error": "Der Provider hat keine belastbare Modellidentität bestätigt",
+                        "error_code": "model_identity_unconfirmed",
+                    }, 502)
+                    return
                 payload = {
                     "run_id": secrets.token_hex(16),
                     "workspace_id": context.workspace_id,
@@ -2477,11 +2492,10 @@ class Handler(BaseHTTPRequestHandler):
                     "receipts_count": 0,
                     "receipts": [],
                     "plan": None,
-                    "main_llm": (
-                        "openrouter_free:" + tank.llm.delegate.resolved_model
-                        + ":https://openrouter.ai/api/v1"
-                        if free_route else tank.main_llm_identity
-                    ),
+                    "main_llm": response_identity,
+                    "observed_main_llms": [response_identity],
+                    "configured_main_llm": tank.main_llm_identity,
+                    "model_identity_verified": True,
                     # The direct path performs exactly one main-model call. Do
                     # not attach the configured critic's identity to a result
                     # that the critic never inspected.
@@ -2622,6 +2636,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.app.provider_limiter.consume(context.user_id, identity)
 
                 tank.llm_call_budget.set_call_guard(admit_provider_call)
+                reset_llm_response_identities(tank.llm)
+                reset_llm_response_identities(tank.critic_llm)
                 try:
                     with (pilot.scope(context, self.app.auth, tank) if pilot else nullcontext(None)) as pilot_job_id:
                         if pilot is not None:
@@ -2632,6 +2648,35 @@ class Handler(BaseHTTPRequestHandler):
                             result = tank.run(goal_description=goal, definition_of_done=dod)
                 finally:
                     tank.llm_call_budget.set_call_guard(None)
+                configured_main_llm = tank.main_llm_identity
+                configured_critic_llm = tank.critic_llm_identity
+                response_main_llms = llm_response_identities(tank.llm)
+                response_critic_llms = llm_response_identities(tank.critic_llm)
+                model_identity_verified = result.execution_mode == "live"
+                if model_identity_verified and (
+                        not response_main_llms or not response_critic_llms):
+                    self._json({
+                        "error": "Hauptmodell oder Critic hat keine belastbare Modellidentität bestätigt",
+                        "error_code": "model_identity_unconfirmed",
+                    }, 502)
+                    return
+                if model_identity_verified and (
+                        len(response_main_llms) != 1 or len(response_critic_llms) != 1):
+                    self._json({
+                        "error": "Die bestätigte Modellidentität wechselte innerhalb des Runs",
+                        "error_code": "model_identity_changed_during_run",
+                    }, 502)
+                    return
+                response_main_llm = response_main_llms[0] if response_main_llms else None
+                response_critic_llm = response_critic_llms[0] if response_critic_llms else None
+                if model_identity_verified and response_main_llm == response_critic_llm:
+                    self._json({
+                        "error": "Hauptmodell und Critic haben dieselbe Modellidentität bestätigt",
+                        "error_code": "critic_identity_not_independent",
+                    }, 502)
+                    return
+                displayed_main_llm = response_main_llm or configured_main_llm
+                displayed_critic_llm = response_critic_llm or configured_critic_llm
                 plan_data = None
                 if result.plan:
                     plan_data = {
@@ -2652,6 +2697,7 @@ class Handler(BaseHTTPRequestHandler):
                     "details": receipt.details,
                 } for receipt in result.receipts]
                 payload = {
+                    "run_id": result.goal_id,
                     "workspace_id": context.workspace_id,
                     "goal": goal,
                     "final_answer": result.final_answer,
@@ -2661,9 +2707,17 @@ class Handler(BaseHTTPRequestHandler):
                     "receipts_count": len(result.receipts),
                     "receipts": receipts,
                     "plan": plan_data,
-                    "main_llm": tank.main_llm_identity,
-                    "critic_llm": tank.critic_llm_identity,
-                    "critic_independent": tank.critic_independent,
+                    "main_llm": displayed_main_llm,
+                    "critic_llm": displayed_critic_llm,
+                    "observed_main_llms": list(response_main_llms),
+                    "observed_critic_llms": list(response_critic_llms),
+                    "configured_main_llm": configured_main_llm,
+                    "configured_critic_llm": configured_critic_llm,
+                    "model_identity_verified": model_identity_verified,
+                    "critic_independent": (
+                        displayed_main_llm != displayed_critic_llm
+                        if model_identity_verified else tank.critic_independent
+                    ),
                     "verification_passed": result.verification_passed,
                     "release_ready": result.release_ready,
                     "plan_gate_passed": result.plan_gate_passed,

@@ -77,12 +77,17 @@ Versand. Ein echter Provider-/Browser-End-to-End-Test ist weiterhin
 ein gesonderter Nachweis, kein Ergebnis der Offline-CI.
 
 Eine neue direkte Antwort wird außerdem nur gerendert, wenn ihr eigener Payload
-eine nicht leere Hauptmodellidentität in `main_llm` und einen nicht leeren
-Antworttext in `final_answer` enthält. Fehlt einer dieser per-Run-Nachweise,
+eine vom Provider-Response bestätigte Hauptmodellidentität in `main_llm`, genau
+dieselbe einzelne Identität in `observed_main_llms` und einen nicht leeren
+Antworttext in `final_answer` enthält. Erweiterte Live-Runs müssen denselben
+Nachweis zusätzlich für den unabhängigen Critic liefern. Fehlt einer dieser
+per-Run-Nachweise,
 bleibt die Antwortkarte verborgen und die Oberfläche meldet den Fehler; die
 globale Health-Anzeige kann ihn nicht ersetzen. Damit wird eine formal
 erfolgreiche HTTP-Antwort ohne benutzbare Modellantwort nicht als Live-Erfolg
-dargestellt.
+dargestellt. Bereits gespeicherte Live-Ergebnisse ohne diesen Vertrag bleiben
+lesbar, tragen aber sichtbar `Live-Modellnachweis nicht bestätigt`; auch ihr
+Text-Export kennzeichnet die Modellidentität als nicht providerbestätigt.
 
 Jede Nachricht startet einen einzelnen, budgetierten Core-Run. Der
 Direktchat unterstützt nun **begrenzte Folgefragen**: Der Browser übermittelt
@@ -97,6 +102,23 @@ HTTP 409 (`conversation_unavailable`). Die Prüfung von Session, CSRF,
 Workspace-Mitgliedschaft, OwnerPilot und Geldreservierung bleibt unverändert
 erforderlich. Die letzte Antwort und ihr `reply_to` werden dauerhaft
 gespeichert. `Neuer Chat` startet wieder ohne Verweis.
+
+Ein gespeicherter Dialogzug wird nur erneut als Modellkontext versendet, wenn
+sein eigener Payload `model_identity_verified=true` enthält und
+`observed_main_llms` genau der einzelnen `main_llm`-Identität entspricht.
+Ältere Live-Verläufe ohne diesen Provider-Nachweis bleiben für den Menschen
+sichtbar und als unbestätigt markiert, dürfen aber weder als unmittelbarer
+Elternzug noch als älterer Vorfahr in einen neuen Modellprompt gelangen. Eine
+solche Referenz scheitert vor Geldreservierung und Provideraufruf ebenfalls mit
+HTTP 409 (`conversation_unavailable`); der Nutzer kann mit `Neuer Chat` ohne
+den ungeprüften Kontext fortfahren.
+
+Die Oberfläche bietet für einen solchen Altverlauf keine Folgefrage mit
+`reply_to` an: Der eingegebene Text bleibt erhalten und ein klarer Hinweis
+fordert zum Start eines neuen Chats auf. Unbestätigte Vorfahren werden außerdem
+nicht als scheinbar vertrauenswürdige Gesprächszüge über einer neueren Antwort
+gerendert. Damit erzeugt die UI keinen Request, den der Server aufgrund des
+fehlenden Provider-Nachweises zwingend zurückweisen muss.
 
 Dies ist ein begrenzter Gesprächsfaden auf Basis einzelner Runs, **keine
 unbegrenzte Chat-Session**: Nur die letzten 100 serverseitigen Workspace-Einträge
@@ -115,7 +137,12 @@ dafür, welches Modell eine einzelne Antwort erzeugt hat. Gemischte Ausführung 
 ausdrücklich als nicht verifizierte Live-Antwort markiert.
 
 `Core verbunden` bestätigt eine erfolgreiche Health-Antwort nur dann, wenn der
-Core zugleich den Live-Modus und eine nicht leere Hauptmodellidentität meldet.
+Core zugleich den Live-Modus und eine nicht leere konfigurierte
+Hauptmodellidentität meldet. Der Modellhinweis bezeichnet diesen Wert deshalb
+ausdrücklich als `konfiguriert`; auch Hauptmodell, Prüfmodell und Trennung der
+Modellrollen in den Systemdetails sind ausschließlich Konfigurations- und
+Readiness-Angaben. Providerbestätigte Identitäten erscheinen erst an einer
+konkreten Antwort mit deren per-Run-Nachweis.
 Bei angemeldeten Konten muss der Health-Nachweis außerdem exakt die E-Mail des
 aktiven Kontos und die unveränderliche `workspace_id` des aktiven Workspace tragen;
 ein bloß gleicher Workspace-Name genügt nicht. Ein Nachweis für ein anderes Konto
@@ -127,6 +154,10 @@ weiterhin keinen erfolgreichen Modellaufruf. Das Backend meldet
 `direct_chat_available=true` jetzt nur für nicht simulierte Hauptmodelle mit
 explizit vorhandenem und aktuell autorisiertem OwnerPilot. Dies ist kein
 Nachweis über freie Restbudgets oder die Erreichbarkeit der Provider-API;
+ist ein Live-Modell konfiguriert, aber diese Zulassung nicht gegeben, unterscheidet
+die Oberfläche deshalb ausdrücklich `Live-Modell konfiguriert · Chat derzeit
+nicht freigegeben` von `Kein Live-Modell verbunden`. Der konkrete Grund bleibt
+in den Pilotdetails sichtbar.
 ein kontrollierter echter Login → `/api/chat` → Modellantwort-Smoke ist separat nötig. Simulationen, gemischte Ausführung
 und fehlende Freigabe sind gesondert markiert.
 

@@ -5,7 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from tankai.core.llm import AnthropicLLM, OpenAILLM, live_smoke_max_tokens
+from tankai.core.llm import (
+    AnthropicLLM,
+    OpenAILLM,
+    get_critic_llm,
+    live_smoke_max_tokens,
+)
 
 
 def test_openai_adapter_applies_bounded_runtime_controls(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -56,6 +61,45 @@ def test_anthropic_adapter_applies_bounded_runtime_controls(monkeypatch: pytest.
         "timeout": 18.5,
         "max_retries": 2,
     }
+
+
+def test_required_independent_critic_cannot_fall_back_to_provider_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeAnthropic:
+        def __init__(self, **_: object) -> None:
+            pass
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+    monkeypatch.setenv("TANKAI_CRITIC_LLM", "anthropic")
+    monkeypatch.setenv("TANKAI_CRITIC_MODEL", "critic-model")
+    monkeypatch.setenv("TANKAI_REQUIRE_INDEPENDENT_CRITIC", "1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "main-provider-key-must-not-be-reused")
+    monkeypatch.delenv("TANKAI_CRITIC_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="TANKAI_CRITIC_API_KEY fehlt"):
+        get_critic_llm()
+
+
+def test_required_independent_critic_uses_dedicated_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+    monkeypatch.setenv("TANKAI_CRITIC_LLM", "anthropic")
+    monkeypatch.setenv("TANKAI_CRITIC_MODEL", "critic-model")
+    monkeypatch.setenv("TANKAI_REQUIRE_INDEPENDENT_CRITIC", "1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "main-provider-key-must-not-be-reused")
+    monkeypatch.setenv("TANKAI_CRITIC_API_KEY", "dedicated-critic-key")
+
+    get_critic_llm()
+
+    assert captured["api_key"] == "dedicated-critic-key"
 
 
 @pytest.mark.parametrize(

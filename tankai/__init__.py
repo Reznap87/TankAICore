@@ -22,6 +22,7 @@ from .core.llm import (
     get_critic_llm,
     get_llm,
     llm_identity,
+    llm_response_identity,
 )
 from .core.loop import TankAI
 from .core.models import Goal, Receipt, TaskStatus
@@ -85,6 +86,7 @@ __all__ = [
     "get_llm",
     "get_critic_llm",
     "llm_identity",
+    "llm_response_identity",
     "MockLLM",
     "BaseLLM",
     "OpenAILLM",
