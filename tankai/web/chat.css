@@ -60,3 +60,16 @@ html[data-chat-size=large] .answer-content,html[data-chat-size=large] .message-b
 .skill-document{white-space:pre-wrap;overflow-wrap:anywhere;max-height:22rem;overflow:auto;font-size:.85rem;}
 
 #question-search-dialog textarea{display:block;width:100%;resize:vertical;min-height:100px;max-height:40vh;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);margin:8px 0 12px}#question-search-dialog .secondary-button{display:inline-block;margin:4px 8px 4px 0}#question-search-status{color:var(--muted);min-height:1em}
+/* Rich answers: local styles only. */
+.answer-content .answer-line{margin:0 0 .65em;white-space:pre-wrap}
+.answer-content h2,.answer-content h3,.answer-content h4,.answer-content h5,.answer-content h6{line-height:1.4;font-weight:650;margin:1em 0 .45em}
+.answer-content h2{font-size:1.35em}.answer-content h3{font-size:1.17em}.answer-content h4,.answer-content h5,.answer-content h6{font-size:1em}
+.answer-content .answer-list{padding-inline-start:1.6em;margin:.4em 0 .8em;white-space:normal}
+.answer-content li{margin:.2em 0;white-space:pre-wrap}
+.answer-content blockquote{border-inline-start:3px solid var(--border);padding-inline-start:12px;color:var(--muted)}
+.answer-content a{color:var(--accent);text-decoration:underline;overflow-wrap:anywhere}
+.answer-content code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;background:var(--bubble);border-radius:4px;padding:.1em .3em}
+.answer-content .answer-code{margin:.7em 0;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bubble);white-space:pre;overflow-x:auto;overflow-wrap:normal;line-height:1.55}
+.answer-content .answer-code code{padding:0;background:none;white-space:pre}
+.answer-content .answer-math{overflow-x:auto;margin:.8em 0;padding:.25em 0}
+.answer-content math{font-size:1.05em}
