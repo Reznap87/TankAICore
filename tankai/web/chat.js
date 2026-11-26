@@ -43,6 +43,8 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+resetExtensionTools();
+resetConnections();
 const provider=byId('chat-provider'); if(provider){provider.value=''; provider.hidden=true;}
 historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
@@ -199,7 +201,200 @@ function sidebar(open) { if (mobile.matches) { byId('appView').classList.toggle(
 function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId('main').inert = false; byId('backdrop').hidden = true; const open = !mobile.matches && !byId('appView').classList.contains('sidebar-collapsed'); byId('sidebar').inert = !open; byId('open-sidebar').setAttribute('aria-expanded', String(open)); }
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
-function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
+let githubBusy=false, githubGeneration=0;
+let driveBusy=false, driveGeneration=0;
+let gmailBusy=false, gmailGeneration=0;
+let calendarBusy=false, calendarGeneration=0;
+let cfBusy=false, cfGeneration=0;
+let notionBusy=false, notionGeneration=0;
+function resetConnections() {
+notionGeneration++;notionBusy=false;byId('notion-status').textContent='Status noch nicht geprüft.';byId('notion-connect').disabled=true;byId('notion-disconnect').hidden=true;byId('notion-pages').hidden=true;byId('notion-refresh').disabled=false;byId('notion-page-list').replaceChildren();
+cfGeneration++;cfBusy=false;byId('cf-status').textContent='Status noch nicht geprüft.';byId('cf-connect').disabled=true;byId('cf-disconnect').hidden=true;byId('cf-workers').hidden=true;byId('cf-worker-list').replaceChildren();
+calendarGeneration++;calendarBusy=false;byId('calendar-status').textContent='Status noch nicht geprüft.';byId('calendar-connect').disabled=true;byId('calendar-authorize').hidden=true;byId('calendar-authorize').removeAttribute?.('href');byId('calendar-disconnect').hidden=true;byId('calendar-events').hidden=true;byId('calendar-event-list').replaceChildren();
+gmailGeneration++;gmailBusy=false;byId('gmail-status').textContent='Status noch nicht geprüft.';byId('gmail-connect').disabled=true;byId('gmail-authorize').hidden=true;byId('gmail-authorize').removeAttribute?.('href');byId('gmail-disconnect').hidden=true;byId('gmail-messages').hidden=true;byId('gmail-message-list').replaceChildren();
+driveGeneration++;driveBusy=false;byId('drive-status').textContent='Status noch nicht geprüft.';byId('drive-connect').disabled=true;byId('drive-authorize').hidden=true;byId('drive-authorize').removeAttribute?.('href');byId('drive-disconnect').hidden=true;byId('drive-files').hidden=true;byId('drive-file-list').replaceChildren();
+githubGeneration++;githubBusy=false;
+byId('github-connection-status').textContent='Status noch nicht geprüft.';
+byId('github-connect').disabled=true;byId('github-device').hidden=true;
+byId('github-device-code').textContent='';byId('github-disconnect').hidden=true;
+byId('github-repositories').hidden=true;byId('github-repository-list').replaceChildren();
+}
+function renderGithub(data) {
+const status=data?.status;
+byId('github-connect').disabled=githubBusy||status!=='disconnected';
+byId('github-device').hidden=status!=='pending'||(!data.user_code&&!byId('github-device-code').textContent);
+if(data.user_code)byId('github-device-code').textContent=String(data.user_code);
+if(status!=='pending')byId('github-device-code').textContent='';
+byId('github-finish').disabled=githubBusy;
+byId('github-disconnect').hidden=!['pending','connected'].includes(status);
+byId('github-disconnect').disabled=githubBusy;
+byId('github-repositories').hidden=status!=='connected';
+byId('github-repositories').disabled=githubBusy;
+byId('github-connection-status').textContent=status==='connected'?'Verbunden: '+String(data.login):status==='pending'?'Freigabe offen'+(data.retry_after?' · frühestens in '+data.retry_after+' Sekunden prüfen':''):status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Einrichtung erforderlich: GitHub-OAuth-App fehlt.':'Für diesen Zugang nicht verfügbar.';
+if(status!=='connected')byId('github-repository-list').replaceChildren();
+}
+async function githubAction(action) {
+if(!currentUser||githubBusy)return;
+const e=epoch,g=++githubGeneration;githubBusy=true;
+for(const id of ['github-connect','github-finish','github-disconnect','github-repositories'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/github/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==githubGeneration)return;
+githubBusy=false;renderGithub(data.github);
+if(action==='repositories'){
+const root=byId('github-repository-list');root.replaceChildren();
+for(const item of (data.github.repositories||[])){
+if(!/^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(item.url))continue;
+const a=element('a','',item.name);a.href=item.url;a.target='_blank';a.rel='noopener noreferrer';const p=element('p');p.append(a);root.append(p);
+}
+if(!root.children.length)root.append(element('p','muted','Keine öffentlichen Repositorys gefunden.'));
+}
+}catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=true;}}
+finally{if(e===epoch&&g===githubGeneration)githubBusy=false;}
+}
+async function driveAction(action) {
+if(!currentUser||driveBusy)return;
+const e=epoch,g=++driveGeneration;driveBusy=true;
+for(const id of ['drive-connect','drive-disconnect','drive-files','drive-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/google/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==driveGeneration)return;
+const d=data.google_drive,status=d?.status;
+byId('drive-connect').disabled=status!=='disconnected';byId('drive-disconnect').hidden=!['pending','connected'].includes(status);
+byId('drive-files').hidden=status!=='connected';byId('drive-disconnect').disabled=false;byId('drive-files').disabled=false;
+const link=byId('drive-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
+byId('drive-status').textContent=status==='connected'?'Verbunden · Dateimetadaten':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('drive-file-list');if(status!=='connected'||action==='files')root.replaceChildren();
+if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',String(item.name)));if(!root.children.length)root.append(element('p','muted','Keine Dateien gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Dateien werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===driveGeneration){byId('drive-status').textContent=String(error.message||error);byId('drive-authorize').hidden=true;byId('drive-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===driveGeneration){driveBusy=false;byId('drive-refresh').disabled=false;}}
+}
+async function gmailAction(action) {
+if(!currentUser||gmailBusy)return;
+const e=epoch,g=++gmailGeneration;gmailBusy=true;
+for(const id of ['gmail-connect','gmail-disconnect','gmail-messages','gmail-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/gmail/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==gmailGeneration)return;
+const d=data.gmail,status=d?.status;
+byId('gmail-connect').disabled=status!=='disconnected';byId('gmail-disconnect').hidden=!['pending','connected'].includes(status);
+byId('gmail-messages').hidden=status!=='connected';byId('gmail-disconnect').disabled=false;byId('gmail-messages').disabled=false;
+const link=byId('gmail-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
+byId('gmail-status').textContent=status==='connected'?'Verbunden · Nachrichtenmetadaten':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('gmail-message-list');if(status!=='connected'||action==='messages')root.replaceChildren();
+if(action==='messages'){for(const item of (d.messages||[]))root.append(element('p','',[item.subject||'(Ohne Betreff)',item.from||'',item.date||''].join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine Nachrichten gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten zehn Nachrichten werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===gmailGeneration){byId('gmail-status').textContent=String(error.message||error);byId('gmail-authorize').hidden=true;byId('gmail-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===gmailGeneration){gmailBusy=false;byId('gmail-refresh').disabled=false;}}
+}
+async function calendarAction(action) {
+if(!currentUser||calendarBusy)return;
+const e=epoch,g=++calendarGeneration;calendarBusy=true;
+for(const id of ['calendar-connect','calendar-disconnect','calendar-events','calendar-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/calendar/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==calendarGeneration)return;
+const d=data.calendar,status=d?.status;
+byId('calendar-connect').disabled=status!=='disconnected';byId('calendar-disconnect').hidden=!['pending','connected'].includes(status);
+byId('calendar-events').hidden=status!=='connected';byId('calendar-disconnect').disabled=false;byId('calendar-events').disabled=false;
+const link=byId('calendar-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
+byId('calendar-status').textContent=status==='connected'?'Verbunden · Kalendertermine':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('calendar-event-list');if(status!=='connected'||action==='events')root.replaceChildren();
+if(action==='events'){for(const item of (d.events||[]))root.append(element('p','',[item.title||'(Ohne Titel)',item.start||'',item.end||'',item.all_day?'Ganztägig':''].filter(Boolean).join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine kommenden Termine gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 20 Termine werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===calendarGeneration){byId('calendar-status').textContent=String(error.message||error);byId('calendar-authorize').hidden=true;byId('calendar-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===calendarGeneration){calendarBusy=false;byId('calendar-refresh').disabled=false;}}
+}
+async function cfAction(action) {
+if(!currentUser||cfBusy)return;
+const e=epoch,g=++cfGeneration;cfBusy=true;
+for(const id of ['cf-connect','cf-disconnect','cf-workers','cf-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/cloudflare/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==cfGeneration)return;
+const d=data.cloudflare,status=d?.status;
+byId('cf-connect').disabled=status!=='disconnected';
+byId('cf-disconnect').hidden=status!=='connected';byId('cf-workers').hidden=status!=='connected';
+byId('cf-disconnect').disabled=false;byId('cf-workers').disabled=false;
+byId('cf-status').textContent=status==='connected'?'Verbunden · Worker-Lesezugriff':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('cf-worker-list');
+if(status!=='connected'||action==='workers')root.replaceChildren();
+if(action==='workers'){for(const item of (d.workers||[]))root.append(element('p','',[item.name,item.modified_on].filter(Boolean).join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine Worker gefunden.'));if(d.truncated)root.append(element('p','muted','Die ersten 100 Worker werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===cfGeneration){byId('cf-status').textContent=String(error.message||error);byId('cf-worker-list').replaceChildren();byId('cf-workers').hidden=true;byId('cf-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===cfGeneration){cfBusy=false;byId('cf-refresh').disabled=false;}}
+}
+async function notionAction(action) {
+if(!currentUser||notionBusy)return;
+const e=epoch,g=++notionGeneration;notionBusy=true;
+for(const id of ['notion-connect','notion-disconnect','notion-pages','notion-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/notion/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==notionGeneration)return;
+const d=data.notion,status=d?.status;
+byId('notion-connect').disabled=status!=='disconnected';
+byId('notion-disconnect').hidden=status!=='connected';byId('notion-pages').hidden=status!=='connected';
+byId('notion-disconnect').disabled=false;byId('notion-pages').disabled=false;
+byId('notion-status').textContent=status==='connected'?'Verbunden · Seiten-Lesezugriff':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('notion-page-list');
+if(status!=='connected'||action==='pages')root.replaceChildren();
+if(action==='pages'){for(const item of (d.pages||[]))root.append(element('p','',String(item.title)));if(!root.children.length)root.append(element('p','muted','Keine freigegebenen Seiten gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Seiten werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===notionGeneration){byId('notion-status').textContent=String(error.message||error);byId('notion-page-list').replaceChildren();byId('notion-pages').hidden=true;byId('notion-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===notionGeneration){notionBusy=false;byId('notion-refresh').disabled=false;}}
+}
+const SKILLS=Object.freeze({
+code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
+research:'Trenne gesicherte Fakten, Annahmen und offene Recherchefragen. Erfinde keine Quellen oder ausgeführten Websuchen.',
+writing:'Überarbeite Stil, Struktur und Verständlichkeit. Erhalte die ursprüngliche Aussage.',
+data:'Prüfe Datenqualität, Einheiten, Berechnungen und Unsicherheit. Trenne Befunde von Interpretationen.',
+planning:'Erstelle einen priorisierten Plan mit Abhängigkeiten, Meilensteinen und überprüfbaren Ergebnissen.',
+translation:'Übersetze sinngenau, erhalte Fachbegriffe und kennzeichne mehrdeutige Stellen.'
+});
+function filterExtensions(){
+const q=byId('extension-search').value.trim().toLocaleLowerCase('de'), category=byId('extension-category').value||'all';
+let count=0, connectors=0;
+for(const card of document.querySelectorAll('[data-extension-category]')){
+const kind=card.dataset.extensionCategory;
+const match=(category==='all'||category===kind)&&(!q||card.textContent.toLocaleLowerCase('de').includes(q));
+card.hidden=!match;if(match){count++;if(kind==='connector')connectors++;}
+}
+byId('connector-section').hidden=connectors===0;
+byId('extension-count').textContent=count+' passende Bereiche';
+}
+function applySkill(){
+if(!currentUser||busy)return;
+const name=byId('skill-select').value, rule=Object.hasOwn(SKILLS,name)?SKILLS[name]:null;
+if(!rule)return;
+const goal=byId('goal'), marker='\n\nArbeitsweise: '+rule;
+if(!goal.value.trim()){byId('skill-status').textContent='Schreibe zuerst eine Aufgabe in den Chat.';return;}
+if(!goal.value.endsWith(marker)){
+if(goal.value.length+marker.length>20000){byId('skill-status').textContent='Der Entwurf ist zu lang.';return;}
+goal.value+=marker;
+}
+byId('skill-status').textContent='Skill hinzugefügt. Noch nichts gesendet.';setBusy(false);
+}
+function formatJsonTool(){
+if(!currentUser||busy)return;
+const input=byId('json-tool-input').value, out=byId('json-tool-output');
+out.textContent='';
+if(input.length>20000||!input.trim()){byId('json-tool-status').textContent='JSON eingeben (maximal 20.000 Zeichen).';return;}
+try{const formatted=JSON.stringify(JSON.parse(input),null,2);if(formatted.length>80000)throw new Error();out.textContent=formatted;byId('json-tool-status').textContent='Gültiges JSON.';}
+catch(error){byId('json-tool-status').textContent='Ungültiges oder zu großes JSON.';}
+}
+function calculateUnit(){
+if(!currentUser||busy)return;
+const raw=byId('unit-value').value.trim();
+const value=Number(raw);
+const units={'km-mi':[1/1.609344,'mi'],'mi-km':[1.609344,'km'],'kg-lb':[1/0.45359237,'lb'],'lb-kg':[0.45359237,'kg'],'h-min':[60,'min'],'min-h':[1/60,'h']};
+const kind=byId('unit-conversion').value, conversion=Object.hasOwn(units,kind)?units[kind]:null;
+const result=conversion?value*conversion[0]:NaN;
+byId('unit-result').textContent=raw&&Number.isFinite(result)?new Intl.NumberFormat('de-DE',{maximumSignificantDigits:12}).format(result)+' '+conversion[1]:'Bitte einen gültigen Wert eingeben.';
+}
+function resetExtensionTools(){
+byId('extension-search').value='';byId('extension-category').value='all';
+byId('skill-status').textContent='';byId('json-tool-input').value='';byId('json-tool-output').textContent='';byId('json-tool-status').textContent='';byId('unit-value').value='';byId('unit-result').textContent='';
+}
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; filterExtensions(); showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
 const value = byId('goal').value; const trimmed = value.trim();
@@ -231,6 +426,36 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('notion-refresh').addEventListener('click',()=>notionAction(''));
+byId('notion-connect').addEventListener('click',()=>notionAction('start'));
+byId('notion-disconnect').addEventListener('click',()=>notionAction('disconnect'));
+byId('notion-pages').addEventListener('click',()=>notionAction('pages'));
+byId('cf-refresh').addEventListener('click',()=>cfAction(''));
+byId('cf-connect').addEventListener('click',()=>cfAction('start'));
+byId('cf-disconnect').addEventListener('click',()=>cfAction('disconnect'));
+byId('cf-workers').addEventListener('click',()=>cfAction('workers'));
+byId('calendar-refresh').addEventListener('click',()=>calendarAction(''));
+byId('calendar-connect').addEventListener('click',()=>calendarAction('start'));
+byId('calendar-disconnect').addEventListener('click',()=>calendarAction('disconnect'));
+byId('calendar-events').addEventListener('click',()=>calendarAction('events'));
+byId('gmail-refresh').addEventListener('click',()=>gmailAction(''));
+byId('gmail-connect').addEventListener('click',()=>gmailAction('start'));
+byId('gmail-disconnect').addEventListener('click',()=>gmailAction('disconnect'));
+byId('gmail-messages').addEventListener('click',()=>gmailAction('messages'));
+byId('drive-refresh').addEventListener('click',()=>driveAction(''));
+byId('drive-connect').addEventListener('click',()=>driveAction('start'));
+byId('drive-disconnect').addEventListener('click',()=>driveAction('disconnect'));
+byId('drive-files').addEventListener('click',()=>driveAction('files'));
+byId('github-status-refresh').addEventListener('click',()=>githubAction(''));
+byId('github-connect').addEventListener('click',()=>githubAction('start'));
+byId('github-finish').addEventListener('click',()=>githubAction('finish'));
+byId('github-disconnect').addEventListener('click',()=>githubAction('disconnect'));
+byId('github-repositories').addEventListener('click',()=>githubAction('repositories'));
+byId('extension-search').addEventListener('input',filterExtensions);
+byId('extension-category').addEventListener('change',filterExtensions);
+byId('skill-apply').addEventListener('click',applySkill);
+byId('json-tool-format').addEventListener('click',formatJsonTool);
+byId('unit-calculate').addEventListener('click',calculateUnit);
 byId('plugins-open').addEventListener('click', openPlugins); byId('composer-plugins').addEventListener('click', openPlugins);
 byId('plugin-analyze').addEventListener('click', analyzeDraft); byId('plugin-structure').addEventListener('click', structureDraft);
 byId('chat-size').addEventListener('change', () => { const value = byId('chat-size').value; if (!['standard', 'large'].includes(value)) return; chatSize = value; applyChatSize(); try { localStorage.setItem('tankai.ui.chatSize', chatSize); } catch (error) { toast('Textgröße kann nicht dauerhaft gespeichert werden.'); } });
