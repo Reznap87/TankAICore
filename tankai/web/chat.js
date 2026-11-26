@@ -198,7 +198,9 @@ function applyChatSize() { document.documentElement.dataset.chatSize = chatSize;
 let githubBusy=false, githubGeneration=0;
 let driveBusy=false, driveGeneration=0;
 let gmailBusy=false, gmailGeneration=0;
+let calendarBusy=false, calendarGeneration=0;
 function resetConnections() {
+calendarGeneration++;calendarBusy=false;byId('calendar-status').textContent='Status noch nicht geprüft.';byId('calendar-connect').disabled=true;byId('calendar-authorize').hidden=true;byId('calendar-authorize').removeAttribute?.('href');byId('calendar-disconnect').hidden=true;byId('calendar-events').hidden=true;byId('calendar-event-list').replaceChildren();
 gmailGeneration++;gmailBusy=false;byId('gmail-status').textContent='Status noch nicht geprüft.';byId('gmail-connect').disabled=true;byId('gmail-authorize').hidden=true;byId('gmail-authorize').removeAttribute?.('href');byId('gmail-disconnect').hidden=true;byId('gmail-messages').hidden=true;byId('gmail-message-list').replaceChildren();
 driveGeneration++;driveBusy=false;byId('drive-status').textContent='Status noch nicht geprüft.';byId('drive-connect').disabled=true;byId('drive-authorize').hidden=true;byId('drive-authorize').removeAttribute?.('href');byId('drive-disconnect').hidden=true;byId('drive-files').hidden=true;byId('drive-file-list').replaceChildren();
 githubGeneration++;githubBusy=false;
@@ -276,6 +278,24 @@ if(action==='messages'){for(const item of (d.messages||[]))root.append(element('
 }catch(error){if(e===epoch&&g===gmailGeneration){byId('gmail-status').textContent=String(error.message||error);byId('gmail-authorize').hidden=true;byId('gmail-disconnect').disabled=false;}}
 finally{if(e===epoch&&g===gmailGeneration){gmailBusy=false;byId('gmail-refresh').disabled=false;}}
 }
+async function calendarAction(action) {
+if(!currentUser||calendarBusy)return;
+const e=epoch,g=++calendarGeneration;calendarBusy=true;
+for(const id of ['calendar-connect','calendar-disconnect','calendar-events','calendar-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/calendar/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==calendarGeneration)return;
+const d=data.calendar,status=d?.status;
+byId('calendar-connect').disabled=status!=='disconnected';byId('calendar-disconnect').hidden=!['pending','connected'].includes(status);
+byId('calendar-events').hidden=status!=='connected';byId('calendar-disconnect').disabled=false;byId('calendar-events').disabled=false;
+const link=byId('calendar-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
+byId('calendar-status').textContent=status==='connected'?'Verbunden · Kalendertermine':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('calendar-event-list');if(status!=='connected'||action==='events')root.replaceChildren();
+if(action==='events'){for(const item of (d.events||[]))root.append(element('p','',[item.title||'(Ohne Titel)',item.start||'',item.end||'',item.all_day?'Ganztägig':''].filter(Boolean).join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine kommenden Termine gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 20 Termine werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===calendarGeneration){byId('calendar-status').textContent=String(error.message||error);byId('calendar-authorize').hidden=true;byId('calendar-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===calendarGeneration){calendarBusy=false;byId('calendar-refresh').disabled=false;}}
+}
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
@@ -308,6 +328,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('calendar-refresh').addEventListener('click',()=>calendarAction(''));
+byId('calendar-connect').addEventListener('click',()=>calendarAction('start'));
+byId('calendar-disconnect').addEventListener('click',()=>calendarAction('disconnect'));
+byId('calendar-events').addEventListener('click',()=>calendarAction('events'));
 byId('gmail-refresh').addEventListener('click',()=>gmailAction(''));
 byId('gmail-connect').addEventListener('click',()=>gmailAction('start'));
 byId('gmail-disconnect').addEventListener('click',()=>gmailAction('disconnect'));
