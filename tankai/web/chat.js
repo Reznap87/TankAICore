@@ -199,7 +199,38 @@ function sidebar(open) { if (mobile.matches) { byId('appView').classList.toggle(
 function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId('main').inert = false; byId('backdrop').hidden = true; const open = !mobile.matches && !byId('appView').classList.contains('sidebar-collapsed'); byId('sidebar').inert = !open; byId('open-sidebar').setAttribute('aria-expanded', String(open)); }
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
-function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
+async function loadSkills(action, skillId) {
+const e = epoch, root = byId('skill-store-results');
+if (!currentUser || busy) return;
+root.textContent = 'Skills werden geladen …';
+try {
+const data = await jsonFetch('/api/skills', action ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({skill_id:skillId,action})} : {});
+if (e !== epoch) return;
+if (data.workspace_id !== currentUser.workspace.id || !Array.isArray(data.skills)) throw new Error('Skill-Nachweis fehlt');
+root.replaceChildren();
+for (const skill of data.skills) {
+const card = element('div','settings-section');
+card.append(element('strong','',skill.id),element('p','',skill.title),element('p','muted',skill.enabled?'Aktiv für Entwurfshilfe':skill.imported?'Importiert · inaktiv':'Im Katalog verfügbar'));
+const source = element('a','','NVIDIA-Original');
+const url = new URL(skill.source);
+if (url.origin === 'https://github.com' && url.pathname.startsWith('/NVIDIA/skills/blob/')) { source.href = url.href; source.target = '_blank'; source.rel = 'noopener noreferrer'; card.append(source); }
+const action = skill.enabled?'disable':skill.imported?'enable':'import';
+const toggle = element('button','secondary-button',action==='disable'?'Deaktivieren':action==='enable'?'Aktivieren':'Katalogeintrag importieren');
+toggle.type='button'; toggle.addEventListener('click',()=>loadSkills(action,skill.id)); card.append(toggle);
+if (skill.enabled && typeof skill.guidance === 'string') {
+const use = element('button','secondary-button','Entwurfshilfe einfügen'); use.type='button';
+use.addEventListener('click',()=>{
+if (e!==epoch || busy || !currentUser) return;
+const goal=byId('goal'); const next=goal.value+(goal.value?'\n\n':'')+'Skill-Entwurfshilfe ('+skill.id+'): '+skill.guidance;
+if (next.length>20000) { toast('Entwurf zu lang'); return; }
+goal.value=next; setBusy(false); byId('plugins-dialog').close(); goal.focus();
+}); card.append(use);
+}
+root.append(card);
+}
+} catch(error) { if(e===epoch)root.textContent='Skill-Store nicht verfügbar: '+String(error.message||error); }
+}
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); loadSkills(); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
 const value = byId('goal').value; const trimmed = value.trim();

@@ -1206,6 +1206,22 @@ class Handler(BaseHTTPRequestHandler):
                     return
             self._json(payload)
             return
+        if path == "/api/skills":
+            context = self._auth_context()
+            if not context:
+                return
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            try:
+                from tankai.web.skill_store import catalog
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, "skills": catalog(runtime.root, context.user_id)})
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skills")
+            return
         if path == "/api/auth/me":
             context = self._auth_context()
             if context:
@@ -1355,6 +1371,27 @@ class Handler(BaseHTTPRequestHandler):
         if not context:
             return
         if not self._require_csrf(context):
+            return
+        if path == "/api/skills":
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            data = self._read_json(max_bytes=2000)
+            if data is None:
+                return
+            if set(data) != {"skill_id", "action"} or not all(isinstance(v, str) for v in data.values()):
+                self._json({"error": "Ungültiger Skill-Auftrag"}, 400)
+                return
+            try:
+                from tankai.web.skill_store import change
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, "skills": change(runtime.root, context.user_id, data["skill_id"], data["action"])})
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skills")
             return
         if path == "/api/auth/logout":
             if self.app.auth_mode != "disabled":
