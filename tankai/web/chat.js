@@ -207,7 +207,9 @@ let gmailBusy=false, gmailGeneration=0;
 let calendarBusy=false, calendarGeneration=0;
 let cfBusy=false, cfGeneration=0;
 let notionBusy=false, notionGeneration=0;
+let dropboxBusy=false, dropboxGeneration=0;
 function resetConnections() {
+dropboxGeneration++;dropboxBusy=false;byId('dropbox-status').textContent='Status noch nicht geprüft.';byId('dropbox-connect').disabled=true;byId('dropbox-disconnect').hidden=true;byId('dropbox-files').hidden=true;byId('dropbox-refresh').disabled=false;byId('dropbox-file-list').replaceChildren();
 notionGeneration++;notionBusy=false;byId('notion-status').textContent='Status noch nicht geprüft.';byId('notion-connect').disabled=true;byId('notion-disconnect').hidden=true;byId('notion-pages').hidden=true;byId('notion-refresh').disabled=false;byId('notion-page-list').replaceChildren();
 cfGeneration++;cfBusy=false;byId('cf-status').textContent='Status noch nicht geprüft.';byId('cf-connect').disabled=true;byId('cf-disconnect').hidden=true;byId('cf-workers').hidden=true;byId('cf-worker-list').replaceChildren();
 calendarGeneration++;calendarBusy=false;byId('calendar-status').textContent='Status noch nicht geprüft.';byId('calendar-connect').disabled=true;byId('calendar-authorize').hidden=true;byId('calendar-authorize').removeAttribute?.('href');byId('calendar-disconnect').hidden=true;byId('calendar-events').hidden=true;byId('calendar-event-list').replaceChildren();
@@ -342,6 +344,24 @@ if(action==='pages'){for(const item of (d.pages||[]))root.append(element('p','',
 }catch(error){if(e===epoch&&g===notionGeneration){byId('notion-status').textContent=String(error.message||error);byId('notion-page-list').replaceChildren();byId('notion-pages').hidden=true;byId('notion-disconnect').disabled=false;}}
 finally{if(e===epoch&&g===notionGeneration){notionBusy=false;byId('notion-refresh').disabled=false;}}
 }
+async function dropboxAction(action) {
+if(!currentUser||dropboxBusy)return;
+const e=epoch,g=++dropboxGeneration;dropboxBusy=true;
+for(const id of ['dropbox-connect','dropbox-disconnect','dropbox-files','dropbox-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/dropbox/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==dropboxGeneration)return;
+const d=data.dropbox,status=d?.status;
+byId('dropbox-connect').disabled=status!=='disconnected';
+byId('dropbox-disconnect').hidden=status!=='connected';byId('dropbox-files').hidden=status!=='connected';
+byId('dropbox-disconnect').disabled=false;byId('dropbox-files').disabled=false;
+byId('dropbox-status').textContent=status==='connected'?'Verbunden · Dateimetadaten':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('dropbox-file-list');
+if(status!=='connected'||action==='files')root.replaceChildren();
+if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',String(item.name)+' · '+(item.kind==='folder'?'Ordner':'Datei')));if(!root.children.length)root.append(element('p','muted','Keine freigegebenen Dateien gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Einträge werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===dropboxGeneration){byId('dropbox-status').textContent=String(error.message||error);byId('dropbox-file-list').replaceChildren();byId('dropbox-files').hidden=true;byId('dropbox-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===dropboxGeneration){dropboxBusy=false;byId('dropbox-refresh').disabled=false;}}
+}
 const SKILLS=Object.freeze({
 code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
 research:'Trenne gesicherte Fakten, Annahmen und offene Recherchefragen. Erfinde keine Quellen oder ausgeführten Websuchen.',
@@ -426,6 +446,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('dropbox-refresh').addEventListener('click',()=>dropboxAction(''));
+byId('dropbox-connect').addEventListener('click',()=>dropboxAction('start'));
+byId('dropbox-disconnect').addEventListener('click',()=>dropboxAction('disconnect'));
+byId('dropbox-files').addEventListener('click',()=>dropboxAction('files'));
 byId('notion-refresh').addEventListener('click',()=>notionAction(''));
 byId('notion-connect').addEventListener('click',()=>notionAction('start'));
 byId('notion-disconnect').addEventListener('click',()=>notionAction('disconnect'));
