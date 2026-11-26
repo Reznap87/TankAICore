@@ -201,7 +201,9 @@ let driveBusy=false, driveGeneration=0;
 let gmailBusy=false, gmailGeneration=0;
 let calendarBusy=false, calendarGeneration=0;
 let cfBusy=false, cfGeneration=0;
+let notionBusy=false, notionGeneration=0;
 function resetConnections() {
+notionGeneration++;notionBusy=false;byId('notion-status').textContent='Status noch nicht geprüft.';byId('notion-connect').disabled=true;byId('notion-disconnect').hidden=true;byId('notion-pages').hidden=true;byId('notion-refresh').disabled=false;byId('notion-page-list').replaceChildren();
 cfGeneration++;cfBusy=false;byId('cf-status').textContent='Status noch nicht geprüft.';byId('cf-connect').disabled=true;byId('cf-disconnect').hidden=true;byId('cf-workers').hidden=true;byId('cf-worker-list').replaceChildren();
 calendarGeneration++;calendarBusy=false;byId('calendar-status').textContent='Status noch nicht geprüft.';byId('calendar-connect').disabled=true;byId('calendar-authorize').hidden=true;byId('calendar-authorize').removeAttribute?.('href');byId('calendar-disconnect').hidden=true;byId('calendar-events').hidden=true;byId('calendar-event-list').replaceChildren();
 gmailGeneration++;gmailBusy=false;byId('gmail-status').textContent='Status noch nicht geprüft.';byId('gmail-connect').disabled=true;byId('gmail-authorize').hidden=true;byId('gmail-authorize').removeAttribute?.('href');byId('gmail-disconnect').hidden=true;byId('gmail-messages').hidden=true;byId('gmail-message-list').replaceChildren();
@@ -317,6 +319,24 @@ if(action==='workers'){for(const item of (d.workers||[]))root.append(element('p'
 }catch(error){if(e===epoch&&g===cfGeneration){byId('cf-status').textContent=String(error.message||error);byId('cf-worker-list').replaceChildren();byId('cf-workers').hidden=true;byId('cf-disconnect').disabled=false;}}
 finally{if(e===epoch&&g===cfGeneration){cfBusy=false;byId('cf-refresh').disabled=false;}}
 }
+async function notionAction(action) {
+if(!currentUser||notionBusy)return;
+const e=epoch,g=++notionGeneration;notionBusy=true;
+for(const id of ['notion-connect','notion-disconnect','notion-pages','notion-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/notion/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==notionGeneration)return;
+const d=data.notion,status=d?.status;
+byId('notion-connect').disabled=status!=='disconnected';
+byId('notion-disconnect').hidden=status!=='connected';byId('notion-pages').hidden=status!=='connected';
+byId('notion-disconnect').disabled=false;byId('notion-pages').disabled=false;
+byId('notion-status').textContent=status==='connected'?'Verbunden · Seiten-Lesezugriff':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('notion-page-list');
+if(status!=='connected'||action==='pages')root.replaceChildren();
+if(action==='pages'){for(const item of (d.pages||[]))root.append(element('p','',String(item.title)));if(!root.children.length)root.append(element('p','muted','Keine freigegebenen Seiten gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Seiten werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===notionGeneration){byId('notion-status').textContent=String(error.message||error);byId('notion-page-list').replaceChildren();byId('notion-pages').hidden=true;byId('notion-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===notionGeneration){notionBusy=false;byId('notion-refresh').disabled=false;}}
+}
 const SKILLS=Object.freeze({
 code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
 research:'Trenne gesicherte Fakten, Annahmen und offene Recherchefragen. Erfinde keine Quellen oder ausgeführten Websuchen.',
@@ -401,6 +421,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('notion-refresh').addEventListener('click',()=>notionAction(''));
+byId('notion-connect').addEventListener('click',()=>notionAction('start'));
+byId('notion-disconnect').addEventListener('click',()=>notionAction('disconnect'));
+byId('notion-pages').addEventListener('click',()=>notionAction('pages'));
 byId('cf-refresh').addEventListener('click',()=>cfAction(''));
 byId('cf-connect').addEventListener('click',()=>cfAction('start'));
 byId('cf-disconnect').addEventListener('click',()=>cfAction('disconnect'));
