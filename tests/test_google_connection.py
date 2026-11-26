@@ -58,3 +58,39 @@ def test_google_drive_rejects_broader_scope(context, monkeypatch):
     with pytest.raises(ConnectionError):
         drive.finish(context, state=state, code="synthetic")
     assert drive.status(context) == {"status": "disconnected"}
+
+
+def test_gmail_is_separate_and_only_reads_headers(context, monkeypatch):
+    calls = []
+    def fake_request(url, **kwargs):
+        calls.append((url, kwargs))
+        if url.endswith("/token"):
+            return {"access_token": "synthetic-gmail-token", "scope": drive.GMAIL_SCOPE,
+                    "expires_in": 3600, "token_type": "Bearer"}
+        if "/messages?" in url:
+            assert parse_qs(urlsplit(url).query)["labelIds"] == ["INBOX"]
+            return {"messages": [{"id": "test-message"}]}
+        assert "/messages/test-message?" in url
+        assert parse_qs(urlsplit(url).query)["format"] == ["metadata"]
+        return {"payload": {"headers": [
+            {"name": "Subject", "value": "Synthetic"},
+            {"name": "From", "value": "test@example.invalid"},
+            {"name": "Date", "value": "Today"},
+            {"name": "Other", "value": "Ignored"}], "body": {"data": "ignored"}}}
+
+    monkeypatch.setattr(drive, "_request", fake_request)
+    pending = drive.start(context, "gmail")
+    params = parse_qs(urlsplit(pending["authorization_url"]).query)
+    assert params["scope"] == [drive.GMAIL_SCOPE]
+    assert drive.status(context) == {"status": "disconnected"}
+    assert drive.finish(context, state=params["state"][0], code="synthetic") == {"status": "connected"}
+    assert drive.status(context, "gmail") == {"status": "connected"}
+    with pytest.raises(ConnectionError):
+        drive.files(context)
+    assert drive.messages(context)["messages"] == [
+        {"subject": "Synthetic", "from": "test@example.invalid", "date": "Today"}
+    ]
+    assert all("fields" not in kwargs for _, kwargs in calls[1:])
+    drive.disconnect(context, service="gmail")
+    with pytest.raises(ConnectionError):
+        drive.messages(context)
