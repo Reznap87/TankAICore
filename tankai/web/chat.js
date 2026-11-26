@@ -243,11 +243,31 @@ if (next.length>20000) { toast('Entwurf zu lang'); return; }
 goal.value=next; setBusy(false); byId('plugins-dialog').close(); goal.focus();
 }); card.append(use);
 }
+if(skill.enabled && skill.local_adapter_available){
+const ranked=element('textarea'), relevant=element('textarea');
+ranked.placeholder='Gefundene Dokument-IDs, eine je Zeile'; ranked.setAttribute('aria-label','Gefundene Dokument-IDs');
+relevant.placeholder='Relevante Dokument-IDs, eine je Zeile'; relevant.setAttribute('aria-label','Relevante Dokument-IDs');
+const output=element('pre','skill-document'), run=element('button','secondary-button','Lokale Retrieval-Metriken berechnen');
+run.type='button';
+run.addEventListener('click',async()=>{
+if(e!==epoch||!currentUser||busy||!root.contains(card))return;
+run.disabled=true; output.textContent='Berechnung läuft …';
+try{
+const lines=v=>v.split(/\r?\n/u).map(s=>s.trim()).filter(Boolean);
+const result=await jsonFetch('/api/skills/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skill_id:skill.id,payload:{ranked_ids:lines(ranked.value),relevant_ids:lines(relevant.value)}})});
+if(e!==epoch||!root.contains(card))return;
+if(result.workspace_id!==currentUser.workspace.id||result.adapter!=='tankai_local_retrieval_metrics'||result.external_calls!==0||result.nvidia_execution!==false)throw new Error('Runner-Nachweis fehlt');
+output.textContent=JSON.stringify(result,null,2);
+}catch(error){if(e===epoch&&root.contains(card))output.textContent=String(error.message||error);}
+finally{run.disabled=false;}
+});
+card.append(element('p','muted','TankAI-Adapter: Precision, Recall und Reciprocal Rank; kein NVIDIA RAGAS.'),ranked,relevant,run,output);
+}
 root.append(card);
 }
 } catch(error) { if(e===epoch)root.textContent='Skill-Store nicht verfügbar: '+String(error.message||error); }
 }
-function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); loadSkills(); }
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
 const value = byId('goal').value; const trimmed = value.trim();
@@ -280,6 +300,7 @@ byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
 byId('plugins-open').addEventListener('click', openPlugins); byId('composer-plugins').addEventListener('click', openPlugins);
+byId('skills-load').addEventListener('click', () => loadSkills());
 byId('plugin-analyze').addEventListener('click', analyzeDraft); byId('plugin-structure').addEventListener('click', structureDraft);
 byId('chat-size').addEventListener('change', () => { const value = byId('chat-size').value; if (!['standard', 'large'].includes(value)) return; chatSize = value; applyChatSize(); try { localStorage.setItem('tankai.ui.chatSize', chatSize); } catch (error) { toast('Textgröße kann nicht dauerhaft gespeichert werden.'); } });
 byId('theme').addEventListener('change', () => { theme = byId('theme').value; setTheme(); try { localStorage.setItem('tankai.ui.theme', theme); } catch (error) { toast('Erscheinungsbild kann in diesem Browser nicht dauerhaft gespeichert werden.'); } }); systemTheme.addEventListener('change', setTheme); mobile.addEventListener('change', syncSidebar);

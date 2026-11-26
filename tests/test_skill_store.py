@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from tankai.web.skill_store import catalog, change, document
+from tankai.web.skill_store import catalog, change, document, run_local
 
 class SkillStoreTest(unittest.TestCase):
     def test_import_enable_disable_persistence_and_isolation(self):
@@ -42,3 +42,23 @@ class SkillStoreTest(unittest.TestCase):
                     document(root, "bob", key)
             with self.assertRaises(ValueError):
                 document(root, "alice", "../LICENSE")
+
+    def test_local_adapter(self):
+        with tempfile.TemporaryDirectory() as a:
+            root = Path(a)
+            payload = {"ranked_ids": ["x", "a"], "relevant_ids": ["a", "b"]}
+            with self.assertRaises(PermissionError):
+                run_local(root, "alice", "rag-eval", payload)
+            change(root, "alice", "rag-eval", "import")
+            change(root, "alice", "rag-eval", "enable")
+            result = run_local(root, "alice", "rag-eval", payload)
+            self.assertEqual((result["precision"], result["recall"], result["reciprocal_rank"]), (.5, .5, .5))
+            self.assertEqual(result["external_calls"], 0)
+            self.assertFalse(result["nvidia_execution"])
+            with self.assertRaises(PermissionError):
+                run_local(root, "bob", "rag-eval", payload)
+            with self.assertRaises(ValueError):
+                run_local(root, "alice", "rag-eval", {"ranked_ids": ["a", "a"], "relevant_ids": ["a"]})
+            change(root, "alice", "rag-eval", "disable")
+            with self.assertRaises(PermissionError):
+                run_local(root, "alice", "rag-eval", payload)

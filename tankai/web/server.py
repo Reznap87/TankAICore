@@ -1396,6 +1396,29 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._require_csrf(context):
             return
+        if path == "/api/skills/run":
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            data = self._read_json(max_bytes=64_000)
+            if data is None:
+                return
+            if set(data) != {"skill_id", "payload"} or not isinstance(data["skill_id"], str):
+                self._json({"error": "Ungültiger Skill-Auftrag"}, 400)
+                return
+            try:
+                from tankai.web.skill_store import run_local
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, **run_local(runtime.root, context.user_id, data["skill_id"], data["payload"])})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skill_run")
+            return
         if path == "/api/skills":
             if self.app.auth_mode != "session":
                 self._json({"error": "Skills benötigen eine Anmeldung"}, 403)

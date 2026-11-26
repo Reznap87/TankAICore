@@ -36,6 +36,7 @@ def catalog(root: Path, user_id: str) -> list[dict]:
          "revision": REVISION, "repository_license": "Apache-2.0", "documentation_license": "CC-BY-4.0",
          "document_available": key in states, "imported": key in states,
          "enabled": states.get(key) == 1, "execution_available": False,
+         "local_adapter_available": key == "rag-eval",
          "guidance": guidance if states.get(key) == 1 else None}
         for key, (title, guidance) in _CATALOG.items()
     ]
@@ -67,3 +68,29 @@ def document(root: Path, user_id: str, skill_id: str) -> dict:
         raise RuntimeError("Skill-Dokument entspricht nicht der fixierten Quelle")
     return {"id": skill_id, "revision": REVISION, "blob_sha": blob,
             "content": raw.decode("utf-8"), "execution_available": False}
+
+
+def run_local(root: Path, user_id: str, skill_id: str, payload: dict) -> dict:
+    """Explicit local adapter, not NVIDIA RAGAS. No network, shell or model calls."""
+    if skill_id != "rag-eval":
+        raise ValueError("Für diesen Skill ist kein lokaler Runner verfügbar")
+    if not any(s["id"] == skill_id and s["enabled"] for s in catalog(root, user_id)):
+        raise PermissionError("Skill zuerst aktivieren")
+    if not isinstance(payload, dict) or set(payload) != {"ranked_ids", "relevant_ids"}:
+        raise ValueError("ranked_ids und relevant_ids erforderlich")
+    ranked, relevant = payload["ranked_ids"], payload["relevant_ids"]
+    for values in (ranked, relevant):
+        if not isinstance(values, list) or len(values) > 1000 or any(not isinstance(v, str) or not v or len(v) > 200 for v in values):
+            raise ValueError("Ungültige Dokument-IDs")
+        if len(set(values)) != len(values):
+            raise ValueError("Doppelte Dokument-IDs")
+    if not relevant:
+        raise ValueError("Mindestens eine relevante Dokument-ID erforderlich")
+    truth = set(relevant)
+    hits = len(truth.intersection(ranked))
+    first = next((i for i, v in enumerate(ranked, 1) if v in truth), None)
+    return {"skill_id": skill_id, "adapter": "tankai_local_retrieval_metrics",
+            "nvidia_execution": False, "external_calls": 0, "retrieved": len(ranked),
+            "relevant": len(relevant), "hits": hits,
+            "precision": hits / len(ranked) if ranked else 0.0,
+            "recall": hits / len(relevant), "reciprocal_rank": 1 / first if first else 0.0}
