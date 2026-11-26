@@ -1203,7 +1203,8 @@ location.replace('/?connection=google');
             if context is not None:
                 allowed = self.app.auth_mode == "session" and context.role == "owner"
                 self._json({"github": connections.status(context) if allowed else {"status": "unavailable"},
-                            "google_drive": google_connection.status(context) if allowed else {"status": "unavailable"}})
+                            "google_drive": google_connection.status(context) if allowed else {"status": "unavailable"},
+                            "gmail": google_connection.status(context, "gmail") if allowed else {"status": "unavailable"}})
             return
         if path == "/api/auth/me":
             context = self._auth_context()
@@ -1393,6 +1394,24 @@ location.replace('/?connection=google');
             try:
                 operation = {"start": google_connection.start, "disconnect": google_connection.disconnect, "files": google_connection.files}[path.rsplit("/", 1)[-1]]
                 self._json({"google_drive": operation(context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
+        if path in ("/api/connections/gmail/start", "/api/connections/gmail/disconnect", "/api/connections/gmail/messages"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operations = {"start": lambda ctx: google_connection.start(ctx, "gmail"),
+                              "disconnect": lambda ctx: google_connection.disconnect(ctx, service="gmail"),
+                              "messages": google_connection.messages}
+                self._json({"gmail": operations[path.rsplit("/", 1)[-1]](context)})
             except connections.ConnectionError as exc:
                 self._json({"error": str(exc)}, 409)
             return
