@@ -42,6 +42,7 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+resetExtensionTools();
 resetConnections();
 historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
@@ -316,7 +317,59 @@ if(action==='workers'){for(const item of (d.workers||[]))root.append(element('p'
 }catch(error){if(e===epoch&&g===cfGeneration){byId('cf-status').textContent=String(error.message||error);byId('cf-worker-list').replaceChildren();byId('cf-workers').hidden=true;byId('cf-disconnect').disabled=false;}}
 finally{if(e===epoch&&g===cfGeneration){cfBusy=false;byId('cf-refresh').disabled=false;}}
 }
-function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
+const SKILLS=Object.freeze({
+code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
+research:'Trenne gesicherte Fakten, Annahmen und offene Recherchefragen. Erfinde keine Quellen oder ausgeführten Websuchen.',
+writing:'Überarbeite Stil, Struktur und Verständlichkeit. Erhalte die ursprüngliche Aussage.',
+data:'Prüfe Datenqualität, Einheiten, Berechnungen und Unsicherheit. Trenne Befunde von Interpretationen.',
+planning:'Erstelle einen priorisierten Plan mit Abhängigkeiten, Meilensteinen und überprüfbaren Ergebnissen.',
+translation:'Übersetze sinngenau, erhalte Fachbegriffe und kennzeichne mehrdeutige Stellen.'
+});
+function filterExtensions(){
+const q=byId('extension-search').value.trim().toLocaleLowerCase('de'), category=byId('extension-category').value||'all';
+let count=0, connectors=0;
+for(const card of document.querySelectorAll('[data-extension-category]')){
+const kind=card.dataset.extensionCategory;
+const match=(category==='all'||category===kind)&&(!q||card.textContent.toLocaleLowerCase('de').includes(q));
+card.hidden=!match;if(match){count++;if(kind==='connector')connectors++;}
+}
+byId('connector-section').hidden=connectors===0;
+byId('extension-count').textContent=count+' passende Bereiche';
+}
+function applySkill(){
+if(!currentUser||busy)return;
+const name=byId('skill-select').value, rule=Object.hasOwn(SKILLS,name)?SKILLS[name]:null;
+if(!rule)return;
+const goal=byId('goal'), marker='\n\nArbeitsweise: '+rule;
+if(!goal.value.trim()){byId('skill-status').textContent='Schreibe zuerst eine Aufgabe in den Chat.';return;}
+if(!goal.value.endsWith(marker)){
+if(goal.value.length+marker.length>20000){byId('skill-status').textContent='Der Entwurf ist zu lang.';return;}
+goal.value+=marker;
+}
+byId('skill-status').textContent='Skill hinzugefügt. Noch nichts gesendet.';setBusy(false);
+}
+function formatJsonTool(){
+if(!currentUser||busy)return;
+const input=byId('json-tool-input').value, out=byId('json-tool-output');
+out.textContent='';
+if(input.length>20000||!input.trim()){byId('json-tool-status').textContent='JSON eingeben (maximal 20.000 Zeichen).';return;}
+try{const formatted=JSON.stringify(JSON.parse(input),null,2);if(formatted.length>80000)throw new Error();out.textContent=formatted;byId('json-tool-status').textContent='Gültiges JSON.';}
+catch(error){byId('json-tool-status').textContent='Ungültiges oder zu großes JSON.';}
+}
+function calculateUnit(){
+if(!currentUser||busy)return;
+const raw=byId('unit-value').value.trim();
+const value=Number(raw);
+const units={'km-mi':[1/1.609344,'mi'],'mi-km':[1.609344,'km'],'kg-lb':[1/0.45359237,'lb'],'lb-kg':[0.45359237,'kg'],'h-min':[60,'min'],'min-h':[1/60,'h']};
+const kind=byId('unit-conversion').value, conversion=Object.hasOwn(units,kind)?units[kind]:null;
+const result=conversion?value*conversion[0]:NaN;
+byId('unit-result').textContent=raw&&Number.isFinite(result)?new Intl.NumberFormat('de-DE',{maximumSignificantDigits:12}).format(result)+' '+conversion[1]:'Bitte einen gültigen Wert eingeben.';
+}
+function resetExtensionTools(){
+byId('extension-search').value='';byId('extension-category').value='all';
+byId('skill-status').textContent='';byId('json-tool-input').value='';byId('json-tool-output').textContent='';byId('json-tool-status').textContent='';byId('unit-value').value='';byId('unit-result').textContent='';
+}
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; filterExtensions(); showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
 const value = byId('goal').value; const trimmed = value.trim();
@@ -369,6 +422,11 @@ byId('github-connect').addEventListener('click',()=>githubAction('start'));
 byId('github-finish').addEventListener('click',()=>githubAction('finish'));
 byId('github-disconnect').addEventListener('click',()=>githubAction('disconnect'));
 byId('github-repositories').addEventListener('click',()=>githubAction('repositories'));
+byId('extension-search').addEventListener('input',filterExtensions);
+byId('extension-category').addEventListener('change',filterExtensions);
+byId('skill-apply').addEventListener('click',applySkill);
+byId('json-tool-format').addEventListener('click',formatJsonTool);
+byId('unit-calculate').addEventListener('click',calculateUnit);
 byId('plugins-open').addEventListener('click', openPlugins); byId('composer-plugins').addEventListener('click', openPlugins);
 byId('plugin-analyze').addEventListener('click', analyzeDraft); byId('plugin-structure').addEventListener('click', structureDraft);
 byId('chat-size').addEventListener('change', () => { const value = byId('chat-size').value; if (!['standard', 'large'].includes(value)) return; chatSize = value; applyChatSize(); try { localStorage.setItem('tankai.ui.chatSize', chatSize); } catch (error) { toast('Textgröße kann nicht dauerhaft gespeichert werden.'); } });
