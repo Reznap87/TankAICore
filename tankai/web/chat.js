@@ -196,7 +196,9 @@ function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId(
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
 let githubBusy=false, githubGeneration=0;
+let driveBusy=false, driveGeneration=0;
 function resetConnections() {
+driveGeneration++;driveBusy=false;byId('drive-status').textContent='Status noch nicht geprüft.';byId('drive-connect').disabled=true;byId('drive-authorize').hidden=true;byId('drive-authorize').removeAttribute?.('href');byId('drive-disconnect').hidden=true;byId('drive-files').hidden=true;byId('drive-file-list').replaceChildren();
 githubGeneration++;githubBusy=false;
 byId('github-connection-status').textContent='Status noch nicht geprüft.';
 byId('github-connect').disabled=true;byId('github-device').hidden=true;
@@ -236,6 +238,24 @@ if(!root.children.length)root.append(element('p','muted','Keine öffentlichen Re
 }catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=true;}}
 finally{if(e===epoch&&g===githubGeneration)githubBusy=false;}
 }
+async function driveAction(action) {
+if(!currentUser||driveBusy)return;
+const e=epoch,g=++driveGeneration;driveBusy=true;
+for(const id of ['drive-connect','drive-disconnect','drive-files','drive-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/google/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==driveGeneration)return;
+const d=data.google_drive,status=d?.status;
+byId('drive-connect').disabled=status!=='disconnected';byId('drive-disconnect').hidden=!['pending','connected'].includes(status);
+byId('drive-files').hidden=status!=='connected';byId('drive-disconnect').disabled=false;byId('drive-files').disabled=false;
+const link=byId('drive-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
+byId('drive-status').textContent=status==='connected'?'Verbunden · Dateimetadaten':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('drive-file-list');if(status!=='connected'||action==='files')root.replaceChildren();
+if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',String(item.name)));if(!root.children.length)root.append(element('p','muted','Keine Dateien gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Dateien werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===driveGeneration){byId('drive-status').textContent=String(error.message||error);byId('drive-authorize').hidden=true;byId('drive-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===driveGeneration){driveBusy=false;byId('drive-refresh').disabled=false;}}
+}
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
@@ -268,6 +288,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('drive-refresh').addEventListener('click',()=>driveAction(''));
+byId('drive-connect').addEventListener('click',()=>driveAction('start'));
+byId('drive-disconnect').addEventListener('click',()=>driveAction('disconnect'));
+byId('drive-files').addEventListener('click',()=>driveAction('files'));
 byId('github-status-refresh').addEventListener('click',()=>githubAction(''));
 byId('github-connect').addEventListener('click',()=>githubAction('start'));
 byId('github-finish').addEventListener('click',()=>githubAction('finish'));
