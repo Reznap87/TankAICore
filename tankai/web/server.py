@@ -627,6 +627,8 @@ class Handler(BaseHTTPRequestHandler):
         return request_id
 
     def log_message(self, fmt, *args):
+        if urlsplit(getattr(self, "path", "")).path == "/api/connections/google/callback":
+            return  # Never write OAuth authorization codes into request logs.
         print(
             f"[web] request_id={self.request_id} "
             f"{self.address_string()} {fmt % args}"
@@ -1166,27 +1168,35 @@ class Handler(BaseHTTPRequestHandler):
             self._json(payload)
             return
         if path == "/api/connections/google/callback":
-            context = self._auth_context()
-            if context is None:
-                return
-            if self.app.auth_mode != "session" or context.role != "owner":
-                self._json({"error": "Keine Berechtigung"}, 403)
-                return
-            params = parse_qs(urlsplit(self.path).query)
-            states, codes = params.get("state", []), params.get("code", [])
-            try:
-                if len(states) != 1 or len(codes) != 1:
-                    raise connections.ConnectionError("Google-Freigabe nicht abgeschlossen")
-                google_connection.finish(context, state=states[0], code=codes[0])
-                location = "/?connection=google"
-            except connections.ConnectionError:
-                location = "/?connection=google_error"
-            self.send_response(303)
-            self.send_header("Location", location)
-            self.send_header("Referrer-Policy", "no-referrer")
-            self._security_headers()
-            self.send_header("Content-Length", "0")
+            # The main session cookie stays SameSite=Strict. The landing page
+            # obtains CSRF on a same-origin fetch, then submits the one-time code.
+            nonce = secrets.token_urlsafe(18)
+            body = ("""<!doctype html><html lang="de"><meta charset="utf-8">
+<title>TankAI Google-Verbindung</title><p id="status">Google-Freigabe wird geprüft …</p>
+<a href="/">Zurück zu TankAI</a><script nonce="__OAUTH_NONCE__">
+(async()=>{
+const p=new URLSearchParams(location.search), state=p.get('state'), code=p.get('code');
+history.replaceState(null,'',location.pathname);
+try {
+if(!state||!code)throw new Error();
+const me=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});
+if(!me.ok)throw new Error();
+const session=await me.json();
+if(!session.csrf_token)throw new Error();
+const result=await fetch('/api/connections/google/finish',{method:'POST',credentials:'same-origin',
+headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf_token},
+body:JSON.stringify({state,code})});
+if(!result.ok)throw new Error();
+location.replace('/?connection=google');
+}catch(e){document.getElementById('status').textContent='Freigabe nicht abgeschlossen. Zurück zu TankAI.';}
+})();
+</script></html>""".replace("__OAUTH_NONCE__", nonce)).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._security_headers(content_nonce=nonce)
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            self.wfile.write(body)
             return
         if path == "/api/connections":
             context = self._auth_context()
@@ -1361,12 +1371,21 @@ class Handler(BaseHTTPRequestHandler):
             except connections.ConnectionError as exc:
                 self._json({"error": str(exc)}, 409)
             return
-        if path in ("/api/connections/google/start", "/api/connections/google/disconnect", "/api/connections/google/files"):
+        if path in ("/api/connections/google/start", "/api/connections/google/disconnect", "/api/connections/google/files", "/api/connections/google/finish"):
             if self.app.auth_mode != "session" or context.role != "owner":
                 self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
                 return
-            data = self._read_json(max_bytes=1024)
+            data = self._read_json(max_bytes=4096)
             if data is None:
+                return
+            if path.endswith("/finish"):
+                if set(data) != {"state", "code"}:
+                    self._json({"error": "Ungültige Freigabe"}, 400)
+                    return
+                try:
+                    self._json({"google_drive": google_connection.finish(context, state=data["state"], code=data["code"])})
+                except connections.ConnectionError as exc:
+                    self._json({"error": str(exc)}, 409)
                 return
             if data:
                 self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
