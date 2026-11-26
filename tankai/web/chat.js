@@ -233,10 +233,10 @@ const a=element('a','',item.name);a.href=item.url;a.target='_blank';a.rel='noope
 }
 if(!root.children.length)root.append(element('p','muted','Keine öffentlichen Repositorys gefunden.'));
 }
-}catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=false;}}
+}catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=true;}}
 finally{if(e===epoch&&g===githubGeneration)githubBusy=false;}
 }
-function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); githubAction(''); }
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
 const value = byId('goal').value; const trimmed = value.trim();
@@ -268,6 +268,7 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('github-status-refresh').addEventListener('click',()=>githubAction(''));
 byId('github-connect').addEventListener('click',()=>githubAction('start'));
 byId('github-finish').addEventListener('click',()=>githubAction('finish'));
 byId('github-disconnect').addEventListener('click',()=>githubAction('disconnect'));
