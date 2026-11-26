@@ -36,7 +36,7 @@ def read_receipt(context, receipt: str) -> dict:
         raise ValueError("Ungültige Schnellantwort")
     try:
         token, signature = receipt.split(".")
-        expected = hmac.new(_KEY, token.encode("ascii"), hashlib.sha256).hexdigest()
+        expected = _signature(context, token)
         if not hmac.compare_digest(signature, expected):
             raise ValueError()
         expires, payload = json.loads(base64.urlsafe_b64decode(token))
