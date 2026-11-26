@@ -42,6 +42,7 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+resetConnections();
 historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
 }
@@ -194,7 +195,48 @@ function sidebar(open) { if (mobile.matches) { byId('appView').classList.toggle(
 function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId('main').inert = false; byId('backdrop').hidden = true; const open = !mobile.matches && !byId('appView').classList.contains('sidebar-collapsed'); byId('sidebar').inert = !open; byId('open-sidebar').setAttribute('aria-expanded', String(open)); }
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
-function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
+let githubBusy=false, githubGeneration=0;
+function resetConnections() {
+githubGeneration++;githubBusy=false;
+byId('github-connection-status').textContent='Status noch nicht geprüft.';
+byId('github-connect').disabled=true;byId('github-device').hidden=true;
+byId('github-device-code').textContent='';byId('github-disconnect').hidden=true;
+byId('github-repositories').hidden=true;byId('github-repository-list').replaceChildren();
+}
+function renderGithub(data) {
+const status=data?.status;
+byId('github-connect').disabled=githubBusy||status!=='disconnected';
+byId('github-device').hidden=status!=='pending'||(!data.user_code&&!byId('github-device-code').textContent);
+if(data.user_code)byId('github-device-code').textContent=String(data.user_code);
+if(status!=='pending')byId('github-device-code').textContent='';
+byId('github-finish').disabled=githubBusy;
+byId('github-disconnect').hidden=!['pending','connected'].includes(status);
+byId('github-disconnect').disabled=githubBusy;
+byId('github-repositories').hidden=status!=='connected';
+byId('github-repositories').disabled=githubBusy;
+byId('github-connection-status').textContent=status==='connected'?'Verbunden: '+String(data.login):status==='pending'?'Freigabe offen'+(data.retry_after?' · frühestens in '+data.retry_after+' Sekunden prüfen':''):status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Einrichtung erforderlich: GitHub-OAuth-App fehlt.':'Für diesen Zugang nicht verfügbar.';
+if(status!=='connected')byId('github-repository-list').replaceChildren();
+}
+async function githubAction(action) {
+if(!currentUser||githubBusy)return;
+const e=epoch,g=++githubGeneration;githubBusy=true;
+for(const id of ['github-connect','github-finish','github-disconnect','github-repositories'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/github/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==githubGeneration)return;
+githubBusy=false;renderGithub(data.github);
+if(action==='repositories'){
+const root=byId('github-repository-list');root.replaceChildren();
+for(const item of (data.github.repositories||[])){
+if(!/^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(item.url))continue;
+const a=element('a','',item.name);a.href=item.url;a.target='_blank';a.rel='noopener noreferrer';const p=element('p');p.append(a);root.append(p);
+}
+if(!root.children.length)root.append(element('p','muted','Keine öffentlichen Repositorys gefunden.'));
+}
+}catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=false;}}
+finally{if(e===epoch&&g===githubGeneration)githubBusy=false;}
+}
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); githubAction(''); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
 const value = byId('goal').value; const trimmed = value.trim();
@@ -226,6 +268,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('github-connect').addEventListener('click',()=>githubAction('start'));
+byId('github-finish').addEventListener('click',()=>githubAction('finish'));
+byId('github-disconnect').addEventListener('click',()=>githubAction('disconnect'));
+byId('github-repositories').addEventListener('click',()=>githubAction('repositories'));
 byId('plugins-open').addEventListener('click', openPlugins); byId('composer-plugins').addEventListener('click', openPlugins);
 byId('plugin-analyze').addEventListener('click', analyzeDraft); byId('plugin-structure').addEventListener('click', structureDraft);
 byId('chat-size').addEventListener('change', () => { const value = byId('chat-size').value; if (!['standard', 'large'].includes(value)) return; chatSize = value; applyChatSize(); try { localStorage.setItem('tankai.ui.chatSize', chatSize); } catch (error) { toast('Textgröße kann nicht dauerhaft gespeichert werden.'); } });
