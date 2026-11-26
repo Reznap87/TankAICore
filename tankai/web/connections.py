@@ -40,7 +40,7 @@ def _prune():
             del _STATE[key]
 
 
-def _request(url, *, fields=None, token=None):
+def _request(url, *, fields=None, token=None, expect_list=False):
     headers = {"Accept": "application/json", "User-Agent": "TankAI-Connections"}
     if token:
         headers["Authorization"] = "Bearer " + token
@@ -53,7 +53,7 @@ def _request(url, *, fields=None, token=None):
             if len(raw) > 262144:
                 raise ConnectionError("GitHub-Antwort zu groß")
             result = json.loads(raw)
-            if not isinstance(result, dict):
+            if not isinstance(result, list if expect_list else dict):
                 raise ConnectionError("GitHub-Antwort ungültig")
             return result
     except (HTTPError, URLError, TimeoutError, UnicodeError, ValueError):
@@ -132,7 +132,7 @@ def finish(context):
                 row["next"] = time.monotonic() + row["interval"]
             return {"status": "pending", "retry_after": row["interval"]}
         token = result.get("access_token")
-        if error or not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_]{10,512}", token):
+        if error or result.get("scope") != "" or not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_]{10,512}", token):
             _STATE.pop(key, None)
             raise ConnectionError("GitHub-Freigabe fehlgeschlagen oder abgelaufen")
         try:
@@ -143,6 +143,25 @@ def finish(context):
         except ConnectionError:
             _STATE.pop(key, None)
             raise
-        # No token persistence: this first integration proves account identity only.
-        _STATE[key] = {"status": "connected", "login": login, "expires": time.monotonic() + _TTL}
+        # Token is memory-only, scoped to this session and workspace.
+        _STATE[key] = {"status": "connected", "login": login, "token": token, "expires": time.monotonic() + _TTL}
         return {"status": "connected", "login": login}
+
+
+def repositories(context):
+    if not configured():
+        raise ConnectionError("GitHub-OAuth-App noch nicht konfiguriert")
+    with _LOCK:
+        _prune()
+        row = _STATE.get(_key(context))
+        if not row or row["status"] != "connected":
+            raise ConnectionError("GitHub zuerst verbinden")
+        records = _request("https://api.github.com/user/repos?visibility=public&affiliation=owner&per_page=30", token=row["token"], expect_list=True)
+        output = []
+        for item in records[:30]:
+            if not isinstance(item, dict) or item.get("private") is not False:
+                continue
+            name = item.get("full_name")
+            if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]{1,100}", name):
+                output.append({"name": name, "url": "https://github.com/" + name})
+        return {"status": "connected", "login": row["login"], "repositories": output}
