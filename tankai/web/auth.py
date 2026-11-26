@@ -741,7 +741,7 @@ class AuthStore:
             raise ValueError("Ungültige Nutzer-ID für Rate-Limit")
         if limit < 1 or limit > 240:
             raise ValueError("Provider-Rate-Limit muss zwischen 1 und 240 liegen")
-        max_window = 86_400 if provider_n == "openrouter_free_daily" else 3600
+        max_window = 86_400 if provider_n in {"openrouter_free_daily", "nvidia_free_daily"} else 3600
         if window_seconds < 1 or window_seconds > max_window:
             raise ValueError("Ungültiges Provider-Rate-Fenster")
 

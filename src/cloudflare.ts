@@ -9,6 +9,16 @@ type TankAIRuntimeEnv = Env & {
   TANKAI_LIVE_PROVIDER_ENABLED?: string;
   TANKAI_LLM?: string;
   TANKAI_OPENROUTER_FREE_ENABLED?: string;
+  TANKAI_NVIDIA_FREE_ENABLED?: string;
+  TANKAI_NVIDIA_KEY_SLOT?: string;
+  NVIDIA_API_KEYa?: string;
+  NVIDIA_API_KEYb?: string;
+  NVIDIA_API_KEYc?: string;
+  NVIDIA_API_KEYd?: string;
+  NVIDIA_API_KEYe?: string;
+  NVIDIA_API_KEYf?: string;
+  NVIDIA_API_KEYg?: string;
+  NVIDIA_API_KEYh?: string;
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MODEL?: string;
   OPENAI_API_KEY?: string;
@@ -54,6 +64,9 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     clean(this.env.TANKAI_LLM).toLowerCase() === "openrouter" &&
     enabled(this.env.TANKAI_OPENROUTER_FREE_ENABLED);
 
+  private readonly nvidiaFreeEnabled = this.openRouterFreeEnabled && enabled(this.env.TANKAI_NVIDIA_FREE_ENABLED);
+  private readonly nvidiaSlot = clean(this.env.TANKAI_NVIDIA_KEY_SLOT, "a");
+
   envVars = {
     TANKAI_AUTH_STATE_URL: clean(this.env.TANKAI_AUTH_STATE_TOKEN) ? "https://tankai-core.reznaplecram.workers.dev/_tankai/auth-state" : "",
     TANKAI_AUTH_STATE_TOKEN: clean(this.env.TANKAI_AUTH_STATE_TOKEN),
@@ -64,6 +77,16 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     TANKAI_LIVE_PROVIDER_ENABLED: this.liveProviderEnabled ? "1" : "0",
     TANKAI_LLM: this.liveProviderEnabled ? clean(this.env.TANKAI_LLM) : "mock",
     TANKAI_OPENROUTER_FREE_ENABLED: this.openRouterFreeEnabled ? "1" : "0",
+    TANKAI_NVIDIA_FREE_ENABLED: this.nvidiaFreeEnabled ? "1" : "0",
+    TANKAI_NVIDIA_KEY_SLOT: this.nvidiaSlot,
+    NVIDIA_API_KEYa: this.nvidiaFreeEnabled && this.nvidiaSlot === "a" ? clean(this.env.NVIDIA_API_KEYa) : "",
+    NVIDIA_API_KEYb: this.nvidiaFreeEnabled && this.nvidiaSlot === "b" ? clean(this.env.NVIDIA_API_KEYb) : "",
+    NVIDIA_API_KEYc: this.nvidiaFreeEnabled && this.nvidiaSlot === "c" ? clean(this.env.NVIDIA_API_KEYc) : "",
+    NVIDIA_API_KEYd: this.nvidiaFreeEnabled && this.nvidiaSlot === "d" ? clean(this.env.NVIDIA_API_KEYd) : "",
+    NVIDIA_API_KEYe: this.nvidiaFreeEnabled && this.nvidiaSlot === "e" ? clean(this.env.NVIDIA_API_KEYe) : "",
+    NVIDIA_API_KEYf: this.nvidiaFreeEnabled && this.nvidiaSlot === "f" ? clean(this.env.NVIDIA_API_KEYf) : "",
+    NVIDIA_API_KEYg: this.nvidiaFreeEnabled && this.nvidiaSlot === "g" ? clean(this.env.NVIDIA_API_KEYg) : "",
+    NVIDIA_API_KEYh: this.nvidiaFreeEnabled && this.nvidiaSlot === "h" ? clean(this.env.NVIDIA_API_KEYh) : "",
     OPENROUTER_API_KEY: this.openRouterFreeEnabled ? clean(this.env.OPENROUTER_API_KEY) : "",
     OPENROUTER_MODEL: this.openRouterFreeEnabled ? clean(this.env.OPENROUTER_MODEL, "openrouter/free") : "",
     TANKAI_EMBEDDER: "hashing",

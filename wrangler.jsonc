@@ -10,6 +10,8 @@
     "TANKAI_LIVE_PROVIDER_ENABLED": "1",
     "TANKAI_LLM": "openrouter",
     "TANKAI_OPENROUTER_FREE_ENABLED": "1",
+    "TANKAI_NVIDIA_FREE_ENABLED": "1",
+    "TANKAI_NVIDIA_KEY_SLOT": "a",
     "OPENROUTER_MODEL": "openrouter/free"
   },
   "routes": [

@@ -73,7 +73,7 @@ class WorkspaceHistory:
         return list(reversed(output))
 
 
-    def direct_thread(self, reply_to: str, *, workspace_id: str) -> list[dict[str, str]]:
+    def direct_thread(self, reply_to: str, *, workspace_id: str, provider: str | None = None) -> list[dict[str, str]]:
         """Load up to four prior approved direct-chat turns from this workspace.
 
         The browser supplies only an opaque run id. Prompts and answers are
@@ -113,6 +113,10 @@ class WorkspaceHistory:
                 raise ValueError(
                     "Gesprächsverlauf gehört nicht zum providerbestätigten Live-Chat"
                 )
+            if provider is not None and main_llm.split(":", 1)[0] != provider:
+                raise ValueError("Bei Anbieterwechsel bitte einen neuen Chat starten")
+            if provider is None and main_llm.startswith("nvidia_free:"):
+                raise ValueError("NVIDIA-Verlauf nicht an anderen Anbieter weitergeben")
             turns.append({"goal": goal[:700], "final_answer": answer[:900]})
             parent = previous.get("reply_to")
             if parent is not None and (type(parent) is not str or len(parent) != 32

@@ -37,8 +37,12 @@ from tankai.core.llm import (
     OpenRouterFreeEmptyCompletion,
     llm_response_identities,
     llm_response_identity,
+    llm_identity,
     openrouter_free_scope,
     reset_llm_response_identities,
+)
+from tankai.core.nvidia_free import (
+    NvidiaFreeLLM, NVIDIA_MODEL, NVIDIA_GLM_MODEL, nvidia_free_enabled, select_nvidia_key,
 )
 from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
 from tankai.core.request_dispatch import DispatchDenied
@@ -310,6 +314,23 @@ class AppContext:
         # Persist the consumed request quota BEFORE any upstream model call.
         if self.auth_state is not None:
             self.auth_state.save(self.auth)
+
+    def consume_nvidia_free_quota(self, context: AuthContext) -> None:
+        self.authorize_openrouter_free(context)
+        if not nvidia_free_enabled() or self.owner_pilot is not None or self.auth_state is None:
+            raise DispatchDenied("NVIDIA prototype requires durable free admission")
+        for provider, limit, seconds in (
+            ("nvidia_free_minute", 10, 60),
+            ("nvidia_free_daily", 50, 86_400),
+        ):
+            retry = self.auth.consume_provider_call_event(
+                user_id="nvidia-free-shared-account", provider=provider,
+                limit=limit, window_seconds=seconds,
+            )
+            if retry is not None:
+                raise LLMRateLimitExceeded(provider="nvidia_free", limit=limit,
+                                           window_seconds=seconds, retry_after_seconds=retry)
+        self.auth_state.save(self.auth)
 
     @classmethod
     def from_env(cls, server_host: str, *, owner_pilot: OwnerPilot | None = None) -> "AppContext":
@@ -1139,7 +1160,16 @@ class Handler(BaseHTTPRequestHandler):
                                 pass
                             else:
                                 direct_chat_ready = True
+                        nvidia_ready = False
+                        if direct_chat_ready and self.app.free_route_enabled and self.app.owner_pilot is None and self.app.auth_state is not None:
+                            try:
+                                select_nvidia_key()
+                            except DispatchDenied:
+                                pass
+                            else:
+                                nvidia_ready = True
                         payload.update({
+                            "nvidia_chat_available": nvidia_ready,
                             "free_route_admission_configured": self.app.free_route_enabled,
                             "user": context.email,
                             "workspace": context.workspace_name,
@@ -2359,9 +2389,18 @@ class Handler(BaseHTTPRequestHandler):
         data = self._read_json(max_bytes=22_000)
         if data is None:
             return
-        if (set(data) not in ({"message"}, {"message", "reply_to"})
-                or type(data.get("message")) is not str):
-            self._json({"error": "Nur 'message' und optional 'reply_to' erlaubt"}, 400)
+        if (set(data) not in ({"message"}, {"message", "reply_to"},
+                              {"message", "provider"}, {"message", "reply_to", "provider"})
+                or type(data.get("message")) is not str
+                or ("provider" in data and data["provider"] not in ("nvidia_free", "nvidia_glm"))):
+            self._json({"error": "Ungültige Chatparameter"}, 400)
+            return
+        nvidia_requested = data.get("provider") in ("nvidia_free", "nvidia_glm")
+        if nvidia_requested and (
+            not nvidia_free_enabled() or not self.app.free_route_enabled
+            or self.app.owner_pilot is not None or self.app.auth_state is None
+        ):
+            self._json({"error": "NVIDIA-Testbetrieb nicht freigegeben"}, 503)
             return
         reply_to = data.get("reply_to")
         if "reply_to" in data and (
@@ -2420,7 +2459,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 try:
                     prior_turns = runtime.history.direct_thread(
-                        reply_to, workspace_id=context.workspace_id
+                        reply_to, workspace_id=context.workspace_id,
+                        provider="nvidia_free" if nvidia_requested else "openrouter_free" if free_route else None,
                     ) if reply_to else []
                 except ValueError:
                     self._json({
@@ -2451,15 +2491,22 @@ class Handler(BaseHTTPRequestHandler):
                         pilot.authorize(context, self.app.auth)
                         self.app.provider_limiter.consume(context.user_id, identity)
 
+                if nvidia_requested and not free_route:
+                    self._json({"error": "NVIDIA benötigt den geschützten Free-Modus"}, 503)
+                    return
+                answer_llm = NvidiaFreeLLM(
+                    admit=lambda: self.app.consume_nvidia_free_quota(context),
+                    model=NVIDIA_GLM_MODEL if data.get("provider") == "nvidia_glm" else NVIDIA_MODEL,
+                ) if nvidia_requested else tank.llm
                 tank.llm_call_budget.set_call_guard(admit_provider_call)
-                reset_llm_response_identities(tank.llm)
+                reset_llm_response_identities(answer_llm)
                 started = time.monotonic()
                 try:
                     with (
                         openrouter_free_scope() if free_route
                         else pilot.scope(context, self.app.auth, tank)
                     ) as pilot_job_id:
-                        answer = tank.llm.complete(
+                        answer = answer_llm.complete(
                             prompt,
                             system=(
                                 "Du bist TankAI, ein hilfreicher KI-Assistent. "
@@ -2475,7 +2522,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(answer, str) or not answer.strip():
                     self._json({"error": "Das KI-Modell hat keine Antwort geliefert"}, 502)
                     return
-                response_identity = llm_response_identity(tank.llm)
+                response_identity = llm_response_identity(answer_llm)
                 if response_identity is None:
                     self._json({
                         "error": "Der Provider hat keine belastbare Modellidentität bestätigt",
@@ -2498,7 +2545,7 @@ class Handler(BaseHTTPRequestHandler):
                     "plan": None,
                     "main_llm": response_identity,
                     "observed_main_llms": [response_identity],
-                    "configured_main_llm": tank.main_llm_identity,
+                    "configured_main_llm": llm_identity(answer_llm) if nvidia_requested else tank.main_llm_identity,
                     "model_identity_verified": True,
                     # The direct path performs exactly one main-model call. Do
                     # not attach the configured critic's identity to a result
@@ -2514,7 +2561,11 @@ class Handler(BaseHTTPRequestHandler):
                     "source_ids": [],
                     "source_urls": [],
                 }
-                if free_route:
+                if nvidia_requested:
+                    payload["free_model_admission"] = {
+                        "route": "nvidia_free", "per_minute": 10, "per_day": 50
+                    }
+                elif free_route:
                     payload["free_model_admission"] = {
                         "route": "openrouter/free", "per_minute": 20, "per_day": 50
                     }
