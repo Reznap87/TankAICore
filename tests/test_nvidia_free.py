@@ -122,3 +122,24 @@ def test_adapter_rejects_unconfirmed_model(fake_nvidia):
     with pytest.raises(DispatchDenied):
         adapter.complete("synthetic prompt")
     assert llm_response_identity(adapter) is None
+
+
+def test_glm_uses_same_key_and_bounded_model(fake_nvidia):
+    from tankai.core.nvidia_free import NvidiaFreeLLM, NVIDIA_GLM_MODEL
+    from tankai.core.llm import llm_response_identity
+    fake_nvidia.model = NVIDIA_GLM_MODEL
+    adapter = NvidiaFreeLLM(model=NVIDIA_GLM_MODEL, admit=lambda: None)
+    assert adapter.complete("synthetic prompt") == "synthetic response"
+    request = fake_nvidia.events[0][1]
+    assert request["model"] == NVIDIA_GLM_MODEL
+    assert request["max_tokens"] == 1024
+    assert request["extra_body"]["reasoning_effort"] == "low"
+    assert llm_response_identity(adapter).startswith("nvidia_free:" + NVIDIA_GLM_MODEL + ":")
+
+
+@pytest.mark.parametrize("model", ["paid/model", "", None, []])
+def test_unlisted_model_rejected(fake_nvidia, model):
+    from tankai.core.nvidia_free import NvidiaFreeLLM
+    with pytest.raises(DispatchDenied):
+        NvidiaFreeLLM(model=model, admit=lambda: None)
+    assert fake_nvidia.events == []

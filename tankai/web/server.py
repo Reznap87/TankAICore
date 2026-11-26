@@ -41,7 +41,9 @@ from tankai.core.llm import (
     openrouter_free_scope,
     reset_llm_response_identities,
 )
-from tankai.core.nvidia_free import NvidiaFreeLLM, nvidia_free_enabled, select_nvidia_key
+from tankai.core.nvidia_free import (
+    NvidiaFreeLLM, NVIDIA_MODEL, NVIDIA_GLM_MODEL, nvidia_free_enabled, select_nvidia_key,
+)
 from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.core.request_pricing import PricingError
@@ -2390,10 +2392,10 @@ class Handler(BaseHTTPRequestHandler):
         if (set(data) not in ({"message"}, {"message", "reply_to"},
                               {"message", "provider"}, {"message", "reply_to", "provider"})
                 or type(data.get("message")) is not str
-                or ("provider" in data and data["provider"] != "nvidia_free")):
+                or ("provider" in data and data["provider"] not in ("nvidia_free", "nvidia_glm"))):
             self._json({"error": "Ungültige Chatparameter"}, 400)
             return
-        nvidia_requested = data.get("provider") == "nvidia_free"
+        nvidia_requested = data.get("provider") in ("nvidia_free", "nvidia_glm")
         if nvidia_requested and (
             not nvidia_free_enabled() or not self.app.free_route_enabled
             or self.app.owner_pilot is not None or self.app.auth_state is None
@@ -2493,7 +2495,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": "NVIDIA benötigt den geschützten Free-Modus"}, 503)
                     return
                 answer_llm = NvidiaFreeLLM(
-                    admit=lambda: self.app.consume_nvidia_free_quota(context)
+                    admit=lambda: self.app.consume_nvidia_free_quota(context),
+                    model=NVIDIA_GLM_MODEL if data.get("provider") == "nvidia_glm" else NVIDIA_MODEL,
                 ) if nvidia_requested else tank.llm
                 tank.llm_call_budget.set_call_guard(admit_provider_call)
                 reset_llm_response_identities(answer_llm)

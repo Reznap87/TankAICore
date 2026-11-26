@@ -175,14 +175,14 @@ requestAnimationFrame(() => { byId('messages').scrollTop = byId('messages').scro
 async function runTank(event) {
 event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
 const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked; const selectedDirect = !advanced && selectedResult?.answer_mode === 'direct'; const parentRun = selectedDirect && selectedResult.execution_mode === 'live' && providerIdentityVerified(selectedResult,false) && typeof selectedResult.run_id === 'string' && /^[0-9a-f]{32}$/.test(selectedResult.run_id) ? selectedResult.run_id : null;
-const provider=byId('chat-provider'); const nvidia=!advanced&&provider&&!provider.hidden&&provider.value==='nvidia_free';
+const provider=byId('chat-provider'); const nvidia=!advanced&&provider&&!provider.hidden&&['nvidia_free','nvidia_glm'].includes(provider.value);
 if(parentRun && (String(selectedResult.main_llm||'').startsWith('nvidia_free:')!==Boolean(nvidia))){byId('status').textContent='Bei Anbieterwechsel bitte einen neuen Chat starten.';return;}
 if(selectedDirect&&!parentRun){byId('status').textContent='Dieser ältere Verlauf hat keinen providerbestätigten Modellnachweis und kann nicht als Kontext verwendet werden. Bitte starte einen neuen Chat.';return}
 resetResult(); setBusy(true); renderHistory();
 byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
-byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : nvidia ? 'TankAI fragt NVIDIA (Testbetrieb) …' : 'TankAI fragt das Live-Modell …';
+byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : nvidia ? 'TankAI fragt '+(provider.value==='nvidia_glm'?'GLM 5.3 Flash':'GPT-OSS-20B')+' (NVIDIA-Testbetrieb) …' : 'TankAI fragt das Live-Modell …';
 try {
-const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal, ...(parentRun ? {reply_to:parentRun} : {}), ...(nvidia ? {provider:'nvidia_free'} : {}) }) });
+const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal, ...(parentRun ? {reply_to:parentRun} : {}), ...(nvidia ? {provider:provider.value} : {}) }) });
 if (requestEpoch !== epoch) return;
 if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
 if((!advanced||data.execution_mode==='live')&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
