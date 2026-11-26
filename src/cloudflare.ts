@@ -5,6 +5,9 @@ import { timingSafeEqual } from "node:crypto";
 type TankAIRuntimeEnv = Env & {
   TANKAI_AUTH_STATE_TOKEN?: string;
   TANKAI_GITHUB_CLIENT_ID?: string;
+  TANKAI_CF_CONNECTOR_OWNER_ID?: string;
+  TANKAI_CF_CONNECTOR_ACCOUNT_ID?: string;
+  TANKAI_CF_CONNECTOR_READ_TOKEN?: string;
   TANKAI_GOOGLE_CLIENT_ID?: string;
   TANKAI_GOOGLE_CLIENT_SECRET?: string;
   TANKAI_BOOTSTRAP_OWNER?: string;
@@ -59,6 +62,9 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
 
   envVars = {
     TANKAI_GITHUB_CLIENT_ID: clean(this.env.TANKAI_GITHUB_CLIENT_ID),
+    TANKAI_CF_CONNECTOR_OWNER_ID: clean(this.env.TANKAI_CF_CONNECTOR_OWNER_ID),
+    TANKAI_CF_CONNECTOR_ACCOUNT_ID: clean(this.env.TANKAI_CF_CONNECTOR_ACCOUNT_ID),
+    TANKAI_CF_CONNECTOR_READ_TOKEN: clean(this.env.TANKAI_CF_CONNECTOR_READ_TOKEN),
     TANKAI_GOOGLE_CLIENT_ID: clean(this.env.TANKAI_GOOGLE_CLIENT_ID),
     TANKAI_GOOGLE_CLIENT_SECRET: clean(this.env.TANKAI_GOOGLE_CLIENT_SECRET),
     TANKAI_AUTH_STATE_URL: clean(this.env.TANKAI_AUTH_STATE_TOKEN) ? "https://tankai-core.reznaplecram.workers.dev/_tankai/auth-state" : "",
