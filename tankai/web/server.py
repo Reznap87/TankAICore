@@ -1320,7 +1320,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._require_csrf(context):
             return
-        if path in ("/api/connections/github/start", "/api/connections/github/finish", "/api/connections/github/disconnect"):
+        if path in ("/api/connections/github/start", "/api/connections/github/finish", "/api/connections/github/disconnect", "/api/connections/github/repositories"):
             if self.app.auth_mode != "session" or context.role != "owner":
                 self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
                 return
@@ -1331,7 +1331,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
                 return
             try:
-                operation = {"start": connections.start, "finish": connections.finish, "disconnect": connections.disconnect}[path.rsplit("/", 1)[-1]]
+                operation = {"start": connections.start, "finish": connections.finish, "disconnect": connections.disconnect, "repositories": connections.repositories}[path.rsplit("/", 1)[-1]]
                 self._json({"github": operation(context)})
             except connections.ConnectionError as exc:
                 self._json({"error": str(exc)}, 409)
