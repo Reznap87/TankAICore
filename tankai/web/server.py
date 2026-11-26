@@ -69,6 +69,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
+from tankai.web import connections, google_connection, cloudflare_connection, notion_connection
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -647,6 +648,8 @@ class Handler(BaseHTTPRequestHandler):
         return request_id
 
     def log_message(self, fmt, *args):
+        if urlsplit(getattr(self, "path", "")).path == "/api/connections/google/callback":
+            return  # Never write OAuth authorization codes into request logs.
         print(
             f"[web] request_id={self.request_id} "
             f"{self.address_string()} {fmt % args}"
@@ -1194,6 +1197,48 @@ class Handler(BaseHTTPRequestHandler):
                     return
             self._json(payload)
             return
+        if path == "/api/connections/google/callback":
+            # The main session cookie stays SameSite=Strict. The landing page
+            # obtains CSRF on a same-origin fetch, then submits the one-time code.
+            nonce = secrets.token_urlsafe(18)
+            body = ("""<!doctype html><html lang="de"><meta charset="utf-8">
+<title>TankAI Google-Verbindung</title><p id="status">Google-Freigabe wird geprüft …</p>
+<a href="/">Zurück zu TankAI</a><script nonce="__OAUTH_NONCE__">
+(async()=>{
+const p=new URLSearchParams(location.search), state=p.get('state'), code=p.get('code');
+history.replaceState(null,'',location.pathname);
+try {
+if(!state||!code)throw new Error();
+const me=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});
+if(!me.ok)throw new Error();
+const session=await me.json();
+if(!session.csrf_token)throw new Error();
+const result=await fetch('/api/connections/google/finish',{method:'POST',credentials:'same-origin',
+headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf_token},
+body:JSON.stringify({state,code})});
+if(!result.ok)throw new Error();
+location.replace('/?connection=google');
+}catch(e){document.getElementById('status').textContent='Freigabe nicht abgeschlossen. Zurück zu TankAI.';}
+})();
+</script></html>""".replace("__OAUTH_NONCE__", nonce)).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._security_headers(content_nonce=nonce)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/api/connections":
+            context = self._auth_context()
+            if context is not None:
+                allowed = self.app.auth_mode == "session" and context.role == "owner"
+                self._json({"github": connections.status(context) if allowed else {"status": "unavailable"},
+                            "google_drive": google_connection.status(context) if allowed else {"status": "unavailable"},
+                            "gmail": google_connection.status(context, "gmail") if allowed else {"status": "unavailable"},
+                            "calendar": google_connection.status(context, "calendar") if allowed else {"status": "unavailable"},
+                            "cloudflare": cloudflare_connection.status(context) if allowed else {"status": "unavailable"},
+                            "notion": notion_connection.status(context) if allowed else {"status": "unavailable"}})
+            return
         if path == "/api/auth/me":
             context = self._auth_context()
             if context:
@@ -1344,7 +1389,124 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._require_csrf(context):
             return
+        if path in ("/api/connections/github/start", "/api/connections/github/finish", "/api/connections/github/disconnect", "/api/connections/github/repositories"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operation = {"start": connections.start, "finish": connections.finish, "disconnect": connections.disconnect, "repositories": connections.repositories}[path.rsplit("/", 1)[-1]]
+                self._json({"github": operation(context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
+        if path in ("/api/connections/google/start", "/api/connections/google/disconnect", "/api/connections/google/files", "/api/connections/google/finish"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=4096)
+            if data is None:
+                return
+            if path.endswith("/finish"):
+                if set(data) != {"state", "code"}:
+                    self._json({"error": "Ungültige Freigabe"}, 400)
+                    return
+                try:
+                    self._json({"google_drive": google_connection.finish(context, state=data["state"], code=data["code"])})
+                except connections.ConnectionError as exc:
+                    self._json({"error": str(exc)}, 409)
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operation = {"start": google_connection.start, "disconnect": google_connection.disconnect, "files": google_connection.files}[path.rsplit("/", 1)[-1]]
+                self._json({"google_drive": operation(context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
+        if path in ("/api/connections/gmail/start", "/api/connections/gmail/disconnect", "/api/connections/gmail/messages"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operations = {"start": lambda ctx: google_connection.start(ctx, "gmail"),
+                              "disconnect": lambda ctx: google_connection.disconnect(ctx, service="gmail"),
+                              "messages": google_connection.messages}
+                self._json({"gmail": operations[path.rsplit("/", 1)[-1]](context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
+        if path in ("/api/connections/calendar/start", "/api/connections/calendar/disconnect", "/api/connections/calendar/events"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operations = {"start": lambda ctx: google_connection.start(ctx, "calendar"),
+                              "disconnect": lambda ctx: google_connection.disconnect(ctx, service="calendar"),
+                              "events": google_connection.events}
+                self._json({"calendar": operations[path.rsplit("/", 1)[-1]](context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
+        if path in ("/api/connections/cloudflare/start", "/api/connections/cloudflare/disconnect", "/api/connections/cloudflare/workers"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operations = {"start": cloudflare_connection.start,
+                              "disconnect": cloudflare_connection.disconnect,
+                              "workers": cloudflare_connection.workers}
+                self._json({"cloudflare": operations[path.rsplit("/", 1)[-1]](context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
+        if path in ("/api/connections/notion/start", "/api/connections/notion/disconnect", "/api/connections/notion/pages"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operations = {"start": notion_connection.start,
+                              "disconnect": notion_connection.disconnect,
+                              "pages": notion_connection.pages}
+                self._json({"notion": operations[path.rsplit("/", 1)[-1]](context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
         if path == "/api/auth/logout":
+            notion_connection.disconnect(context, all_workspaces=True)
+            cloudflare_connection.disconnect(context, all_workspaces=True)
+            google_connection.disconnect(context, all_workspaces=True)
+            connections.disconnect(context, all_workspaces=True)
             if self.app.auth_mode != "disabled":
                 self.app.auth.revoke_session(context.session_id, user_id=context.user_id)
             self._json(
