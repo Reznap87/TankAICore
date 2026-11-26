@@ -59,10 +59,9 @@ class NvidiaFreeLLM(OpenAILLM):
             if getattr(client, "_client", None) is not transport or client.max_retries != 0:
                 raise DispatchDenied("NVIDIA transport is not bounded")
             self._admit()
-            options = {"extra_body": {"reasoning_effort": "low", "chat_template_kwargs": {"clear_thinking": True}}} if self.model == NVIDIA_GLM_MODEL else {}
             response = client.chat.completions.create(
                 model=self.model, messages=messages, temperature=0.2,
-                max_tokens=1024 if self.model == NVIDIA_GLM_MODEL else 512, **options
+                max_tokens=1024 if self.model == NVIDIA_GLM_MODEL else 512
             )
         if getattr(response, "model", None) != self.model:
             raise DispatchDenied("NVIDIA did not confirm the requested model")
