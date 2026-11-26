@@ -133,7 +133,7 @@ def test_glm_uses_same_key_and_bounded_model(fake_nvidia):
     request = fake_nvidia.events[0][1]
     assert request["model"] == NVIDIA_GLM_MODEL
     assert request["max_tokens"] == 1024
-    assert request["extra_body"]["reasoning_effort"] == "low"
+    assert "extra_body" not in request
     assert llm_response_identity(adapter).startswith("nvidia_free:" + NVIDIA_GLM_MODEL + ":")
 
 
