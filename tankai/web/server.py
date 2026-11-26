@@ -65,6 +65,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
+from tankai.web.quick_question import issue_receipt, read_receipt
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -1561,6 +1562,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/chat":
             self._chat(context)
             return
+        if path == "/api/chat/save-quick":
+            self._save_quick_question(context)
+            return
         if path == "/api/run":
             self._run(context)
             return
@@ -2354,14 +2358,44 @@ class Handler(BaseHTTPRequestHandler):
         remaining = max(1, int((session.context.expires_at.timestamp() - time.time())))
         self._json(self._me_payload(session.context), 201, set_cookie=self._session_cookie(session.token, remaining))
 
+    def _save_quick_question(self, context: AuthContext) -> None:
+        data = self._read_json(max_bytes=200_000)
+        if data is None:
+            return
+        if set(data) != {"receipt"}:
+            self._json({"error": "Ungültige Schnellantwort"}, 400)
+            return
+        try:
+            self.app.authorize_openrouter_free(context)
+            payload = read_receipt(context, data["receipt"])
+        except FreeRouterForbidden:
+            self._json({"error": "Keine Berechtigung"}, 403)
+            return
+        except ValueError:
+            self._json({"error": "Schnellantwort ungültig oder abgelaufen"}, 409)
+            return
+        try:
+            with self.app.runtimes.acquire(
+                tenant_id=context.tenant_id, workspace_id=context.workspace_id
+            ) as runtime:
+                runtime.history.append_once(payload)
+            self._json(payload)
+        except WorkspaceRuntimeUnavailable:
+            self._runtime_unavailable()
+
     def _chat(self, context: AuthContext) -> None:
         """One live-model answer for ordinary chat; never mislabel it as verified."""
         data = self._read_json(max_bytes=22_000)
         if data is None:
             return
-        if (set(data) not in ({"message"}, {"message", "reply_to"})
-                or type(data.get("message")) is not str):
+        if (set(data) not in ({"message"}, {"message", "reply_to"}, {"message", "temporary"})
+                or type(data.get("message")) is not str
+                or ("temporary" in data and data["temporary"] is not True)):
             self._json({"error": "Nur 'message' und optional 'reply_to' erlaubt"}, 400)
+            return
+        temporary = data.get("temporary") is True
+        if temporary and (not self.app.free_route_enabled or self.app.owner_pilot is not None):
+            self._json({"error": "Schnellfragen benötigen den kostenlosen Chatmodus"}, 503)
             return
         reply_to = data.get("reply_to")
         if "reply_to" in data and (
@@ -2520,13 +2554,16 @@ class Handler(BaseHTTPRequestHandler):
                     }
                 else:
                     payload["monetary_admission"] = pilot.status(pilot_job_id)
-                runtime.history.append(payload)
+                if temporary:
+                    receipt = issue_receipt(context, payload)
+                else:
+                    runtime.history.append(payload)
             self.app.auth.audit(
                 "chat", user_id=context.user_id,
                 workspace_id=context.workspace_id, success=True,
-                details=json.dumps({"run_id": payload["run_id"], "mode": "direct"}),
+                details=json.dumps({"mode": "quick"} if temporary else {"run_id": payload["run_id"], "mode": "direct"}),
             )
-            self._json(payload)
+            self._json({**payload, "receipt": receipt} if temporary else payload)
         except OpenRouterFreeEmptyCompletion as exc:
             reason = "free_completion_token_limit" if exc.token_limit else "free_completion_empty"
             self.app.auth.audit(
