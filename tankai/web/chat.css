@@ -52,3 +52,5 @@ html[data-theme=light]{--bg:#f6f8fc;--sidebar:#eaf0f7;--surface:#fff;--raised:#e
 #plugin-result{margin:12px 0 0;color:var(--accent)}
 html[data-chat-size=large] .answer-content,html[data-chat-size=large] .message-bubble,html[data-chat-size=large] .composer textarea{font-size:18px;line-height:1.85}
 @media(max-width:780px){.settings-dialog .dialog-heading{padding:16px 18px}.settings-dialog .settings-content{padding:0 18px 18px}.settings-intro h3{font-size:18px}.settings-dialog select{max-width:48%}.settings-dialog .setting{gap:8px}.composer-tools{gap:3px}.composer-tools .icon-button{width:32px}.model-label{max-width:140px}}
+
+#question-search-dialog textarea{display:block;width:100%;resize:vertical;min-height:100px;max-height:40vh;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);margin:8px 0 12px}#question-search-dialog .secondary-button{display:inline-block;margin:4px 8px 4px 0}#question-search-status{color:var(--muted);min-height:1em}
