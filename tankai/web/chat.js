@@ -25,6 +25,7 @@ function modelDisplay(identity) {
 const raw = String(identity || 'nicht belegt');
 const match = /^([^:]+):(.+):https?:\/\/[^\s]+$/u.exec(raw);
 if (!match) return raw;
+if (match[1] === 'nvidia_free') return 'NVIDIA Test · ' + match[2];
 if (match[1] === 'openrouter_free') return 'OpenRouter Free · ' + (['openrouter_free', 'openrouter/free'].includes(match[2]) ? 'Automatische Modellauswahl' : match[2].replace(/:free$/, ''));
 return match[1] + ': ' + match[2];
 }
@@ -42,6 +43,7 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+const provider=byId('chat-provider'); if(provider){provider.value=''; provider.hidden=true;}
 historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
 }
@@ -66,6 +68,7 @@ byId('registration-toggle').hidden=data.registration_enabled!==true;
 if(data.registration_enabled!==true&&registering)setRegistration(false);
 if(!currentUser)return;
 if(data.user!==currentUser.user.email||data.workspace_id!==currentUser.workspace.id)throw 0;
+const provider=byId('chat-provider'); if(provider){provider.hidden=data.nvidia_chat_available!==true; if(provider.hidden)provider.value='';}
 const m=String(data.llm||'').trim(),mode=data.execution_mode==='live'&&!m?'unknown':data.execution_mode||'unknown';
 const label=mode==='live'?'Core verbunden':mode==='simulation'?'Simulation':mode==='mixed'?'Teilweise Simulation':'Modellstatus unbekannt';
 byId('health').textContent=label;byId('connection-info').dataset.mode=mode;
@@ -172,12 +175,14 @@ requestAnimationFrame(() => { byId('messages').scrollTop = byId('messages').scro
 async function runTank(event) {
 event.preventDefault(); const goal = byId('goal').value.trim(); if (busy || !goal || !currentUser) return;
 const requestEpoch = epoch; const definition = byId('dod').value.trim(); const parallel = byId('parallel').checked; const advanced = byId('advanced').checked; const selectedDirect = !advanced && selectedResult?.answer_mode === 'direct'; const parentRun = selectedDirect && selectedResult.execution_mode === 'live' && providerIdentityVerified(selectedResult,false) && typeof selectedResult.run_id === 'string' && /^[0-9a-f]{32}$/.test(selectedResult.run_id) ? selectedResult.run_id : null;
+const provider=byId('chat-provider'); const nvidia=!advanced&&provider&&!provider.hidden&&provider.value==='nvidia_free';
+if(parentRun && (String(selectedResult.main_llm||'').startsWith('nvidia_free:')!==Boolean(nvidia))){byId('status').textContent='Bei Anbieterwechsel bitte einen neuen Chat starten.';return;}
 if(selectedDirect&&!parentRun){byId('status').textContent='Dieser ältere Verlauf hat keinen providerbestätigten Modellnachweis und kann nicht als Kontext verwendet werden. Bitte starte einen neuen Chat.';return}
 resetResult(); setBusy(true); renderHistory();
 byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
 byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : 'TankAI fragt das Live-Modell …';
 try {
-const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : parentRun ? { message: goal, reply_to: parentRun } : { message: goal }) });
+const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal, ...(parentRun ? {reply_to:parentRun} : {}), ...(nvidia ? {provider:'nvidia_free'} : {}) }) });
 if (requestEpoch !== epoch) return;
 if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
 if((!advanced||data.execution_mode==='live')&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
