@@ -29,10 +29,12 @@ MANAGED_LABEL = "com.tankai.ci.production-web-smoke"
 SCOPE_LABEL = MANAGED_LABEL + ".scope"
 HTTP_LIMIT = 4096
 # Antwortbudget der Inline-HTML (chat.html + chat.css + chat.js, alles wird in
-# eine Antwort eingebettet). main lag vor der Pilot-Ergaenzung bei 49.842 von
-# 50.000 Bytes - also ohne Spielraum fuer irgendeine UI-Ergaenzung. 64 KiB
-# gibt dem Budget wieder Kopfhalt; die CSP-/Nonces-Pruefung bleibt unveraendert.
-HTML_LIMIT = 64_000
+# eine Antwort eingebettet). Historie: 50.000 war 2026-11 mit 49.842 Bytes
+# ausgereizt, 64.000 war 2026-11-24 nach Studio (#132) mit 62.429 Bytes erneut
+# bis auf 1.571 Bytes ausgereizt. 96 KiB gibt dem Studio und der
+# Anbieteridentitaet (#130) realistischen Kopfhalt. CSP- und Nonce-Pruefung,
+# HTTP_LIMIT und alle Debug-/Readiness-Gates bleiben unveraendert.
+HTML_LIMIT = 96_000
 READY_TIMEOUT = 120.0
 ENVIRONMENT = (
     ("TANKAI_HOST", "0.0.0.0"),
