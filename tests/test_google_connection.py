@@ -94,3 +94,41 @@ def test_gmail_is_separate_and_only_reads_headers(context, monkeypatch):
     drive.disconnect(context, service="gmail")
     with pytest.raises(ConnectionError):
         drive.messages(context)
+
+
+def test_calendar_separate_consent_and_read_only_event_list(context, monkeypatch):
+    calls = []
+
+    def fake_request(url, **kwargs):
+        calls.append((url, kwargs))
+        if url.endswith("/token"):
+            return {"access_token": "synthetic-calendar-token", "scope": drive.CALENDAR_SCOPE,
+                    "expires_in": 3600, "token_type": "Bearer"}
+        assert url.startswith("https://www.googleapis.com/calendar/v3/calendars/primary/events?")
+        assert "fields" not in kwargs
+        query = parse_qs(urlsplit(url).query)
+        assert query["maxResults"] == ["20"]
+        assert query["singleEvents"] == ["true"]
+        assert query["orderBy"] == ["startTime"]
+        return {"items": [
+            {"summary": "Synthetic event", "start": {"date": "2026-12-01"},
+             "end": {"date": "2026-12-02"}, "description": "Ignored"},
+            {"summary": "Cancelled", "status": "cancelled",
+             "start": {"date": "2026-12-03"}, "end": {"date": "2026-12-04"}}
+        ]}
+
+    monkeypatch.setattr(drive, "_request", fake_request)
+    pending = drive.start(context, "calendar")
+    params = parse_qs(urlsplit(pending["authorization_url"]).query)
+    assert params["scope"] == [drive.CALENDAR_SCOPE]
+    assert drive.status(context, "gmail") == {"status": "disconnected"}
+    assert drive.finish(context, state=params["state"][0], code="synthetic") == {"status": "connected"}
+    assert drive.events(context)["events"] == [
+        {"title": "Synthetic event", "start": "2026-12-01", "end": "2026-12-02", "all_day": True}
+    ]
+    other = SimpleNamespace(**{**vars(context), "workspace_id": "other"})
+    with pytest.raises(ConnectionError):
+        drive.events(other)
+    drive.disconnect(context, service="calendar")
+    with pytest.raises(ConnectionError):
+        drive.events(context)
