@@ -65,6 +65,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
+from tankai.web import connections
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -1164,6 +1165,11 @@ class Handler(BaseHTTPRequestHandler):
                     return
             self._json(payload)
             return
+        if path == "/api/connections":
+            context = self._auth_context()
+            if context is not None:
+                self._json({"github": connections.status(context) if self.app.auth_mode == "session" and context.role == "owner" else {"status": "unavailable"}})
+            return
         if path == "/api/auth/me":
             context = self._auth_context()
             if context:
@@ -1314,7 +1320,24 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._require_csrf(context):
             return
+        if path in ("/api/connections/github/start", "/api/connections/github/finish", "/api/connections/github/disconnect"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operation = {"start": connections.start, "finish": connections.finish, "disconnect": connections.disconnect}[path.rsplit("/", 1)[-1]]
+                self._json({"github": operation(context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
         if path == "/api/auth/logout":
+            connections.disconnect(context, all_workspaces=True)
             if self.app.auth_mode != "disabled":
                 self.app.auth.revoke_session(context.session_id, user_id=context.user_id)
             self._json(
