@@ -278,7 +278,7 @@ byId('login-form').addEventListener('submit', login); byId('registration-toggle'
 byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
 byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });
 byId('question-search-open').addEventListener('click', openQuestionSearch);
-byId('question-search-input').addEventListener('input', updateQuestionSearch);
+byId('question-search-input').addEventListener('input', ()=>{quickReceipt=null;quickGeneration++;byId('question-search-answer').textContent='';byId('question-search-result').hidden=true;byId('question-search-status').textContent='';updateQuestionSearch();});
 byId('question-search-chat').addEventListener('click', askQuickQuestion);
 byId('question-search-save').addEventListener('click', saveQuickQuestion);
 byId('question-search-discard').addEventListener('click', ()=>{clearQuestionSearch();byId('question-search-dialog').close();});
