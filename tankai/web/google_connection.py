@@ -1,6 +1,7 @@
-"""Google Drive metadata-only OAuth connection; session scoped, no token persistence."""
+"""Read-only Google connectors; session scoped, no token persistence."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
 import hmac
@@ -22,7 +23,8 @@ def _request(*args, **kwargs):
 
 SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly"
 GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.metadata"
-_SCOPES = {"drive": SCOPE, "gmail": GMAIL_SCOPE}
+CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly"
+_SCOPES = {"drive": SCOPE, "gmail": GMAIL_SCOPE, "calendar": CALENDAR_SCOPE}
 
 
 def _service_key(context, service):
@@ -178,3 +180,43 @@ def messages(context):
                     clean[name.lower()] = value[:500]
             output.append(clean)
         return {"status": "connected", "messages": output, "has_more": bool(result.get("nextPageToken"))}
+
+
+def events(context):
+    """Explicitly read up to 20 upcoming primary-calendar events in the next 30 days."""
+    if not configured():
+        raise ConnectionError("Google OAuth noch nicht konfiguriert")
+    with _LOCK:
+        _prune()
+        row = _STATE.get(_service_key(context, "calendar"))
+        if not row or row["status"] != "connected":
+            raise ConnectionError("Google Kalender zuerst verbinden")
+        now = datetime.now(timezone.utc)
+        query = urlencode({
+            "timeMin": now.isoformat(timespec="seconds"),
+            "timeMax": (now + timedelta(days=30)).isoformat(timespec="seconds"),
+            "singleEvents": "true", "orderBy": "startTime", "maxResults": 20,
+            "showDeleted": "false",
+            "fields": "nextPageToken,items(summary,start(date,dateTime),end(date,dateTime),status)",
+        })
+        result = _request("https://www.googleapis.com/calendar/v3/calendars/primary/events?" + query,
+                          token=row["token"])
+        records = result.get("items", [])
+        if not isinstance(records, list):
+            raise ConnectionError("Terminliste ungültig")
+        output = []
+        for item in records[:20]:
+            if not isinstance(item, dict) or item.get("status") == "cancelled":
+                continue
+            start, end = item.get("start"), item.get("end")
+            if not isinstance(start, dict) or not isinstance(end, dict):
+                continue
+            start_value = start.get("dateTime") or start.get("date")
+            end_value = end.get("dateTime") or end.get("date")
+            if not isinstance(start_value, str) or not isinstance(end_value, str):
+                continue
+            title = item.get("summary")
+            output.append({"title": title[:300] if isinstance(title, str) else "(Ohne Titel)",
+                           "start": start_value[:64], "end": end_value[:64],
+                           "all_day": "dateTime" not in start})
+        return {"status": "connected", "events": output, "has_more": bool(result.get("nextPageToken"))}
