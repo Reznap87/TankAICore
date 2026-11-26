@@ -35,7 +35,7 @@ if (csrf && options.method && options.method !== 'GET') headers['X-CSRF-Token'] 
 const response = await fetch(url, Object.assign({}, options, { headers, credentials: 'same-origin', cache: 'no-store' }));
 let data;
 try { data = await response.json(); } catch (error) { throw new Error('Der Server hat keine lesbare Antwort geliefert.'); }
-if (!response.ok || data.error) { const error = new Error(data.error || ('HTTP ' + response.status)); error.status = response.status; throw error; }
+if (!response.ok || data.error) { const error = new Error(data.error || ('HTTP ' + response.status)); error.status = response.status; error.retryAfter = Number(data.retry_after_seconds); throw error; }
 return data;
 }
 function resetResult() {
@@ -57,7 +57,7 @@ epoch += 1; currentUser = data; csrf = String(data.csrf_token || ''); resetWorks
 const select = byId('workspace'); select.replaceChildren(); (data.workspaces || []).forEach(w => { const option = element('option', '', w.name + ' (' + w.role + ')'); option.value = w.id; option.selected = w.id === data.workspace?.id; select.append(option); }); setBusy(false); syncSidebar();
 }
 function setBusy(value) {
-busy = value; byId('goal').disabled = value; ['new-chat', 'workspace', 'plugins-open', 'composer-plugins', 'plugin-analyze', 'plugin-structure'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
+busy = value; const provider=byId('chat-provider'); if(provider)provider.disabled=value; byId('goal').disabled = value; ['new-chat', 'workspace', 'plugins-open', 'composer-plugins', 'plugin-analyze', 'plugin-structure'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
 }
 async function refreshHealth() {
 const e=epoch;
@@ -68,7 +68,7 @@ byId('registration-toggle').hidden=data.registration_enabled!==true;
 if(data.registration_enabled!==true&&registering)setRegistration(false);
 if(!currentUser)return;
 if(data.user!==currentUser.user.email||data.workspace_id!==currentUser.workspace.id)throw 0;
-const provider=byId('chat-provider'); if(provider){provider.hidden=data.nvidia_chat_available!==true; if(provider.hidden)provider.value='';}
+const provider=byId('chat-provider'); if(provider){provider.hidden=data.nvidia_chat_available!==true; if(provider.hidden&&!busy)provider.value='';}
 const m=String(data.llm||'').trim(),mode=data.execution_mode==='live'&&!m?'unknown':data.execution_mode||'unknown';
 const label=mode==='live'?'Core verbunden':mode==='simulation'?'Simulation':mode==='mixed'?'Teilweise Simulation':'Modellstatus unbekannt';
 byId('health').textContent=label;byId('connection-info').dataset.mode=mode;
@@ -180,7 +180,7 @@ if(parentRun && (String(selectedResult.main_llm||'').startsWith('nvidia_free:')!
 if(selectedDirect&&!parentRun){byId('status').textContent='Dieser ältere Verlauf hat keinen providerbestätigten Modellnachweis und kann nicht als Kontext verwendet werden. Bitte starte einen neuen Chat.';return}
 resetResult(); setBusy(true); renderHistory();
 byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
-byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : 'TankAI fragt das Live-Modell …';
+byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : nvidia ? 'TankAI fragt NVIDIA (Testbetrieb) …' : 'TankAI fragt das Live-Modell …';
 try {
 const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal, ...(parentRun ? {reply_to:parentRun} : {}), ...(nvidia ? {provider:'nvidia_free'} : {}) }) });
 if (requestEpoch !== epoch) return;
@@ -191,7 +191,7 @@ if (!data.goal) data.goal = goal;
 if(!await loadHistory(data))throw new Error('Antwort konnte nicht identisch aus dem Chat-Verlauf bestätigt werden');
 renderResult(data); byId('goal').value = '';
 byId('status').textContent = data.status === 'simulated' || data.execution_mode === 'simulation' ? 'Simulation beendet. Es wurde kein verifiziertes Live-Ergebnis erzeugt.' : data.answer_mode === 'direct' ? 'Live-Antwort erhalten · nicht unabhängig geprüft.' : releaseVerified(data) ? 'Antwort und Prüfung abgeschlossen.' : 'Ergebnis erhalten. Bitte den angezeigten Prüfstatus beachten.';
-} catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
+} catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else if(error.status===429&&Number.isFinite(error.retryAfter)&&error.retryAfter>0) byId('status').textContent='Anfragelimit erreicht. Erneut versuchen in etwa '+Math.ceil(error.retryAfter/60)+' Min. Es erfolgt kein automatischer Anbieterwechsel.'; else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
 finally { if (requestEpoch === epoch) { setBusy(false); renderHistory(); byId('goal').focus(); } }
 }
 function newChat() { if (busy) return; resetResult(); byId('goal').value = ''; byId('status').textContent = ''; setBusy(false); renderHistory(); if (mobile.matches) sidebar(false); byId('goal').focus(); }
