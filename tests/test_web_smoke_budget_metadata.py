@@ -19,7 +19,8 @@ def payload():
     return {'ok': True, 'version': 'offline-fixture', 'auth_mode': 'session',
             'auth_required': True, 'registration_enabled': False, 'production_ready': False,
             'development_queue_enabled': False, 'live_model_requests_require_budget': True,
-            'monetary_admission_configured': False, 'free_route_enabled': False}
+            'monetary_admission_configured': False, 'free_route_enabled': False,
+            'nvidia_chat_configured': False}
 
 
 def test_smoke_accepts_explicit_closed_monetary_metadata(smoke):
@@ -31,7 +32,9 @@ def test_smoke_accepts_explicit_closed_monetary_metadata(smoke):
                                        ('live_model_requests_require_budget', 1),
                                        ('monetary_admission_configured', 0),
                                        ('free_route_enabled', True),
-                                       ('free_route_enabled', 1)])
+                                       ('free_route_enabled', 1),
+                                       ('nvidia_chat_configured', True),
+                                       ('nvidia_chat_configured', 1)])
 def test_smoke_rejects_weakened_or_ambiguous_budget_metadata(smoke, field, value):
     body = payload()
     body[field] = value

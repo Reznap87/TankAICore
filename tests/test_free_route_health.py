@@ -47,3 +47,35 @@ def test_public_health_reports_free_route_state(tmp_path, monkeypatch, free_rout
         server.shutdown()
         thread.join(5)
         server.server_close()
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_public_health_reports_nvidia_configuration_without_key(tmp_path, monkeypatch, configured):
+    monkeypatch.setenv("TANKAI_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("TANKAI_AUTH_DB", str(tmp_path / "auth.db"))
+    monkeypatch.setenv("TANKAI_AUTH_MODE", "session")
+    monkeypatch.setenv("TANKAI_EMBEDDER", "hashing")
+    monkeypatch.delenv("TANKAI_NVIDIA_FREE_ENABLED", raising=False)
+    monkeypatch.delenv("TANKAI_NVIDIA_KEY_SLOT", raising=False)
+    for slot in "abcdefgh":
+        monkeypatch.delenv("NVIDIA_API_KEY" + slot, raising=False)
+    if configured:
+        monkeypatch.setenv("TANKAI_NVIDIA_FREE_ENABLED", "1")
+        monkeypatch.setenv("TANKAI_NVIDIA_KEY_SLOT", "a")
+        monkeypatch.setenv("NVIDIA_API_KEYa", "synthetic-key-never-exposed")
+
+    app = web_server.AppContext.from_env("127.0.0.1")
+    server = web_server.ThreadedHTTPServer(("127.0.0.1", 0), web_server.Handler, app=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _, payload = Client(f"http://127.0.0.1:{server.server_port}").get("/api/health")
+        assert status == 200
+        assert payload["nvidia_chat_configured"] is configured
+        body = str(payload)
+        assert "synthetic-key-never-exposed" not in body
+        assert "NVIDIA_API_KEYa" not in body
+    finally:
+        server.shutdown()
+        thread.join(5)
+        server.server_close()

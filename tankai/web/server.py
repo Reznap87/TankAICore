@@ -616,6 +616,15 @@ def _shutdown_handler(server: ThreadedHTTPServer, requested: threading.Event):
     return handle
 
 
+def _nvidia_configured() -> bool:
+    """Nur Config-Status, niemals der Schluessel selbst."""
+    try:
+        select_nvidia_key()
+    except DispatchDenied:
+        return False
+    return True
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TankAI"
     sys_version = ""
@@ -1133,6 +1142,9 @@ class Handler(BaseHTTPRequestHandler):
                 "development_queue_enabled": self.app.job_queue is not None,
                 "live_model_requests_require_budget": True,
                 "monetary_admission_configured": self.app.owner_pilot is not None,
+                # Oeffentlich lesbar, nicht sensibel: zeigt, ob der optionale
+                # NVIDIA-Testchat konfiguriert ist, ohne den Schluessel zu nennen.
+                "nvidia_chat_configured": _nvidia_configured(),
                 # Oeffentlich lesbar, nicht sensibel: erlaubt die Pruefung, ob
                 # der kostenlose Live-Chat aktiv ist, ohne Auth oder Key.
                 "free_route_enabled": self.app.free_route_enabled,
