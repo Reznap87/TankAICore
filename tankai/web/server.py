@@ -69,7 +69,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
-from tankai.web import connections, google_connection, cloudflare_connection, notion_connection
+from tankai.web import connections, google_connection, cloudflare_connection, notion_connection, dropbox_connection
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -1237,7 +1237,8 @@ location.replace('/?connection=google');
                             "gmail": google_connection.status(context, "gmail") if allowed else {"status": "unavailable"},
                             "calendar": google_connection.status(context, "calendar") if allowed else {"status": "unavailable"},
                             "cloudflare": cloudflare_connection.status(context) if allowed else {"status": "unavailable"},
-                            "notion": notion_connection.status(context) if allowed else {"status": "unavailable"}})
+                            "notion": notion_connection.status(context) if allowed else {"status": "unavailable"},
+                            "dropbox": dropbox_connection.status(context) if allowed else {"status": "unavailable"}})
             return
         if path == "/api/auth/me":
             context = self._auth_context()
@@ -1502,7 +1503,26 @@ location.replace('/?connection=google');
             except connections.ConnectionError as exc:
                 self._json({"error": str(exc)}, 409)
             return
+        if path in ("/api/connections/dropbox/start", "/api/connections/dropbox/disconnect", "/api/connections/dropbox/files"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operations = {"start": dropbox_connection.start,
+                              "disconnect": dropbox_connection.disconnect,
+                              "files": dropbox_connection.files}
+                self._json({"dropbox": operations[path.rsplit("/", 1)[-1]](context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
         if path == "/api/auth/logout":
+            dropbox_connection.disconnect(context, all_workspaces=True)
             notion_connection.disconnect(context, all_workspaces=True)
             cloudflare_connection.disconnect(context, all_workspaces=True)
             google_connection.disconnect(context, all_workspaces=True)
