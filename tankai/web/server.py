@@ -1111,6 +1111,9 @@ class Handler(BaseHTTPRequestHandler):
                 "development_queue_enabled": self.app.job_queue is not None,
                 "live_model_requests_require_budget": True,
                 "monetary_admission_configured": self.app.owner_pilot is not None,
+                # Oeffentlich lesbar, nicht sensibel: erlaubt die Pruefung, ob
+                # der kostenlose Live-Chat aktiv ist, ohne Auth oder Key.
+                "free_route_enabled": self.app.free_route_enabled,
             }
             if context is not None:
                 try:

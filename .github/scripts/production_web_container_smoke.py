@@ -60,6 +60,7 @@ HEALTH_KEYS = {
     "development_queue_enabled",
     "live_model_requests_require_budget",
     "monetary_admission_configured",
+    "free_route_enabled",
 }
 HEALTH_BASE = {
     "Test": [
@@ -624,6 +625,8 @@ def health_contract(headers: Any, payload: dict[str, Any], version: str) -> None
             "real model requests do not require a monetary budget")
     require(payload["monetary_admission_configured"] is False,
             "smoke fixture unexpectedly activates a monetary pilot")
+    require(payload["free_route_enabled"] is False,
+            "smoke fixture unexpectedly activates the free live route")
 
 
 def unauthenticated_me(base: str) -> None:
