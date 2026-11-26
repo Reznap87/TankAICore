@@ -34,6 +34,7 @@ from tankai import __version__
 from tankai.core.llm import (
     LLMRateLimitExceeded,
     OpenRouterFreeLLM,
+    OpenRouterFreeEmptyCompletion,
     llm_response_identities,
     llm_response_identity,
     openrouter_free_scope,
@@ -2526,6 +2527,17 @@ class Handler(BaseHTTPRequestHandler):
                 details=json.dumps({"run_id": payload["run_id"], "mode": "direct"}),
             )
             self._json(payload)
+        except OpenRouterFreeEmptyCompletion as exc:
+            reason = "free_completion_token_limit" if exc.token_limit else "free_completion_empty"
+            self.app.auth.audit(
+                "chat", user_id=context.user_id, workspace_id=context.workspace_id,
+                success=False, details=json.dumps({"reason": reason}),
+            )
+            self._json({
+                "error": "Das kostenlose KI-Modell hat das Antwortlimit erreicht, ohne sichtbaren Text zu liefern."
+                if exc.token_limit else "Das kostenlose KI-Modell hat keine sichtbare Antwort geliefert.",
+                "error_code": reason,
+            }, 502)
         except FreeRouterForbidden:
             self.app.auth.audit("chat", user_id=context.user_id,
                                 workspace_id=context.workspace_id, success=False,

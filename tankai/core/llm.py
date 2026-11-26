@@ -693,6 +693,14 @@ def openrouter_free_scope():
         _OPENROUTER_FREE_SCOPE.reset(token)
 
 
+class OpenRouterFreeEmptyCompletion(RuntimeError):
+    """A confirmed free model returned no user-visible answer."""
+
+    def __init__(self, *, token_limit: bool) -> None:
+        self.token_limit = token_limit
+        super().__init__("OpenRouter Free returned no visible completion")
+
+
 class OpenRouterFreeLLM(OpenAILLM):
     """Only zero-priced OpenRouter routes. Never accept a paid fallback.
 
@@ -743,13 +751,21 @@ class OpenRouterFreeLLM(OpenAILLM):
             response = client.chat.completions.create(
                 model=self.model, messages=messages, temperature=temperature,
                 max_tokens=tokens,
+                # Preserve room for visible chat output within the existing cap.
+                extra_body={"reasoning": {"effort": "low", "exclude": True}},
             )
         selected = getattr(response, "model", None)
         if type(selected) is not str or not selected.endswith(":free"):
             raise DispatchDenied("OpenRouter did not confirm a free model in the response")
+        answer = bounded_text(_openai_text(response))
+        if not answer.strip():
+            # Only expose a bounded diagnostic; never log provider content or reasoning.
+            raise OpenRouterFreeEmptyCompletion(
+                token_limit=getattr(response.choices[0], "finish_reason", None) == "length",
+            )
         self.resolved_model = selected
         _record_response_model(self, response)
-        return bounded_text(_openai_text(response))
+        return answer
 
 
 class AnthropicLLM(BaseLLM):
