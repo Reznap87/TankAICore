@@ -7,6 +7,8 @@ let csrf = '';
 let currentUser = null;
 let epoch = 0;
 let busy = false;
+let quickReceipt = null;
+let quickGeneration = 0;
 let registering = false;
 let historyItems = [];
 let selectedResult = null;
@@ -42,7 +44,7 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
-byId('question-search-input').value=''; updateQuestionSearch();
+clearQuestionSearch();
 historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
 }
@@ -199,20 +201,53 @@ function updateQuestionSearch() {
 const query=byId('question-search-input').value.trim(), link=byId('question-search-web');
 const valid=!!query && query.length<=2000 && !!currentUser && !busy;
 byId('question-search-chat').disabled=!valid; link.hidden=!valid;
+byId('question-search-save').disabled=busy||!quickReceipt;
+byId('question-search-input').disabled=busy;
 link.setAttribute('href',valid?'https://duckduckgo.com/?q='+encodeURIComponent(query):'#');
+}
+function clearQuestionSearch() {
+quickGeneration++; quickReceipt=null;
+byId('question-search-input').value='';
+byId('question-search-status').textContent='';
+byId('question-search-answer').textContent='';
+byId('question-search-result').hidden=true;
+updateQuestionSearch();
 }
 function openQuestionSearch() {
 if(!currentUser||busy)return;
-byId('question-search-input').value=''; byId('question-search-status').textContent='';
-updateQuestionSearch(); showDialog('question-search-dialog'); byId('question-search-input').focus();
+clearQuestionSearch(); showDialog('question-search-dialog'); byId('question-search-input').focus();
 }
-function prepareQuestion() {
+async function askQuickQuestion() {
 if(!currentUser||busy)return;
 const query=byId('question-search-input').value.trim();
 if(!query||query.length>2000)return;
-if(byId('goal').value.trim()){byId('question-search-status').textContent='Im Chat ist noch ein ungesendeter Entwurf. Sende oder entferne ihn zuerst.';return;}
-byId('question-search-dialog').close(); newChat();
-byId('goal').value=query; setBusy(false); byId('goal').focus();
+quickReceipt=null; const generation=++quickGeneration, requestEpoch=epoch;
+byId('question-search-answer').textContent=''; byId('question-search-result').hidden=true;
+setBusy(true); updateQuestionSearch();
+byId('question-search-status').textContent='TankAI beantwortet die Schnellfrage …';
+try {
+const data=await jsonFetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:query,temporary:true})});
+if(requestEpoch!==epoch||generation!==quickGeneration)return;
+if(!sameWs(data)||!providerIdentityVerified(data,false)||typeof data.receipt!=='string'||typeof data.final_answer!=='string'||data.goal!==query)throw new Error('Schnellantwort nicht bestätigt');
+quickReceipt=data.receipt; byId('question-search-answer').textContent=data.final_answer;
+byId('question-search-result').hidden=false; byId('question-search-status').textContent='Nicht im Chatverlauf gespeichert.';
+}catch(error){if(requestEpoch===epoch&&generation===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
+finally{if(requestEpoch===epoch){setBusy(false);updateQuestionSearch();}}
+}
+async function saveQuickQuestion() {
+if(!currentUser||busy||!quickReceipt)return;
+if(byId('goal').value.trim()){byId('question-search-status').textContent='Im Hauptchat ist noch ein ungesendeter Entwurf. Sende oder entferne ihn zuerst.';return;}
+const requestEpoch=epoch,generation=quickGeneration,receipt=quickReceipt;
+setBusy(true);updateQuestionSearch();
+try{
+const data=await jsonFetch('/api/chat/save-quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receipt})});
+if(requestEpoch!==epoch||generation!==quickGeneration)return;
+if(!sameWs(data)||!providerIdentityVerified(data,false)||!await loadHistory(data))throw new Error('Speicherung nicht bestätigt');
+if(requestEpoch!==epoch||generation!==quickGeneration)return;
+clearQuestionSearch();byId('question-search-dialog').close();renderResult(data);
+byId('status').textContent='Schnellfrage wurde als Chat gespeichert.';
+}catch(error){if(requestEpoch===epoch&&generation===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
+finally{if(requestEpoch===epoch){setBusy(false);updateQuestionSearch();}}
 }
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
@@ -244,8 +279,11 @@ byId('composer').addEventListener('submit', runTank); byId('goal').addEventListe
 byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });
 byId('question-search-open').addEventListener('click', openQuestionSearch);
 byId('question-search-input').addEventListener('input', updateQuestionSearch);
-byId('question-search-chat').addEventListener('click', prepareQuestion);
-byId('question-search-web').addEventListener('click', event=>{if(!currentUser||busy||byId('question-search-web').hidden)event.preventDefault();});
+byId('question-search-chat').addEventListener('click', askQuickQuestion);
+byId('question-search-save').addEventListener('click', saveQuickQuestion);
+byId('question-search-discard').addEventListener('click', ()=>{clearQuestionSearch();byId('question-search-dialog').close();});
+byId('question-search-dialog').addEventListener('close', clearQuestionSearch);
+byId('question-search-web').addEventListener('click', event=>{if(!currentUser||busy||byId('question-search-web').hidden){event.preventDefault();return;} setTimeout(()=>{clearQuestionSearch();byId('question-search-dialog').close();},0);});
 byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEventListener('click', exportChat);
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
