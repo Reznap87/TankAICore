@@ -199,7 +199,9 @@ let githubBusy=false, githubGeneration=0;
 let driveBusy=false, driveGeneration=0;
 let gmailBusy=false, gmailGeneration=0;
 let calendarBusy=false, calendarGeneration=0;
+let cfBusy=false, cfGeneration=0;
 function resetConnections() {
+cfGeneration++;cfBusy=false;byId('cf-status').textContent='Status noch nicht geprüft.';byId('cf-connect').disabled=true;byId('cf-disconnect').hidden=true;byId('cf-workers').hidden=true;byId('cf-worker-list').replaceChildren();
 calendarGeneration++;calendarBusy=false;byId('calendar-status').textContent='Status noch nicht geprüft.';byId('calendar-connect').disabled=true;byId('calendar-authorize').hidden=true;byId('calendar-authorize').removeAttribute?.('href');byId('calendar-disconnect').hidden=true;byId('calendar-events').hidden=true;byId('calendar-event-list').replaceChildren();
 gmailGeneration++;gmailBusy=false;byId('gmail-status').textContent='Status noch nicht geprüft.';byId('gmail-connect').disabled=true;byId('gmail-authorize').hidden=true;byId('gmail-authorize').removeAttribute?.('href');byId('gmail-disconnect').hidden=true;byId('gmail-messages').hidden=true;byId('gmail-message-list').replaceChildren();
 driveGeneration++;driveBusy=false;byId('drive-status').textContent='Status noch nicht geprüft.';byId('drive-connect').disabled=true;byId('drive-authorize').hidden=true;byId('drive-authorize').removeAttribute?.('href');byId('drive-disconnect').hidden=true;byId('drive-files').hidden=true;byId('drive-file-list').replaceChildren();
@@ -296,6 +298,24 @@ if(action==='events'){for(const item of (d.events||[]))root.append(element('p','
 }catch(error){if(e===epoch&&g===calendarGeneration){byId('calendar-status').textContent=String(error.message||error);byId('calendar-authorize').hidden=true;byId('calendar-disconnect').disabled=false;}}
 finally{if(e===epoch&&g===calendarGeneration){calendarBusy=false;byId('calendar-refresh').disabled=false;}}
 }
+async function cfAction(action) {
+if(!currentUser||cfBusy)return;
+const e=epoch,g=++cfGeneration;cfBusy=true;
+for(const id of ['cf-connect','cf-disconnect','cf-workers','cf-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/cloudflare/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==cfGeneration)return;
+const d=data.cloudflare,status=d?.status;
+byId('cf-connect').disabled=status!=='disconnected';
+byId('cf-disconnect').hidden=status!=='connected';byId('cf-workers').hidden=status!=='connected';
+byId('cf-disconnect').disabled=false;byId('cf-workers').disabled=false;
+byId('cf-status').textContent=status==='connected'?'Verbunden · Worker-Lesezugriff':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('cf-worker-list');
+if(status!=='connected'||action==='workers')root.replaceChildren();
+if(action==='workers'){for(const item of (d.workers||[]))root.append(element('p','',[item.name,item.modified_on].filter(Boolean).join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine Worker gefunden.'));if(d.truncated)root.append(element('p','muted','Die ersten 100 Worker werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===cfGeneration){byId('cf-status').textContent=String(error.message||error);byId('cf-worker-list').replaceChildren();byId('cf-workers').hidden=true;byId('cf-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===cfGeneration){cfBusy=false;byId('cf-refresh').disabled=false;}}
+}
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
@@ -328,6 +348,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('cf-refresh').addEventListener('click',()=>cfAction(''));
+byId('cf-connect').addEventListener('click',()=>cfAction('start'));
+byId('cf-disconnect').addEventListener('click',()=>cfAction('disconnect'));
+byId('cf-workers').addEventListener('click',()=>cfAction('workers'));
 byId('calendar-refresh').addEventListener('click',()=>calendarAction(''));
 byId('calendar-connect').addEventListener('click',()=>calendarAction('start'));
 byId('calendar-disconnect').addEventListener('click',()=>calendarAction('disconnect'));
