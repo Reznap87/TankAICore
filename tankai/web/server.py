@@ -40,7 +40,7 @@ from tankai.core.llm import (
     openrouter_free_scope,
     reset_llm_response_identities,
 )
-from tankai.core.nvidia_free import NvidiaFreeLLM, nvidia_free_enabled
+from tankai.core.nvidia_free import NvidiaFreeLLM, nvidia_free_enabled, select_nvidia_key
 from tankai.core.monetary_budget import BudgetDenied, BudgetStateError
 from tankai.core.request_dispatch import DispatchDenied
 from tankai.core.request_pricing import PricingError
@@ -1154,7 +1154,16 @@ class Handler(BaseHTTPRequestHandler):
                                 pass
                             else:
                                 direct_chat_ready = True
+                        nvidia_ready = False
+                        if direct_chat_ready and self.app.free_route_enabled and self.app.owner_pilot is None and self.app.auth_state is not None:
+                            try:
+                                select_nvidia_key()
+                            except DispatchDenied:
+                                pass
+                            else:
+                                nvidia_ready = True
                         payload.update({
+                            "nvidia_chat_available": nvidia_ready,
                             "free_route_admission_configured": self.app.free_route_enabled,
                             "user": context.email,
                             "workspace": context.workspace_name,
@@ -2444,7 +2453,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 try:
                     prior_turns = runtime.history.direct_thread(
-                        reply_to, workspace_id=context.workspace_id
+                        reply_to, workspace_id=context.workspace_id,
+                        provider="nvidia_free" if nvidia_requested else "openrouter_free" if free_route else None,
                     ) if reply_to else []
                 except ValueError:
                     self._json({
