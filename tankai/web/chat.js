@@ -44,7 +44,7 @@ byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messag
 }
 function resetWorkspace() {
 const provider=byId('chat-provider'); if(provider){provider.value=''; provider.hidden=true;}
-historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
+historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = ''; byId('skill-store-results').replaceChildren();
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
 }
 function showLogin() {
@@ -214,8 +214,25 @@ card.append(element('strong','',skill.id),element('p','',skill.title),element('p
 const source = element('a','','NVIDIA-Original');
 const url = new URL(skill.source);
 if (url.origin === 'https://github.com' && url.pathname.startsWith('/NVIDIA/skills/blob/')) { source.href = url.href; source.target = '_blank'; source.rel = 'noopener noreferrer'; card.append(source); }
+if (skill.imported && skill.document_available) {
+const read = element('button','secondary-button','Original-Skill ansehen');
+read.type='button';
+const preview = element('pre','skill-document'); preview.hidden=true;
+read.addEventListener('click',async()=>{
+if(e!==epoch || !currentUser || !root.contains(card))return;
+if(!preview.hidden){preview.hidden=true;return;}
+read.disabled=true; preview.textContent='Dokument wird geladen …'; preview.hidden=false;
+try{
+const doc=await jsonFetch('/api/skills/document?id='+encodeURIComponent(skill.id));
+if(e!==epoch || !root.contains(card))return;
+if(doc.workspace_id!==currentUser.workspace.id || doc.id!==skill.id || doc.revision!==skill.revision || typeof doc.content!=='string' || doc.execution_available!==false)throw new Error('Dokumentnachweis fehlt');
+preview.textContent=doc.content;
+}catch(error){if(e===epoch && root.contains(card))preview.textContent=String(error.message||error);}
+finally{read.disabled=false;}
+}); card.append(read,preview);
+}
 const action = skill.enabled?'disable':skill.imported?'enable':'import';
-const toggle = element('button','secondary-button',action==='disable'?'Deaktivieren':action==='enable'?'Aktivieren':'Katalogeintrag importieren');
+const toggle = element('button','secondary-button',action==='disable'?'Deaktivieren':action==='enable'?'Aktivieren':'Skill importieren');
 toggle.type='button'; toggle.addEventListener('click',()=>loadSkills(action,skill.id)); card.append(toggle);
 if (skill.enabled && typeof skill.guidance === 'string') {
 const use = element('button','secondary-button','Entwurfshilfe einfügen'); use.type='button';

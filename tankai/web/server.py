@@ -1206,6 +1206,30 @@ class Handler(BaseHTTPRequestHandler):
                     return
             self._json(payload)
             return
+        if path == "/api/skills/document":
+            context = self._auth_context()
+            if not context:
+                return
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            query = parse_qs(urlsplit(self.path).query)
+            if set(query) != {"id"} or len(query["id"]) != 1:
+                self._json({"error": "Ungültige Skill-ID"}, 400)
+                return
+            try:
+                from tankai.web.skill_store import document
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, **document(runtime.root, context.user_id, query["id"][0])})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skill_document")
+            return
         if path == "/api/skills":
             context = self._auth_context()
             if not context:
