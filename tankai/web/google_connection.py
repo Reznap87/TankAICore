@@ -11,7 +11,14 @@ import threading
 import time
 from urllib.parse import urlencode
 
-from .connections import ConnectionError, _key, _request
+from .connections import ConnectionError, _key, _request as _http_request
+
+
+def _request(*args, **kwargs):
+    try:
+        return _http_request(*args, **kwargs)
+    except ConnectionError:
+        raise ConnectionError("Google-Verbindung derzeit nicht verfügbar") from None
 
 SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly"
 CALLBACK = "https://tankaicore.com/api/connections/google/callback"
