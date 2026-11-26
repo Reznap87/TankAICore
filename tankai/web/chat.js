@@ -42,6 +42,7 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+byId('question-search-input').value=''; updateQuestionSearch();
 historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
 }
@@ -55,7 +56,7 @@ epoch += 1; currentUser = data; csrf = String(data.csrf_token || ''); resetWorks
 const select = byId('workspace'); select.replaceChildren(); (data.workspaces || []).forEach(w => { const option = element('option', '', w.name + ' (' + w.role + ')'); option.value = w.id; option.selected = w.id === data.workspace?.id; select.append(option); }); setBusy(false); syncSidebar();
 }
 function setBusy(value) {
-busy = value; byId('goal').disabled = value; ['new-chat', 'workspace', 'plugins-open', 'composer-plugins', 'plugin-analyze', 'plugin-structure'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
+busy = value; byId('goal').disabled = value; ['new-chat', 'question-search-open', 'workspace', 'plugins-open', 'composer-plugins', 'plugin-analyze', 'plugin-structure'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
 }
 async function refreshHealth() {
 const e=epoch;
@@ -194,6 +195,25 @@ function sidebar(open) { if (mobile.matches) { byId('appView').classList.toggle(
 function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId('main').inert = false; byId('backdrop').hidden = true; const open = !mobile.matches && !byId('appView').classList.contains('sidebar-collapsed'); byId('sidebar').inert = !open; byId('open-sidebar').setAttribute('aria-expanded', String(open)); }
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
+function updateQuestionSearch() {
+const query=byId('question-search-input').value.trim(), link=byId('question-search-web');
+const valid=!!query && query.length<=2000 && !!currentUser && !busy;
+byId('question-search-chat').disabled=!valid; link.hidden=!valid;
+link.setAttribute('href',valid?'https://duckduckgo.com/?q='+encodeURIComponent(query):'#');
+}
+function openQuestionSearch() {
+if(!currentUser||busy)return;
+byId('question-search-input').value=''; byId('question-search-status').textContent='';
+updateQuestionSearch(); showDialog('question-search-dialog'); byId('question-search-input').focus();
+}
+function prepareQuestion() {
+if(!currentUser||busy)return;
+const query=byId('question-search-input').value.trim();
+if(!query||query.length>2000)return;
+if(byId('goal').value.trim()){byId('question-search-status').textContent='Im Chat ist noch ein ungesendeter Entwurf. Sende oder entferne ihn zuerst.';return;}
+byId('question-search-dialog').close(); newChat();
+byId('goal').value=query; setBusy(false); byId('goal').focus();
+}
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
@@ -222,6 +242,10 @@ function exportChat() { if (!selectedResult) return; const data = selectedResult
 byId('login-form').addEventListener('submit', login); byId('registration-toggle').addEventListener('click', () => setRegistration(!registering)); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
 byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
 byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });
+byId('question-search-open').addEventListener('click', openQuestionSearch);
+byId('question-search-input').addEventListener('input', updateQuestionSearch);
+byId('question-search-chat').addEventListener('click', prepareQuestion);
+byId('question-search-web').addEventListener('click', event=>{if(!currentUser||busy||byId('question-search-web').hidden)event.preventDefault();});
 byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEventListener('click', exportChat);
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
