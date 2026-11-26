@@ -65,7 +65,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
-from tankai.web import connections
+from tankai.web import connections, google_connection
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -1165,10 +1165,35 @@ class Handler(BaseHTTPRequestHandler):
                     return
             self._json(payload)
             return
+        if path == "/api/connections/google/callback":
+            context = self._auth_context()
+            if context is None:
+                return
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Keine Berechtigung"}, 403)
+                return
+            params = parse_qs(urlsplit(self.path).query)
+            states, codes = params.get("state", []), params.get("code", [])
+            try:
+                if len(states) != 1 or len(codes) != 1:
+                    raise connections.ConnectionError("Google-Freigabe nicht abgeschlossen")
+                google_connection.finish(context, state=states[0], code=codes[0])
+                location = "/?connection=google"
+            except connections.ConnectionError:
+                location = "/?connection=google_error"
+            self.send_response(303)
+            self.send_header("Location", location)
+            self.send_header("Referrer-Policy", "no-referrer")
+            self._security_headers()
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if path == "/api/connections":
             context = self._auth_context()
             if context is not None:
-                self._json({"github": connections.status(context) if self.app.auth_mode == "session" and context.role == "owner" else {"status": "unavailable"}})
+                allowed = self.app.auth_mode == "session" and context.role == "owner"
+                self._json({"github": connections.status(context) if allowed else {"status": "unavailable"},
+                            "google_drive": google_connection.status(context) if allowed else {"status": "unavailable"}})
             return
         if path == "/api/auth/me":
             context = self._auth_context()
@@ -1336,7 +1361,24 @@ class Handler(BaseHTTPRequestHandler):
             except connections.ConnectionError as exc:
                 self._json({"error": str(exc)}, 409)
             return
+        if path in ("/api/connections/google/start", "/api/connections/google/disconnect", "/api/connections/google/files"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=1024)
+            if data is None:
+                return
+            if data:
+                self._json({"error": "Keine zusätzlichen Verbindungsparameter erlaubt"}, 400)
+                return
+            try:
+                operation = {"start": google_connection.start, "disconnect": google_connection.disconnect, "files": google_connection.files}[path.rsplit("/", 1)[-1]]
+                self._json({"google_drive": operation(context)})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
         if path == "/api/auth/logout":
+            google_connection.disconnect(context, all_workspaces=True)
             connections.disconnect(context, all_workspaces=True)
             if self.app.auth_mode != "disabled":
                 self.app.auth.revoke_session(context.session_id, user_id=context.user_id)
