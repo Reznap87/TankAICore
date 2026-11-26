@@ -197,7 +197,9 @@ function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
 let githubBusy=false, githubGeneration=0;
 let driveBusy=false, driveGeneration=0;
+let gmailBusy=false, gmailGeneration=0;
 function resetConnections() {
+gmailGeneration++;gmailBusy=false;byId('gmail-status').textContent='Status noch nicht geprüft.';byId('gmail-connect').disabled=true;byId('gmail-authorize').hidden=true;byId('gmail-authorize').removeAttribute?.('href');byId('gmail-disconnect').hidden=true;byId('gmail-messages').hidden=true;byId('gmail-message-list').replaceChildren();
 driveGeneration++;driveBusy=false;byId('drive-status').textContent='Status noch nicht geprüft.';byId('drive-connect').disabled=true;byId('drive-authorize').hidden=true;byId('drive-authorize').removeAttribute?.('href');byId('drive-disconnect').hidden=true;byId('drive-files').hidden=true;byId('drive-file-list').replaceChildren();
 githubGeneration++;githubBusy=false;
 byId('github-connection-status').textContent='Status noch nicht geprüft.';
@@ -256,6 +258,24 @@ if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',
 }catch(error){if(e===epoch&&g===driveGeneration){byId('drive-status').textContent=String(error.message||error);byId('drive-authorize').hidden=true;byId('drive-disconnect').disabled=false;}}
 finally{if(e===epoch&&g===driveGeneration){driveBusy=false;byId('drive-refresh').disabled=false;}}
 }
+async function gmailAction(action) {
+if(!currentUser||gmailBusy)return;
+const e=epoch,g=++gmailGeneration;gmailBusy=true;
+for(const id of ['gmail-connect','gmail-disconnect','gmail-messages','gmail-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/gmail/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==gmailGeneration)return;
+const d=data.gmail,status=d?.status;
+byId('gmail-connect').disabled=status!=='disconnected';byId('gmail-disconnect').hidden=!['pending','connected'].includes(status);
+byId('gmail-messages').hidden=status!=='connected';byId('gmail-disconnect').disabled=false;byId('gmail-messages').disabled=false;
+const link=byId('gmail-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
+byId('gmail-status').textContent=status==='connected'?'Verbunden · Nachrichtenmetadaten':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('gmail-message-list');if(status!=='connected'||action==='messages')root.replaceChildren();
+if(action==='messages'){for(const item of (d.messages||[]))root.append(element('p','',[item.subject||'(Ohne Betreff)',item.from||'',item.date||''].join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine Nachrichten gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten zehn Nachrichten werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===gmailGeneration){byId('gmail-status').textContent=String(error.message||error);byId('gmail-authorize').hidden=true;byId('gmail-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===gmailGeneration){gmailBusy=false;byId('gmail-refresh').disabled=false;}}
+}
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
@@ -288,6 +308,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('gmail-refresh').addEventListener('click',()=>gmailAction(''));
+byId('gmail-connect').addEventListener('click',()=>gmailAction('start'));
+byId('gmail-disconnect').addEventListener('click',()=>gmailAction('disconnect'));
+byId('gmail-messages').addEventListener('click',()=>gmailAction('messages'));
 byId('drive-refresh').addEventListener('click',()=>driveAction(''));
 byId('drive-connect').addEventListener('click',()=>driveAction('start'));
 byId('drive-disconnect').addEventListener('click',()=>driveAction('disconnect'));
