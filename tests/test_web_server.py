@@ -740,7 +740,10 @@ def test_hsts_is_bound_to_secure_cookie_mode(tmp_path, monkeypatch) -> None:
 def test_html_uses_safe_dom_rendering() -> None:
     assert "innerHTML" not in web_server.HTML_TEMPLATE
     assert "catch{}" not in web_server.HTML_TEMPLATE
-    assert "textContent" in web_server.HTML_TEMPLATE
+    script = web_server._CHAT_SCRIPT.decode("utf-8")
+    assert "textContent" in script
+    assert "innerHTML" not in script
+    assert "catch{}" not in script
     assert 'href="/favicon.ico"' in web_server.HTML_TEMPLATE
     assert 'src="/favicon.png"' in web_server.HTML_TEMPLATE
     assert "HttpOnly" in web_server.Handler._session_cookie.__code__.co_consts
@@ -778,11 +781,21 @@ def test_html_uses_a_fresh_matching_csp_nonce_per_response(
                 assert "unsafe-inline" not in policy
                 body = response.read().decode("utf-8")
                 assert body.count(f'<style nonce="{nonce}">') == 1
-                assert body.count(f'<script nonce="{nonce}">') == 1
+                assert body.count(f'<script nonce="{nonce}" src="{web_server._CHAT_SCRIPT_PATH}"></script>') == 1
+                assert "__CHAT_SCRIPT_PATH__" not in body
+                assert len(body.encode("utf-8")) <= 96_000
                 assert "style=" not in body
                 assert "__CSP_NONCE__" not in body
                 nonces.append(nonce)
         assert nonces[0] != nonces[1]
+        with urlopen(base + web_server._CHAT_SCRIPT_PATH, timeout=5) as response:
+            assert response.status == 200
+            assert response.headers["Content-Type"] == "text/javascript; charset=utf-8"
+            assert response.headers["Cache-Control"] == "no-store"
+            assert response.headers["X-Content-Type-Options"] == "nosniff"
+            assert "script-src 'none'" in response.headers["Content-Security-Policy"]
+            assert response.read() == web_server._CHAT_SCRIPT
+            assert len(web_server._CHAT_SCRIPT) <= 96_000
 
         with urlopen(base + "/api/health", timeout=5) as response:
             policy = response.headers["Content-Security-Policy"]

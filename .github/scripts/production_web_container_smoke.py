@@ -28,13 +28,10 @@ DOCKER = shutil.which("docker") or "docker"
 MANAGED_LABEL = "com.tankai.ci.production-web-smoke"
 SCOPE_LABEL = MANAGED_LABEL + ".scope"
 HTTP_LIMIT = 4096
-# Antwortbudget der Inline-HTML (chat.html + chat.css + chat.js, alles wird in
-# eine Antwort eingebettet). Historie: 50.000 war 2026-11 mit 49.842 Bytes
-# ausgereizt, 64.000 war 2026-11-24 nach Studio (#132) mit 62.429 Bytes erneut
-# bis auf 1.571 Bytes ausgereizt. 96 KiB gibt dem Studio und der
-# Anbieteridentitaet (#130) realistischen Kopfhalt. CSP- und Nonce-Pruefung,
-# HTTP_LIMIT und alle Debug-/Readiness-Gates bleiben unveraendert.
+# Keep the HTML and the versioned JavaScript independently bounded.
+# All CSP/nonce, JSON and readiness gates remain unchanged.
 HTML_LIMIT = 96_000
+SCRIPT_LIMIT = 96_000
 READY_TIMEOUT = 120.0
 ENVIRONMENT = (
     ("TANKAI_HOST", "0.0.0.0"),
@@ -570,6 +567,7 @@ def security_headers(headers: Any, csp_pattern: re.Pattern[str]) -> re.Match[str
 
 def html_contract(base: str) -> None:
     nonces: list[str] = []
+    script_paths: list[str] = []
     for path in ("/", "/index.html"):
         request = Request(
             base + path,
@@ -599,14 +597,30 @@ def html_contract(base: str) -> None:
             body.count(f'<style nonce="{nonce}">') == 1,
             f"{path}: HTML style nonce differs",
         )
-        require(
-            body.count(f'<script nonce="{nonce}">') == 1,
-            f"{path}: HTML nonce differs",
+        scripts = re.findall(
+            rf'<script nonce="{re.escape(nonce)}" src="(/assets/chat-[a-f0-9]{{64}}\.js)"></script>',
+            body,
         )
+        require(len(scripts) == 1 and body.count("<script ") == 1, f"{path}: HTML script differs")
+        script_paths.append(scripts[0])
+        require("__CHAT_SCRIPT_PATH__" not in body, f"{path}: script placeholder leaked")
         require("style=" not in body, f"{path}: inline style attribute present")
         require("__CSP_NONCE__" not in body, f"{path}: nonce placeholder leaked")
         nonces.append(nonce)
     require(nonces[0] != nonces[1], "HTML nonce was reused")
+    require(script_paths[0] == script_paths[1], "script version differs")
+    request = Request(base + script_paths[0], headers={"Accept": "text/javascript"}, method="GET")
+    with OPENER.open(request, timeout=5.0) as response:
+        require(response.status == 200, "script status differs")
+        require(response.headers.get_all("Content-Type") == ["text/javascript; charset=utf-8"],
+                "script Content-Type differs")
+        require(not response.headers.get_all("Set-Cookie"), "script unexpected Set-Cookie")
+        security_headers(response.headers, CSP_SCRIPT_NONE)
+        raw = response.read(SCRIPT_LIMIT + 1)
+    require(0 < len(raw) <= SCRIPT_LIMIT, "script response size differs")
+    require(script_paths[0] == "/assets/chat-" + hashlib.sha256(raw).hexdigest() + ".js",
+            "script content hash differs")
+    require(b"textContent" in raw and b"innerHTML" not in raw, "script DOM safety contract differs")
 
 
 def health_contract(headers: Any, payload: dict[str, Any], version: str) -> None:

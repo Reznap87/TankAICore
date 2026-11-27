@@ -444,13 +444,15 @@ class AppContext:
             self.root_lease = None
 
 
-# Keep the UI in separate source files; inline its assets into the existing
-# per-response nonce policy so no new public asset routes or CSP exceptions are needed.
+# Keep the HTML bounded; serve the versioned script as a separate same-origin
+# resource. The HTML script element still requires the per-response CSP nonce.
 _WEB_ROOT = Path(__file__).parent
+_CHAT_SCRIPT = (_WEB_ROOT / "chat.js").read_bytes()
+_CHAT_SCRIPT_PATH = "/assets/chat-" + hashlib.sha256(_CHAT_SCRIPT).hexdigest() + ".js"
 HTML_TEMPLATE = (
     (_WEB_ROOT / "chat.html").read_text(encoding="utf-8")
     .replace("__CHAT_STYLES__", (_WEB_ROOT / "chat.css").read_text(encoding="utf-8"))
-    .replace("__CHAT_SCRIPT__", (_WEB_ROOT / "chat.js").read_text(encoding="utf-8"))
+    .replace("__CHAT_SCRIPT_PATH__", _CHAT_SCRIPT_PATH)
 )
 
 
@@ -1110,6 +1112,14 @@ class Handler(BaseHTTPRequestHandler):
         if self._reject_if_draining():
             return
         path = urlsplit(self.path).path
+        if path == _CHAT_SCRIPT_PATH:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8")
+            self._security_headers()
+            self.send_header("Content-Length", str(len(_CHAT_SCRIPT)))
+            self.end_headers()
+            self.wfile.write(_CHAT_SCRIPT)
+            return
         brand_asset = _BRAND_ASSETS.get(path)
         if brand_asset is not None:
             content_type, body = brand_asset
