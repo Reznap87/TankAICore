@@ -172,6 +172,26 @@ assert.match(byId('plugin-result').textContent, /zu lang/);
 byId('plugins-dialog').close();
 byId('goal').value = '';
 byId('goal').handlers.input();
+byId('goal').value = 'Schreibe einen Test';
+byId('skill-select').value = 'code';
+byId('skill-apply').handlers.click();
+const skillDraft = byId('goal').value;
+assert.match(skillDraft, /Arbeitsweise: Analysiere die Anforderungen/);
+byId('skill-apply').handlers.click();
+assert.equal(byId('goal').value, skillDraft);
+byId('json-tool-input').value = '{"ok":true}';
+byId('json-tool-format').handlers.click();
+assert.equal(byId('json-tool-output').textContent, '{\n  "ok": true\n}');
+byId('json-tool-input').value = '{broken';
+byId('json-tool-format').handlers.click();
+assert.equal(byId('json-tool-output').textContent, '');
+assert.match(byId('json-tool-status').textContent, /Ungültiges/);
+byId('unit-value').value = '2';
+byId('unit-conversion').value = 'h-min';
+byId('unit-calculate').handlers.click();
+assert.equal(byId('unit-result').textContent, '120 min');
+byId('goal').value='';
+byId('goal').handlers.input();
 assert.equal(calls.length, beforeLocalTools, 'local plugins and settings must never send network requests');
 
 

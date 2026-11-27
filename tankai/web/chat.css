@@ -53,4 +53,8 @@ html[data-theme=light]{--bg:#f6f8fc;--sidebar:#eaf0f7;--surface:#fff;--raised:#e
 html[data-chat-size=large] .answer-content,html[data-chat-size=large] .message-bubble,html[data-chat-size=large] .composer textarea{font-size:18px;line-height:1.85}
 @media(max-width:780px){.settings-dialog .dialog-heading{padding:16px 18px}.settings-dialog .settings-content{padding:0 18px 18px}.settings-intro h3{font-size:18px}.settings-dialog select{max-width:48%}.settings-dialog .setting{gap:8px}.composer-tools{gap:3px}.composer-tools .icon-button{width:32px}.model-label{max-width:140px}}
 
+#extension-search,#extension-category,#skill-select,#json-tool-input,#unit-value,#unit-conversion{display:block;width:100%;max-width:100%;margin:6px 0 12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}
+#extension-count,#skill-status,#json-tool-status,#unit-result{color:var(--muted);font-size:13px}
+#json-tool-output{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto}
+
 .skill-document{white-space:pre-wrap;overflow-wrap:anywhere;max-height:22rem;overflow:auto;font-size:.85rem;}
