@@ -62,3 +62,33 @@ class SkillStoreTest(unittest.TestCase):
             change(root, "alice", "rag-eval", "disable")
             with self.assertRaises(PermissionError):
                 run_local(root, "alice", "rag-eval", payload)
+
+    def test_additional_adapters(self):
+        with tempfile.TemporaryDirectory() as a:
+            root = Path(a)
+            cases = [
+                ("nemo-retriever", {"query": "Hallo Welt", "documents": [{"id": "b", "text": "Hallo"}, {"id": "a", "text": "Hallo Welt"}]}, "tankai_local_text_search"),
+                ("data-designer", {"required_fields": ["id", "text"], "rows": [{"id": 1, "text": "ok"}, {"id": 2}]}, "tankai_local_dataset_validation"),
+                ("rag-blueprint", {"source_inventory": True, "access_control": False, "index_strategy": True, "retrieval_evaluation": False, "deletion_policy": False}, "tankai_local_rag_preflight"),
+            ]
+            for skill, payload, adapter in cases:
+                with self.assertRaises(PermissionError):
+                    run_local(root, "alice", skill, payload)
+                change(root, "alice", skill, "import")
+                change(root, "alice", skill, "enable")
+                result = run_local(root, "alice", skill, payload)
+                self.assertEqual(result["adapter"], adapter)
+                self.assertEqual(result["external_calls"], 0)
+                self.assertFalse(result["nvidia_execution"])
+                if skill == "nemo-retriever":
+                    self.assertEqual([x["id"] for x in result["matches"]], ["a", "b"])
+                elif skill == "data-designer":
+                    self.assertEqual(result["valid_rows"], 1)
+                    self.assertEqual(result["missing_counts"], {"text": 1})
+                else:
+                    self.assertEqual(result["completed"], 2)
+                    self.assertFalse(result["deployment_verified"])
+                with self.assertRaises(ValueError):
+                    run_local(root, "alice", skill, {"unexpected": True})
+                with self.assertRaises(PermissionError):
+                    run_local(root, "bob", skill, payload)

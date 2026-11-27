@@ -244,24 +244,28 @@ goal.value=next; setBusy(false); byId('plugins-dialog').close(); goal.focus();
 }); card.append(use);
 }
 if(skill.enabled && skill.local_adapter_available){
-const ranked=element('textarea'), relevant=element('textarea');
-ranked.placeholder='Gefundene Dokument-IDs, eine je Zeile'; ranked.setAttribute('aria-label','Gefundene Dokument-IDs');
-relevant.placeholder='Relevante Dokument-IDs, eine je Zeile'; relevant.setAttribute('aria-label','Relevante Dokument-IDs');
-const output=element('pre','skill-document'), run=element('button','secondary-button','Lokale Retrieval-Metriken berechnen');
-run.type='button';
+const examples={
+'rag-eval':{ranked_ids:['doc1','doc2'],relevant_ids:['doc2']},
+'nemo-retriever':{query:'Beispiel',documents:[{id:'doc1',text:'Ein Beispieltext'}]},
+'data-designer':{required_fields:['id','text'],rows:[{id:1,text:'Beispiel'}]},
+'rag-blueprint':{source_inventory:false,access_control:false,index_strategy:false,retrieval_evaluation:false,deletion_policy:false}
+};
+const input=element('textarea'), output=element('pre','skill-document'), run=element('button','secondary-button','Lokalen Adapter ausführen');
+input.setAttribute('aria-label','Skill-Eingabe als JSON'); input.rows=6; input.maxLength=60000;
+input.value=JSON.stringify(examples[skill.id],null,2); run.type='button';
 run.addEventListener('click',async()=>{
 if(e!==epoch||!currentUser||busy||!root.contains(card))return;
 run.disabled=true; output.textContent='Berechnung läuft …';
 try{
-const lines=v=>v.split(/\r?\n/u).map(s=>s.trim()).filter(Boolean);
-const result=await jsonFetch('/api/skills/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skill_id:skill.id,payload:{ranked_ids:lines(ranked.value),relevant_ids:lines(relevant.value)}})});
+const payload=JSON.parse(input.value);
+const result=await jsonFetch('/api/skills/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skill_id:skill.id,payload})});
 if(e!==epoch||!root.contains(card))return;
-if(result.workspace_id!==currentUser.workspace.id||result.adapter!=='tankai_local_retrieval_metrics'||result.external_calls!==0||result.nvidia_execution!==false)throw new Error('Runner-Nachweis fehlt');
+if(result.workspace_id!==currentUser.workspace.id||result.skill_id!==skill.id||result.adapter!==skill.local_adapter||result.external_calls!==0||result.nvidia_execution!==false)throw new Error('Runner-Nachweis fehlt');
 output.textContent=JSON.stringify(result,null,2);
 }catch(error){if(e===epoch&&root.contains(card))output.textContent=String(error.message||error);}
 finally{run.disabled=false;}
 });
-card.append(element('p','muted','TankAI-Adapter: Precision, Recall und Reciprocal Rank; kein NVIDIA RAGAS.'),ranked,relevant,run,output);
+card.append(element('p','muted','Lokaler TankAI-Adapter; keine NVIDIA-Laufzeit, keine externen Aufrufe. Eingabe als JSON.'),input,run,output);
 }
 root.append(card);
 }
