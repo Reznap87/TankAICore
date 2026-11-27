@@ -269,6 +269,39 @@ card.append(element('p','muted','Lokaler TankAI-Adapter; keine NVIDIA-Laufzeit, 
 }
 root.append(card);
 }
+const enabled=new Set(data.skills.filter(skill=>skill.enabled).map(skill=>skill.id));
+const workflow=element('div','settings-section');
+workflow.append(element('h3','','Lokaler Skill-Workflow'),element('p','muted','Dokumente suchen und die Treffer automatisch bewerten. Keine Modellaufrufe oder externe Übertragung durch den Workflow.'));
+if(!enabled.has('nemo-retriever')||!enabled.has('rag-eval')){
+workflow.append(element('p','','Aktiviere nemo-retriever und rag-eval.'));
+}else{
+const input=element('textarea'),output=element('pre','skill-document'),run=element('button','secondary-button','Suche und Bewertung starten'),use=element('button','secondary-button','Ergebnis in Chat-Entwurf übernehmen');
+input.rows=7; input.maxLength=60000; input.setAttribute('aria-label','Workflow-Eingabe als JSON');
+input.value=JSON.stringify({query:'Beispiel',documents:[{id:'doc1',text:'Beispieltext'},{id:'doc2',text:'Ein Beispiel'}],relevant_ids:['doc2']},null,2);
+run.type='button'; use.type='button'; use.disabled=true; let summary=null;
+run.addEventListener('click',async()=>{
+if(e!==epoch||!currentUser||busy||!root.contains(workflow))return;
+run.disabled=true; use.disabled=true; summary=null; output.textContent='Workflow läuft …';
+try{
+const result=await jsonFetch('/api/skills/workflow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(JSON.parse(input.value))});
+if(e!==epoch||!root.contains(workflow))return;
+if(result.workspace_id!==currentUser.workspace.id||result.workflow_id!=='retrieval-evaluation'||result.execution_mode!=='local_deterministic'||result.external_calls!==0||result.nvidia_execution!==false||!Array.isArray(result.steps)||result.steps.length!==2||result.steps[0].skill_id!=='nemo-retriever'||result.steps[1].skill_id!=='rag-eval'||!result.steps.every(step=>step.status==='completed'))throw new Error('Workflow-Nachweis fehlt');
+const metrics=result.steps[1].result;
+if(!['precision','recall','reciprocal_rank'].every(k=>typeof metrics?.[k]==='number'&&Number.isFinite(metrics[k])&&metrics[k]>=0&&metrics[k]<=1))throw new Error('Metrik-Nachweis fehlt');
+summary=JSON.stringify({precision:metrics.precision,recall:metrics.recall,reciprocal_rank:metrics.reciprocal_rank,top_k:result.top_k});
+output.textContent=JSON.stringify(result,null,2); use.disabled=false;
+}catch(error){if(e===epoch&&root.contains(workflow))output.textContent=String(error.message||error);}
+finally{run.disabled=false;}
+});
+use.addEventListener('click',()=>{
+if(e!==epoch||!currentUser||busy||!root.contains(workflow)||!summary)return;
+const goal=byId('goal'), next=goal.value+(goal.value?'\n\n':'')+'Erkläre diese lokal berechneten Retrieval-Metriken (keine NVIDIA-Ausführung): '+summary;
+if(next.length>20000){toast('Entwurf zu lang');return;}
+goal.value=next; setBusy(false); byId('plugins-dialog').close(); goal.focus();
+});
+workflow.append(input,run,output,use,element('p','muted','Nur numerische Metriken werden in den Entwurf übernommen. Erst Senden startet den regulären Chat.'));
+}
+root.append(workflow);
 } catch(error) { if(e===epoch)root.textContent='Skill-Store nicht verfügbar: '+String(error.message||error); }
 }
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }

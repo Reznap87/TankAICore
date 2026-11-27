@@ -1396,6 +1396,26 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._require_csrf(context):
             return
+        if path == "/api/skills/workflow":
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            data = self._read_json(max_bytes=64_000)
+            if data is None:
+                return
+            try:
+                from tankai.web.skill_store import run_retrieval_workflow
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, **run_retrieval_workflow(runtime.root, context.user_id, data)})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skill_workflow")
+            return
         if path == "/api/skills/run":
             if self.app.auth_mode != "session":
                 self._json({"error": "Skills benötigen eine Anmeldung"}, 403)

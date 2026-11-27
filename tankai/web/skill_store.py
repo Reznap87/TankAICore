@@ -163,3 +163,25 @@ def _run_adapter(skill_id: str, payload: dict) -> dict:
         return {"method": "self_reported_checklist", "missing": missing, "completed": len(checks) - len(missing),
                 "total": len(checks), "deployment_verified": False}
     raise ValueError("Unbekannter Adapter")
+
+
+def run_retrieval_workflow(root: Path, user_id: str, payload: dict) -> dict:
+    """Fixed two-step local orchestration; never dispatches to a model or shell."""
+    required = {"nemo-retriever", "rag-eval"}
+    enabled = {s["id"] for s in catalog(root, user_id) if s["enabled"]}
+    if not required <= enabled:
+        raise PermissionError("nemo-retriever und rag-eval zuerst aktivieren")
+    if not isinstance(payload, dict) or set(payload) != {"query", "documents", "relevant_ids"}:
+        raise ValueError("query, documents und relevant_ids erforderlich")
+    search = run_local(root, user_id, "nemo-retriever",
+                       {"query": payload["query"], "documents": payload["documents"]})
+    ranked = [item["id"] for item in search["matches"]]
+    relevant = payload["relevant_ids"]
+    if (not isinstance(relevant, list) or any(not isinstance(x, str) for x in relevant)
+            or not set(relevant) <= {doc["id"] for doc in payload["documents"]}):
+        raise ValueError("Referenz-IDs müssen aus den bereitgestellten Dokumenten stammen")
+    metrics = run_local(root, user_id, "rag-eval", {"ranked_ids": ranked, "relevant_ids": relevant})
+    return {"workflow_id": "retrieval-evaluation", "execution_mode": "local_deterministic",
+            "external_calls": 0, "nvidia_execution": False, "top_k": 10,
+            "steps": [{"skill_id": "nemo-retriever", "status": "completed", "result": search},
+                      {"skill_id": "rag-eval", "status": "completed", "result": metrics}]}

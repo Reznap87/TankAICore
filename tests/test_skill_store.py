@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from tankai.web.skill_store import catalog, change, document, run_local
+from tankai.web.skill_store import catalog, change, document, run_local, run_retrieval_workflow
 
 class SkillStoreTest(unittest.TestCase):
     def test_import_enable_disable_persistence_and_isolation(self):
@@ -92,3 +92,26 @@ class SkillStoreTest(unittest.TestCase):
                     run_local(root, "alice", skill, {"unexpected": True})
                 with self.assertRaises(PermissionError):
                     run_local(root, "bob", skill, payload)
+
+    def test_retrieval_workflow_requires_both_skills_and_valid_reference(self):
+        with tempfile.TemporaryDirectory() as a:
+            root = Path(a)
+            payload = {"query": "Hallo", "documents": [{"id": "a", "text": "Hallo"}, {"id": "b", "text": "Welt"}], "relevant_ids": ["a", "b"]}
+            for key in ("nemo-retriever", "rag-eval"):
+                with self.assertRaises(PermissionError):
+                    run_retrieval_workflow(root, "alice", payload)
+                change(root, "alice", key, "import")
+                change(root, "alice", key, "enable")
+            result = run_retrieval_workflow(root, "alice", payload)
+            self.assertEqual(result["external_calls"], 0)
+            self.assertEqual(result["execution_mode"], "local_deterministic")
+            self.assertEqual([s["skill_id"] for s in result["steps"]], ["nemo-retriever", "rag-eval"])
+            metrics = result["steps"][1]["result"]
+            self.assertEqual((metrics["precision"], metrics["recall"], metrics["reciprocal_rank"]), (1.0, .5, 1.0))
+            with self.assertRaises(ValueError):
+                run_retrieval_workflow(root, "alice", {**payload, "relevant_ids": ["unknown"]})
+            with self.assertRaises(PermissionError):
+                run_retrieval_workflow(root, "bob", payload)
+            change(root, "alice", "rag-eval", "disable")
+            with self.assertRaises(PermissionError):
+                run_retrieval_workflow(root, "alice", payload)
