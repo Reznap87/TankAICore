@@ -69,7 +69,7 @@ from tankai.web.auth import (
     ProviderCallRateLimiter,
 )
 from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavailable
-from tankai.web import connections, google_connection, cloudflare_connection, notion_connection, dropbox_connection, onedrive_connection, slack_connection, outlook_connection
+from tankai.web import connections, google_connection, cloudflare_connection, notion_connection, dropbox_connection, onedrive_connection, slack_connection, outlook_connection, mcp_connection
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
 
 _SESSION_COOKIE = "tankai_session"
@@ -1241,7 +1241,8 @@ location.replace('/?connection=google');
                             "dropbox": dropbox_connection.status(context) if allowed else {"status": "unavailable"},
                             "onedrive": onedrive_connection.status(context) if allowed else {"status": "unavailable"},
                             "slack": slack_connection.status(context) if allowed else {"status": "unavailable"},
-                            "outlook": outlook_connection.status(context) if allowed else {"status": "unavailable"}})
+                            "outlook": outlook_connection.status(context) if allowed else {"status": "unavailable"},
+                            "mcp": mcp_connection.status(context) if allowed else {"status": "unavailable"}})
             return
         if path == "/api/auth/me":
             context = self._auth_context()
@@ -1578,7 +1579,30 @@ location.replace('/?connection=google');
             except connections.ConnectionError as exc:
                 self._json({"error": str(exc)}, 409)
             return
+        if path in ("/api/connections/mcp/start", "/api/connections/mcp/disconnect", "/api/connections/mcp/tools", "/api/connections/mcp/call"):
+            if self.app.auth_mode != "session" or context.role != "owner":
+                self._json({"error": "Verbindungen benötigen eine Besitzer-Sitzung"}, 403)
+                return
+            data = self._read_json(max_bytes=8192)
+            if data is None:
+                return
+            try:
+                if path.endswith("/call"):
+                    if set(data) != {"name", "arguments", "confirmed"} or data["confirmed"] is not True:
+                        raise connections.ConnectionError("MCP-Aufruf benötigt ausdrückliche Freigabe")
+                    result = mcp_connection.call(context, name=data["name"], arguments=data["arguments"])
+                else:
+                    if data:
+                        raise connections.ConnectionError("Keine zusätzlichen Verbindungsparameter erlaubt")
+                    operation = {"start": mcp_connection.start, "disconnect": mcp_connection.disconnect,
+                                 "tools": mcp_connection.tools}[path.rsplit("/", 1)[-1]]
+                    result = operation(context)
+                self._json({"mcp": result})
+            except connections.ConnectionError as exc:
+                self._json({"error": str(exc)}, 409)
+            return
         if path == "/api/auth/logout":
+            mcp_connection.disconnect(context, all_workspaces=True)
             outlook_connection.disconnect(context, all_workspaces=True)
             slack_connection.disconnect(context, all_workspaces=True)
             onedrive_connection.disconnect(context, all_workspaces=True)
