@@ -2505,8 +2505,8 @@ class Handler(BaseHTTPRequestHandler):
         data = self._read_json(max_bytes=22_000)
         if data is None:
             return
-        if (set(data) not in ({"message"}, {"message", "reply_to"},
-                              {"message", "provider"}, {"message", "reply_to", "provider"})
+        if (set(data) - {"message", "reply_to", "provider", "auto_skills"}
+                or type(data.get("auto_skills", False)) is not bool
                 or type(data.get("message")) is not str
                 or ("provider" in data and data["provider"] not in ("nvidia_free", "nvidia_glm"))):
             self._json({"error": "Ungültige Chatparameter"}, 400)
@@ -2584,6 +2584,17 @@ class Handler(BaseHTTPRequestHandler):
                         "error_code": "conversation_unavailable",
                     }, 409)
                     return
+                selected_skills = []
+                if data.get("auto_skills", False):
+                    if not free_route or self.app.auth_mode != "session":
+                        self._json({"error": "Automatische Skill-Auswahl ist nur im Free-Chat mit Anmeldung verfügbar"}, 403)
+                        return
+                    from tankai.web.skill_store import select_guidance
+                    selected_skills = select_guidance(runtime.root, context.user_id, message)
+                skill_guidance = ""
+                if selected_skills:
+                    skill_guidance = (" Freigegebene TankAI-Entwurfshilfe (nur beratend; keine Tools oder ausgeführten Aktionen): "
+                                      + " ".join(item["id"] + ": " + item["guidance"] for item in selected_skills))
                 prompt = message
                 if prior_turns:
                     context_lines = []
@@ -2631,6 +2642,7 @@ class Handler(BaseHTTPRequestHandler):
                                 "und keine unabhängige Faktenprüfung. "
                                 "Behaupte keine ausgeführten Aktionen oder geprüften "
                                 "aktuellen Quellen. Kennzeichne Unsicherheit."
+                                + skill_guidance
                             ),
                         )
                 finally:
@@ -2677,6 +2689,10 @@ class Handler(BaseHTTPRequestHandler):
                     "source_ids": [],
                     "source_urls": [],
                 }
+                if data.get("auto_skills", False):
+                    payload["skill_guidance"] = {"mode": "advisory_only",
+                                                 "selected": [item["id"] for item in selected_skills],
+                                                 "local_adapter_executed": False}
                 if nvidia_requested:
                     payload["free_model_admission"] = {
                         "route": "nvidia_free", "per_minute": 10, "per_day": 50

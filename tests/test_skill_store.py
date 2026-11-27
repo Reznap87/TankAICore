@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from tankai.web.skill_store import catalog, change, document, run_local, run_retrieval_workflow
+from tankai.web.skill_store import catalog, change, document, run_local, run_retrieval_workflow, select_guidance
 
 class SkillStoreTest(unittest.TestCase):
     def test_import_enable_disable_persistence_and_isolation(self):
@@ -115,3 +115,19 @@ class SkillStoreTest(unittest.TestCase):
             change(root, "alice", "rag-eval", "disable")
             with self.assertRaises(PermissionError):
                 run_retrieval_workflow(root, "alice", payload)
+
+    def test_automatic_guidance_is_scoped_and_bounded(self):
+        with tempfile.TemporaryDirectory() as a:
+            root = Path(a)
+            prompt = "RAG-Architektur, Suchqualität und Trainingsdaten"
+            self.assertEqual(select_guidance(root, "alice", prompt), [])
+            for key in ("rag-blueprint", "rag-eval", "data-designer"):
+                change(root, "alice", key, "import")
+                change(root, "alice", key, "enable")
+            selected = select_guidance(root, "alice", prompt)
+            self.assertEqual([x["id"] for x in selected], ["data-designer", "rag-blueprint"])
+            self.assertTrue(all(x["guidance"] for x in selected))
+            self.assertEqual(select_guidance(root, "bob", prompt), [])
+            self.assertEqual(select_guidance(root, "alice", "Hallo"), [])
+            change(root, "alice", "data-designer", "disable")
+            self.assertEqual([x["id"] for x in select_guidance(root, "alice", prompt)], ["rag-blueprint", "rag-eval"])

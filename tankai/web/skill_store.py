@@ -185,3 +185,26 @@ def run_retrieval_workflow(root: Path, user_id: str, payload: dict) -> dict:
             "external_calls": 0, "nvidia_execution": False, "top_k": 10,
             "steps": [{"skill_id": "nemo-retriever", "status": "completed", "result": search},
                       {"skill_id": "rag-eval", "status": "completed", "result": metrics}]}
+
+
+_ROUTING_TERMS = {
+    "rag-blueprint": ("rag-architektur", "rag blueprint", "rag-blueprint", "wissensdatenbank", "rag deployment"),
+    "data-designer": ("data-designer", "synthetische daten", "trainingsdaten", "synthetic data", "datenschema"),
+    "rag-eval": ("rag-eval", "retrieval evaluation", "retrieval-metriken", "suchqualität", "reciprocal rank", "precision und recall"),
+    "nemo-retriever": ("nemo-retriever", "dokumentsuche", "dokumente durchsuchen", "document retrieval", "dokumentextraktion"),
+}
+
+def select_guidance(root: Path, user_id: str, message: str) -> list[dict]:
+    """Deterministic opt-in routing of enabled, TankAI-authored guidance only."""
+    normalized = message.casefold()
+    matches = []
+    for skill in catalog(root, user_id):
+        key = skill["id"]
+        if not skill["enabled"]:
+            continue
+        score = sum(bool(re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", normalized))
+                    for term in _ROUTING_TERMS[key])
+        if score:
+            matches.append((score, key, skill["guidance"]))
+    matches.sort(key=lambda item: (-item[0], item[1]))
+    return [{"id": key, "guidance": guidance} for _, key, guidance in matches[:2]]
