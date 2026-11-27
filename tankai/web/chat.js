@@ -210,7 +210,8 @@ cf:{api:'cloudflare',key:'cloudflare',read:'workers',list:'worker-list',label:'W
 notion:{read:'pages',list:'page-list',label:'Seiten-Lesezugriff',format:i=>String(i.title)},
 dropbox:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem},
 onedrive:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem},
-slack:{read:'channels',list:'channel-list',label:'Kanalmetadaten',format:i=>'#'+String(i.name)}
+slack:{read:'channels',list:'channel-list',label:'Kanalmetadaten',format:i=>'#'+String(i.name)},
+outlook:{read:'messages',list:'message-list',label:'Nachrichtenmetadaten',format:i=>[i.subject||'(Ohne Betreff)',i.from,i.date].filter(Boolean).join(' · ')}
 };
 function formatFileItem(i){return String(i.name)+' · '+(i.kind==='folder'?'Ordner':'Datei');}
 const connectorState=Object.fromEntries(Object.keys(connectorUI).map(k=>[k,{busy:false,generation:0}]));
