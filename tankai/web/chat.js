@@ -7,6 +7,8 @@ let csrf = '';
 let currentUser = null;
 let epoch = 0;
 let busy = false;
+let quickReceipt = null;
+let quickGeneration = 0;
 let registering = false;
 let historyItems = [];
 let selectedResult = null;
@@ -43,6 +45,7 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+clearQuestionSearch();
 resetExtensionTools();
 resetConnections();
 const provider=byId('chat-provider'); if(provider){provider.value=''; provider.hidden=true;}
@@ -59,7 +62,7 @@ epoch += 1; currentUser = data; csrf = String(data.csrf_token || ''); resetWorks
 const select = byId('workspace'); select.replaceChildren(); (data.workspaces || []).forEach(w => { const option = element('option', '', w.name + ' (' + w.role + ')'); option.value = w.id; option.selected = w.id === data.workspace?.id; select.append(option); }); setBusy(false); syncSidebar();
 }
 function setBusy(value) {
-busy = value; const provider=byId('chat-provider'); if(provider)provider.disabled=value; byId('goal').disabled = value; ['new-chat', 'workspace', 'plugins-open', 'composer-plugins', 'plugin-analyze', 'plugin-structure'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
+busy = value; const provider=byId('chat-provider'); if(provider)provider.disabled=value; byId('goal').disabled = value; ['new-chat', 'question-search-open', 'workspace', 'plugins-open', 'composer-plugins', 'plugin-analyze', 'plugin-structure'].forEach(id => { byId(id).disabled = value; }); document.querySelectorAll('[data-prompt]').forEach(b => { b.disabled = value; }); byId('runBtn').disabled = value || !byId('goal').value.trim(); byId('composer').setAttribute('aria-busy', String(value));
 }
 async function refreshHealth() {
 const e=epoch;
@@ -196,7 +199,7 @@ byId('status').textContent = data.status === 'simulated' || data.execution_mode 
 } catch (error) { if (requestEpoch !== epoch) return; if (error.status === 401) showLogin(); else if(error.status===429&&Number.isFinite(error.retryAfter)&&error.retryAfter>0) byId('status').textContent='Anfragelimit erreicht. Erneut versuchen in etwa '+Math.ceil(error.retryAfter/60)+' Min. Es erfolgt kein automatischer Anbieterwechsel.'; else byId('status').textContent = 'Aufgabe nicht bestätigt: ' + String(error.message || error) + '. Bei einer Verbindungsstörung vor erneutem Senden zuerst den Verlauf prüfen.'; }
 finally { if (requestEpoch === epoch) { setBusy(false); renderHistory(); byId('goal').focus(); } }
 }
-function newChat() { if (busy) return; resetResult(); byId('goal').value = ''; byId('status').textContent = ''; setBusy(false); renderHistory(); if (mobile.matches) sidebar(false); byId('goal').focus(); }
+function newChat() { if (busy) return; clearQuestionSearch(); resetResult(); byId('goal').value = ''; byId('status').textContent = ''; setBusy(false); renderHistory(); if (mobile.matches) sidebar(false); byId('goal').focus(); }
 function sidebar(open) { if (mobile.matches) { byId('appView').classList.toggle('sidebar-open', open); byId('backdrop').hidden = !open; byId('sidebar').inert = !open; byId('main').inert = open; } else { byId('appView').classList.toggle('sidebar-collapsed', !open); byId('sidebar').inert = !open; } byId('open-sidebar').setAttribute('aria-expanded', String(open)); if (open && mobile.matches) byId('close-sidebar').focus(); if (!open && !byId('appView').hidden) byId('open-sidebar').focus({ preventScroll: true }); }
 function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId('main').inert = false; byId('backdrop').hidden = true; const open = !mobile.matches && !byId('appView').classList.contains('sidebar-collapsed'); byId('sidebar').inert = !open; byId('open-sidebar').setAttribute('aria-expanded', String(open)); }
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
@@ -367,6 +370,51 @@ function resetExtensionTools(){
 byId('extension-search').value='';byId('extension-category').value='all';
 byId('skill-status').textContent='';byId('json-tool-input').value='';byId('json-tool-output').textContent='';byId('json-tool-status').textContent='';byId('unit-value').value='';byId('unit-result').textContent='';
 }
+function updateQuestionSearch(){
+const q=byId('question-search-input').value.trim(),valid=!!q&&q.length<=2000&&!!currentUser&&!busy,link=byId('question-search-web');
+byId('question-search-chat').disabled=!valid;link.hidden=!valid;
+byId('question-search-save').disabled=busy||!quickReceipt;byId('question-search-input').disabled=busy;
+link.setAttribute('href',valid?'https://duckduckgo.com/?q='+encodeURIComponent(q):'#');
+}
+function clearQuestionSearch(){
+quickGeneration++;quickReceipt=null;
+byId('question-search-input').value='';byId('question-search-status').textContent='';
+byId('question-search-answer').textContent='';byId('question-search-result').hidden=true;
+updateQuestionSearch();
+}
+function openQuestionSearch(){
+if(!currentUser||busy)return;clearQuestionSearch();
+showDialog('question-search-dialog');byId('question-search-input').focus();
+}
+async function askQuickQuestion(){
+if(!currentUser||busy)return;
+const q=byId('question-search-input').value.trim();if(!q||q.length>2000)return;
+quickReceipt=null;const g=++quickGeneration,e=epoch;
+byId('question-search-answer').textContent='';byId('question-search-result').hidden=true;
+setBusy(true);updateQuestionSearch();byId('question-search-status').textContent='TankAI beantwortet die Schnellfrage …';
+try{
+const data=await jsonFetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:q,temporary:true})});
+if(e!==epoch||g!==quickGeneration)return;
+if(!sameWs(data)||!providerIdentityVerified(data,false)||typeof data.receipt!=='string'||typeof data.final_answer!=='string'||data.goal!==q)throw Error('Schnellantwort nicht bestätigt');
+quickReceipt=data.receipt;byId('question-search-answer').textContent=data.final_answer;byId('question-search-result').hidden=false;
+byId('question-search-status').textContent='Nicht im Chatverlauf gespeichert.';
+}catch(error){if(e===epoch&&g===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
+finally{if(e===epoch){setBusy(false);updateQuestionSearch();}}
+}
+async function saveQuickQuestion(){
+if(!currentUser||busy||!quickReceipt)return;
+if(byId('goal').value.trim()){byId('question-search-status').textContent='Im Hauptchat ist noch ein ungesendeter Entwurf. Sende oder entferne ihn zuerst.';return;}
+const e=epoch,g=quickGeneration,receipt=quickReceipt;setBusy(true);updateQuestionSearch();
+try{
+const data=await jsonFetch('/api/chat/save-quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receipt})});
+if(e!==epoch||g!==quickGeneration)return;
+if(!sameWs(data)||!providerIdentityVerified(data,false)||!await loadHistory(data))throw Error('Speicherung nicht bestätigt');
+if(e!==epoch||g!==quickGeneration)return;
+clearQuestionSearch();byId('question-search-dialog').close();renderResult(data);
+byId('status').textContent='Schnellfrage wurde als Chat gespeichert.';
+}catch(error){if(e===epoch&&g===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
+finally{if(e===epoch){setBusy(false);updateQuestionSearch();}}
+}
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; filterExtensions(); showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
@@ -395,6 +443,13 @@ function exportChat() { if (!selectedResult) return; const data = selectedResult
 byId('login-form').addEventListener('submit', login); byId('registration-toggle').addEventListener('click', () => setRegistration(!registering)); byId('logoutBtn').addEventListener('click', logout); byId('workspace').addEventListener('change', selectWorkspace);
 byId('composer').addEventListener('submit', runTank); byId('goal').addEventListener('input', () => { byId('runBtn').disabled = busy || !byId('goal').value.trim(); });
 byId('goal').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId('composer').requestSubmit(); } });
+byId('question-search-open').addEventListener('click', openQuestionSearch);
+byId('question-search-input').addEventListener('input', ()=>{quickReceipt=null;quickGeneration++;byId('question-search-answer').textContent='';byId('question-search-result').hidden=true;byId('question-search-status').textContent='';updateQuestionSearch();});
+byId('question-search-chat').addEventListener('click', askQuickQuestion);
+byId('question-search-save').addEventListener('click', saveQuickQuestion);
+byId('question-search-discard').addEventListener('click', ()=>{clearQuestionSearch();byId('question-search-dialog').close();});
+byId('question-search-dialog').addEventListener('close', clearQuestionSearch);
+byId('question-search-web').addEventListener('click', event=>{if(!currentUser||busy||byId('question-search-web').hidden){event.preventDefault();return;} setTimeout(()=>{clearQuestionSearch();byId('question-search-dialog').close();},0);});
 byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEventListener('click', exportChat);
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
