@@ -263,3 +263,31 @@ def test_free_key_has_shared_persistent_minute_and_day_limits(monkeypatch, tmp_p
             reopened.close()
     finally:
         app.close()
+
+
+def test_quick_question_is_not_saved_until_explicit_promotion(monkeypatch, tmp_path, fake_openrouter):
+    _setup_free(monkeypatch, tmp_path)
+    with serving(None) as (_, base):
+        client = Client(base)
+        status, _, login = client.post("/api/auth/login", {
+            "email": "free-owner@example.test",
+            "password": "Safe-free-test-password-123",
+        })
+        assert status == 200
+        csrf = login["csrf_token"]
+        status, _, quick = client.post("/api/chat", {"message": "Nur kurz", "temporary": True}, csrf=csrf)
+        assert status == 200, quick
+        assert quick["final_answer"]
+        assert client.get("/api/history")[2] == []
+        assert len(fake_openrouter.calls) == 1
+        status, _, rejected = client.post("/api/chat/save-quick", {"receipt": quick["receipt"] + "x"}, csrf=csrf)
+        assert status == 409
+        assert client.get("/api/history")[2] == []
+        for _ in range(2):
+            status, _, saved = client.post("/api/chat/save-quick", {"receipt": quick["receipt"]}, csrf=csrf)
+            assert status == 200, saved
+            assert saved["run_id"] == quick["run_id"]
+            assert "receipt" not in saved
+        history = client.get("/api/history")[2]
+        assert len(history) == 1 and history[0]["goal"] == "Nur kurz"
+        assert len(fake_openrouter.calls) == 1
