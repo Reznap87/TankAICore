@@ -208,7 +208,9 @@ let calendarBusy=false, calendarGeneration=0;
 let cfBusy=false, cfGeneration=0;
 let notionBusy=false, notionGeneration=0;
 let dropboxBusy=false, dropboxGeneration=0;
+let onedriveBusy=false, onedriveGeneration=0;
 function resetConnections() {
+onedriveGeneration++;onedriveBusy=false;byId('onedrive-status').textContent='Status noch nicht geprüft.';byId('onedrive-connect').disabled=true;byId('onedrive-disconnect').hidden=true;byId('onedrive-files').hidden=true;byId('onedrive-refresh').disabled=false;byId('onedrive-file-list').replaceChildren();
 dropboxGeneration++;dropboxBusy=false;byId('dropbox-status').textContent='Status noch nicht geprüft.';byId('dropbox-connect').disabled=true;byId('dropbox-disconnect').hidden=true;byId('dropbox-files').hidden=true;byId('dropbox-refresh').disabled=false;byId('dropbox-file-list').replaceChildren();
 notionGeneration++;notionBusy=false;byId('notion-status').textContent='Status noch nicht geprüft.';byId('notion-connect').disabled=true;byId('notion-disconnect').hidden=true;byId('notion-pages').hidden=true;byId('notion-refresh').disabled=false;byId('notion-page-list').replaceChildren();
 cfGeneration++;cfBusy=false;byId('cf-status').textContent='Status noch nicht geprüft.';byId('cf-connect').disabled=true;byId('cf-disconnect').hidden=true;byId('cf-workers').hidden=true;byId('cf-worker-list').replaceChildren();
@@ -362,6 +364,24 @@ if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',
 }catch(error){if(e===epoch&&g===dropboxGeneration){byId('dropbox-status').textContent=String(error.message||error);byId('dropbox-file-list').replaceChildren();byId('dropbox-files').hidden=true;byId('dropbox-disconnect').disabled=false;}}
 finally{if(e===epoch&&g===dropboxGeneration){dropboxBusy=false;byId('dropbox-refresh').disabled=false;}}
 }
+async function onedriveAction(action) {
+if(!currentUser||onedriveBusy)return;
+const e=epoch,g=++onedriveGeneration;onedriveBusy=true;
+for(const id of ['onedrive-connect','onedrive-disconnect','onedrive-files','onedrive-refresh'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/onedrive/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==onedriveGeneration)return;
+const d=data.onedrive,status=d?.status;
+byId('onedrive-connect').disabled=status!=='disconnected';
+byId('onedrive-disconnect').hidden=status!=='connected';byId('onedrive-files').hidden=status!=='connected';
+byId('onedrive-disconnect').disabled=false;byId('onedrive-files').disabled=false;
+byId('onedrive-status').textContent=status==='connected'?'Verbunden · Dateimetadaten':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=byId('onedrive-file-list');
+if(status!=='connected'||action==='files')root.replaceChildren();
+if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',String(item.name)+' · '+(item.kind==='folder'?'Ordner':'Datei')));if(!root.children.length)root.append(element('p','muted','Keine freigegebenen Dateien gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Einträge werden angezeigt.'));}
+}catch(error){if(e===epoch&&g===onedriveGeneration){byId('onedrive-status').textContent=String(error.message||error);byId('onedrive-file-list').replaceChildren();byId('onedrive-files').hidden=true;byId('onedrive-disconnect').disabled=false;}}
+finally{if(e===epoch&&g===onedriveGeneration){onedriveBusy=false;byId('onedrive-refresh').disabled=false;}}
+}
 const SKILLS=Object.freeze({
 code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
 research:'Trenne gesicherte Fakten, Annahmen und offene Recherchefragen. Erfinde keine Quellen oder ausgeführten Websuchen.',
@@ -446,6 +466,10 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+byId('onedrive-refresh').addEventListener('click',()=>onedriveAction(''));
+byId('onedrive-connect').addEventListener('click',()=>onedriveAction('start'));
+byId('onedrive-disconnect').addEventListener('click',()=>onedriveAction('disconnect'));
+byId('onedrive-files').addEventListener('click',()=>onedriveAction('files'));
 byId('dropbox-refresh').addEventListener('click',()=>dropboxAction(''));
 byId('dropbox-connect').addEventListener('click',()=>dropboxAction('start'));
 byId('dropbox-disconnect').addEventListener('click',()=>dropboxAction('disconnect'));
