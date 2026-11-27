@@ -370,57 +370,50 @@ function resetExtensionTools(){
 byId('extension-search').value='';byId('extension-category').value='all';
 byId('skill-status').textContent='';byId('json-tool-input').value='';byId('json-tool-output').textContent='';byId('json-tool-status').textContent='';byId('unit-value').value='';byId('unit-result').textContent='';
 }
-function updateQuestionSearch() {
-const query=byId('question-search-input').value.trim(), link=byId('question-search-web');
-const valid=!!query && query.length<=2000 && !!currentUser && !busy;
-byId('question-search-chat').disabled=!valid; link.hidden=!valid;
-byId('question-search-save').disabled=busy||!quickReceipt;
-byId('question-search-input').disabled=busy;
-link.setAttribute('href',valid?'https://duckduckgo.com/?q='+encodeURIComponent(query):'#');
+function updateQuestionSearch(){
+const q=byId('question-search-input').value.trim(),valid=!!q&&q.length<=2000&&!!currentUser&&!busy,link=byId('question-search-web');
+byId('question-search-chat').disabled=!valid;link.hidden=!valid;
+byId('question-search-save').disabled=busy||!quickReceipt;byId('question-search-input').disabled=busy;
+link.setAttribute('href',valid?'https://duckduckgo.com/?q='+encodeURIComponent(q):'#');
 }
-function clearQuestionSearch() {
-quickGeneration++; quickReceipt=null;
-byId('question-search-input').value='';
-byId('question-search-status').textContent='';
-byId('question-search-answer').textContent='';
-byId('question-search-result').hidden=true;
+function clearQuestionSearch(){
+quickGeneration++;quickReceipt=null;
+byId('question-search-input').value='';byId('question-search-status').textContent='';
+byId('question-search-answer').textContent='';byId('question-search-result').hidden=true;
 updateQuestionSearch();
 }
-function openQuestionSearch() {
-if(!currentUser||busy)return;
-clearQuestionSearch(); showDialog('question-search-dialog'); byId('question-search-input').focus();
+function openQuestionSearch(){
+if(!currentUser||busy)return;clearQuestionSearch();
+showDialog('question-search-dialog');byId('question-search-input').focus();
 }
-async function askQuickQuestion() {
+async function askQuickQuestion(){
 if(!currentUser||busy)return;
-const query=byId('question-search-input').value.trim();
-if(!query||query.length>2000)return;
-quickReceipt=null; const generation=++quickGeneration, requestEpoch=epoch;
-byId('question-search-answer').textContent=''; byId('question-search-result').hidden=true;
-setBusy(true); updateQuestionSearch();
-byId('question-search-status').textContent='TankAI beantwortet die Schnellfrage …';
-try {
-const data=await jsonFetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:query,temporary:true})});
-if(requestEpoch!==epoch||generation!==quickGeneration)return;
-if(!sameWs(data)||!providerIdentityVerified(data,false)||typeof data.receipt!=='string'||typeof data.final_answer!=='string'||data.goal!==query)throw new Error('Schnellantwort nicht bestätigt');
-quickReceipt=data.receipt; byId('question-search-answer').textContent=data.final_answer;
-byId('question-search-result').hidden=false; byId('question-search-status').textContent='Nicht im Chatverlauf gespeichert.';
-}catch(error){if(requestEpoch===epoch&&generation===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
-finally{if(requestEpoch===epoch){setBusy(false);updateQuestionSearch();}}
+const q=byId('question-search-input').value.trim();if(!q||q.length>2000)return;
+quickReceipt=null;const g=++quickGeneration,e=epoch;
+byId('question-search-answer').textContent='';byId('question-search-result').hidden=true;
+setBusy(true);updateQuestionSearch();byId('question-search-status').textContent='TankAI beantwortet die Schnellfrage …';
+try{
+const data=await jsonFetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:q,temporary:true})});
+if(e!==epoch||g!==quickGeneration)return;
+if(!sameWs(data)||!providerIdentityVerified(data,false)||typeof data.receipt!=='string'||typeof data.final_answer!=='string'||data.goal!==q)throw Error('Schnellantwort nicht bestätigt');
+quickReceipt=data.receipt;byId('question-search-answer').textContent=data.final_answer;byId('question-search-result').hidden=false;
+byId('question-search-status').textContent='Nicht im Chatverlauf gespeichert.';
+}catch(error){if(e===epoch&&g===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
+finally{if(e===epoch){setBusy(false);updateQuestionSearch();}}
 }
-async function saveQuickQuestion() {
+async function saveQuickQuestion(){
 if(!currentUser||busy||!quickReceipt)return;
 if(byId('goal').value.trim()){byId('question-search-status').textContent='Im Hauptchat ist noch ein ungesendeter Entwurf. Sende oder entferne ihn zuerst.';return;}
-const requestEpoch=epoch,generation=quickGeneration,receipt=quickReceipt;
-setBusy(true);updateQuestionSearch();
+const e=epoch,g=quickGeneration,receipt=quickReceipt;setBusy(true);updateQuestionSearch();
 try{
 const data=await jsonFetch('/api/chat/save-quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receipt})});
-if(requestEpoch!==epoch||generation!==quickGeneration)return;
-if(!sameWs(data)||!providerIdentityVerified(data,false)||!await loadHistory(data))throw new Error('Speicherung nicht bestätigt');
-if(requestEpoch!==epoch||generation!==quickGeneration)return;
+if(e!==epoch||g!==quickGeneration)return;
+if(!sameWs(data)||!providerIdentityVerified(data,false)||!await loadHistory(data))throw Error('Speicherung nicht bestätigt');
+if(e!==epoch||g!==quickGeneration)return;
 clearQuestionSearch();byId('question-search-dialog').close();renderResult(data);
 byId('status').textContent='Schnellfrage wurde als Chat gespeichert.';
-}catch(error){if(requestEpoch===epoch&&generation===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
-finally{if(requestEpoch===epoch){setBusy(false);updateQuestionSearch();}}
+}catch(error){if(e===epoch&&g===quickGeneration)byId('question-search-status').textContent=String(error.message||error);}
+finally{if(e===epoch){setBusy(false);updateQuestionSearch();}}
 }
 function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; filterExtensions(); showDialog('plugins-dialog'); }
 function analyzeDraft() {
