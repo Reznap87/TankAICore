@@ -202,21 +202,25 @@ function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId(
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
 let githubBusy=false, githubGeneration=0;
-let driveBusy=false, driveGeneration=0;
-let gmailBusy=false, gmailGeneration=0;
-let calendarBusy=false, calendarGeneration=0;
-let cfBusy=false, cfGeneration=0;
-let notionBusy=false, notionGeneration=0;
-let dropboxBusy=false, dropboxGeneration=0;
-let onedriveBusy=false, onedriveGeneration=0;
-function resetConnections() {
-onedriveGeneration++;onedriveBusy=false;byId('onedrive-status').textContent='Status noch nicht geprüft.';byId('onedrive-connect').disabled=true;byId('onedrive-disconnect').hidden=true;byId('onedrive-files').hidden=true;byId('onedrive-refresh').disabled=false;byId('onedrive-file-list').replaceChildren();
-dropboxGeneration++;dropboxBusy=false;byId('dropbox-status').textContent='Status noch nicht geprüft.';byId('dropbox-connect').disabled=true;byId('dropbox-disconnect').hidden=true;byId('dropbox-files').hidden=true;byId('dropbox-refresh').disabled=false;byId('dropbox-file-list').replaceChildren();
-notionGeneration++;notionBusy=false;byId('notion-status').textContent='Status noch nicht geprüft.';byId('notion-connect').disabled=true;byId('notion-disconnect').hidden=true;byId('notion-pages').hidden=true;byId('notion-refresh').disabled=false;byId('notion-page-list').replaceChildren();
-cfGeneration++;cfBusy=false;byId('cf-status').textContent='Status noch nicht geprüft.';byId('cf-connect').disabled=true;byId('cf-disconnect').hidden=true;byId('cf-workers').hidden=true;byId('cf-worker-list').replaceChildren();
-calendarGeneration++;calendarBusy=false;byId('calendar-status').textContent='Status noch nicht geprüft.';byId('calendar-connect').disabled=true;byId('calendar-authorize').hidden=true;byId('calendar-authorize').removeAttribute?.('href');byId('calendar-disconnect').hidden=true;byId('calendar-events').hidden=true;byId('calendar-event-list').replaceChildren();
-gmailGeneration++;gmailBusy=false;byId('gmail-status').textContent='Status noch nicht geprüft.';byId('gmail-connect').disabled=true;byId('gmail-authorize').hidden=true;byId('gmail-authorize').removeAttribute?.('href');byId('gmail-disconnect').hidden=true;byId('gmail-messages').hidden=true;byId('gmail-message-list').replaceChildren();
-driveGeneration++;driveBusy=false;byId('drive-status').textContent='Status noch nicht geprüft.';byId('drive-connect').disabled=true;byId('drive-authorize').hidden=true;byId('drive-authorize').removeAttribute?.('href');byId('drive-disconnect').hidden=true;byId('drive-files').hidden=true;byId('drive-file-list').replaceChildren();
+const connectorUI={
+drive:{api:'google',key:'google_drive',read:'files',list:'file-list',oauth:true,label:'Dateimetadaten',format:i=>String(i.name)},
+gmail:{read:'messages',list:'message-list',oauth:true,label:'Nachrichtenmetadaten',format:i=>[i.subject||'(Ohne Betreff)',i.from,i.date].filter(Boolean).join(' · ')},
+calendar:{read:'events',list:'event-list',oauth:true,label:'Kalendertermine',format:i=>[i.title||'(Ohne Titel)',i.start,i.end,i.all_day?'Ganztägig':''].filter(Boolean).join(' · ')},
+cf:{api:'cloudflare',key:'cloudflare',read:'workers',list:'worker-list',label:'Worker-Lesezugriff',format:i=>[i.name,i.modified_on].filter(Boolean).join(' · ')},
+notion:{read:'pages',list:'page-list',label:'Seiten-Lesezugriff',format:i=>String(i.title)},
+dropbox:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem},
+onedrive:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem}
+};
+function formatFileItem(i){return String(i.name)+' · '+(i.kind==='folder'?'Ordner':'Datei');}
+const connectorState=Object.fromEntries(Object.keys(connectorUI).map(k=>[k,{busy:false,generation:0}]));
+function resetConnections(){
+for(const [id,c] of Object.entries(connectorUI)){
+const state=connectorState[id];state.generation++;state.busy=false;
+const el=suffix=>byId(id+'-'+suffix);
+el('status').textContent='Status noch nicht geprüft.';
+el('connect').disabled=true;el('disconnect').hidden=true;el(c.read).hidden=true;el('refresh').disabled=false;el(c.list).replaceChildren();
+if(c.oauth){el('authorize').hidden=true;el('authorize').removeAttribute?.('href');}
+}
 githubGeneration++;githubBusy=false;
 byId('github-connection-status').textContent='Status noch nicht geprüft.';
 byId('github-connect').disabled=true;byId('github-device').hidden=true;
@@ -256,131 +260,39 @@ if(!root.children.length)root.append(element('p','muted','Keine öffentlichen Re
 }catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=true;}}
 finally{if(e===epoch&&g===githubGeneration)githubBusy=false;}
 }
-async function driveAction(action) {
-if(!currentUser||driveBusy)return;
-const e=epoch,g=++driveGeneration;driveBusy=true;
-for(const id of ['drive-connect','drive-disconnect','drive-files','drive-refresh'])byId(id).disabled=true;
+async function connectorAction(id,action){
+const c=connectorUI[id],state=connectorState[id];
+if(!currentUser||state.busy||!['','start','disconnect',c.read].includes(action))return;
+const e=epoch,g=++state.generation;state.busy=true;
+const el=suffix=>byId(id+'-'+suffix);
+const current=()=>e===epoch&&g===state.generation;
+for(const name of ['connect','disconnect',c.read,'refresh'])el(name).disabled=true;
 try{
-const data=await jsonFetch(action?'/api/connections/google/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
-if(e!==epoch||g!==driveGeneration)return;
-const d=data.google_drive,status=d?.status;
-byId('drive-connect').disabled=status!=='disconnected';byId('drive-disconnect').hidden=!['pending','connected'].includes(status);
-byId('drive-files').hidden=status!=='connected';byId('drive-disconnect').disabled=false;byId('drive-files').disabled=false;
-const link=byId('drive-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
-if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
-byId('drive-status').textContent=status==='connected'?'Verbunden · Dateimetadaten':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
-const root=byId('drive-file-list');if(status!=='connected'||action==='files')root.replaceChildren();
-if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',String(item.name)));if(!root.children.length)root.append(element('p','muted','Keine Dateien gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Dateien werden angezeigt.'));}
-}catch(error){if(e===epoch&&g===driveGeneration){byId('drive-status').textContent=String(error.message||error);byId('drive-authorize').hidden=true;byId('drive-disconnect').disabled=false;}}
-finally{if(e===epoch&&g===driveGeneration){driveBusy=false;byId('drive-refresh').disabled=false;}}
+const data=await jsonFetch(action?'/api/connections/'+(c.api||id)+'/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(!current())return;
+const result=data[c.key||id],status=result?.status;
+el('connect').disabled=status!=='disconnected';
+el('disconnect').hidden=!['pending','connected'].includes(status);
+el(c.read).hidden=status!=='connected';
+el('disconnect').disabled=false;el(c.read).disabled=false;
+if(c.oauth){
+const link=el('authorize');
+if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof result.authorization_url==='string'&&result.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=result.authorization_url;link.hidden=false;}
 }
-async function gmailAction(action) {
-if(!currentUser||gmailBusy)return;
-const e=epoch,g=++gmailGeneration;gmailBusy=true;
-for(const id of ['gmail-connect','gmail-disconnect','gmail-messages','gmail-refresh'])byId(id).disabled=true;
-try{
-const data=await jsonFetch(action?'/api/connections/gmail/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
-if(e!==epoch||g!==gmailGeneration)return;
-const d=data.gmail,status=d?.status;
-byId('gmail-connect').disabled=status!=='disconnected';byId('gmail-disconnect').hidden=!['pending','connected'].includes(status);
-byId('gmail-messages').hidden=status!=='connected';byId('gmail-disconnect').disabled=false;byId('gmail-messages').disabled=false;
-const link=byId('gmail-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
-if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
-byId('gmail-status').textContent=status==='connected'?'Verbunden · Nachrichtenmetadaten':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
-const root=byId('gmail-message-list');if(status!=='connected'||action==='messages')root.replaceChildren();
-if(action==='messages'){for(const item of (d.messages||[]))root.append(element('p','',[item.subject||'(Ohne Betreff)',item.from||'',item.date||''].join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine Nachrichten gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten zehn Nachrichten werden angezeigt.'));}
-}catch(error){if(e===epoch&&g===gmailGeneration){byId('gmail-status').textContent=String(error.message||error);byId('gmail-authorize').hidden=true;byId('gmail-disconnect').disabled=false;}}
-finally{if(e===epoch&&g===gmailGeneration){gmailBusy=false;byId('gmail-refresh').disabled=false;}}
+el('status').textContent=status==='connected'?'Verbunden · '+c.label:status==='pending'?'Freigabe erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=el(c.list);
+if(status!=='connected'||action===c.read)root.replaceChildren();
+if(action===c.read){
+for(const item of (result[c.read]||[]))root.append(element('p','',c.format(item)));
+if(!root.children.length)root.append(element('p','muted','Keine Einträge gefunden.'));
+if(result.has_more||result.truncated)root.append(element('p','muted','Weitere Einträge verfügbar; Anzeige begrenzt.'));
 }
-async function calendarAction(action) {
-if(!currentUser||calendarBusy)return;
-const e=epoch,g=++calendarGeneration;calendarBusy=true;
-for(const id of ['calendar-connect','calendar-disconnect','calendar-events','calendar-refresh'])byId(id).disabled=true;
-try{
-const data=await jsonFetch(action?'/api/connections/calendar/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
-if(e!==epoch||g!==calendarGeneration)return;
-const d=data.calendar,status=d?.status;
-byId('calendar-connect').disabled=status!=='disconnected';byId('calendar-disconnect').hidden=!['pending','connected'].includes(status);
-byId('calendar-events').hidden=status!=='connected';byId('calendar-disconnect').disabled=false;byId('calendar-events').disabled=false;
-const link=byId('calendar-authorize');if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
-if(action==='start'&&typeof d.authorization_url==='string'&&d.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=d.authorization_url;link.hidden=false;}
-byId('calendar-status').textContent=status==='connected'?'Verbunden · Kalendertermine':status==='pending'?'Freigabe bei Google erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Google OAuth noch nicht eingerichtet.':'Nicht verfügbar';
-const root=byId('calendar-event-list');if(status!=='connected'||action==='events')root.replaceChildren();
-if(action==='events'){for(const item of (d.events||[]))root.append(element('p','',[item.title||'(Ohne Titel)',item.start||'',item.end||'',item.all_day?'Ganztägig':''].filter(Boolean).join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine kommenden Termine gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 20 Termine werden angezeigt.'));}
-}catch(error){if(e===epoch&&g===calendarGeneration){byId('calendar-status').textContent=String(error.message||error);byId('calendar-authorize').hidden=true;byId('calendar-disconnect').disabled=false;}}
-finally{if(e===epoch&&g===calendarGeneration){calendarBusy=false;byId('calendar-refresh').disabled=false;}}
-}
-async function cfAction(action) {
-if(!currentUser||cfBusy)return;
-const e=epoch,g=++cfGeneration;cfBusy=true;
-for(const id of ['cf-connect','cf-disconnect','cf-workers','cf-refresh'])byId(id).disabled=true;
-try{
-const data=await jsonFetch(action?'/api/connections/cloudflare/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
-if(e!==epoch||g!==cfGeneration)return;
-const d=data.cloudflare,status=d?.status;
-byId('cf-connect').disabled=status!=='disconnected';
-byId('cf-disconnect').hidden=status!=='connected';byId('cf-workers').hidden=status!=='connected';
-byId('cf-disconnect').disabled=false;byId('cf-workers').disabled=false;
-byId('cf-status').textContent=status==='connected'?'Verbunden · Worker-Lesezugriff':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
-const root=byId('cf-worker-list');
-if(status!=='connected'||action==='workers')root.replaceChildren();
-if(action==='workers'){for(const item of (d.workers||[]))root.append(element('p','',[item.name,item.modified_on].filter(Boolean).join(' · ')));if(!root.children.length)root.append(element('p','muted','Keine Worker gefunden.'));if(d.truncated)root.append(element('p','muted','Die ersten 100 Worker werden angezeigt.'));}
-}catch(error){if(e===epoch&&g===cfGeneration){byId('cf-status').textContent=String(error.message||error);byId('cf-worker-list').replaceChildren();byId('cf-workers').hidden=true;byId('cf-disconnect').disabled=false;}}
-finally{if(e===epoch&&g===cfGeneration){cfBusy=false;byId('cf-refresh').disabled=false;}}
-}
-async function notionAction(action) {
-if(!currentUser||notionBusy)return;
-const e=epoch,g=++notionGeneration;notionBusy=true;
-for(const id of ['notion-connect','notion-disconnect','notion-pages','notion-refresh'])byId(id).disabled=true;
-try{
-const data=await jsonFetch(action?'/api/connections/notion/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
-if(e!==epoch||g!==notionGeneration)return;
-const d=data.notion,status=d?.status;
-byId('notion-connect').disabled=status!=='disconnected';
-byId('notion-disconnect').hidden=status!=='connected';byId('notion-pages').hidden=status!=='connected';
-byId('notion-disconnect').disabled=false;byId('notion-pages').disabled=false;
-byId('notion-status').textContent=status==='connected'?'Verbunden · Seiten-Lesezugriff':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
-const root=byId('notion-page-list');
-if(status!=='connected'||action==='pages')root.replaceChildren();
-if(action==='pages'){for(const item of (d.pages||[]))root.append(element('p','',String(item.title)));if(!root.children.length)root.append(element('p','muted','Keine freigegebenen Seiten gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Seiten werden angezeigt.'));}
-}catch(error){if(e===epoch&&g===notionGeneration){byId('notion-status').textContent=String(error.message||error);byId('notion-page-list').replaceChildren();byId('notion-pages').hidden=true;byId('notion-disconnect').disabled=false;}}
-finally{if(e===epoch&&g===notionGeneration){notionBusy=false;byId('notion-refresh').disabled=false;}}
-}
-async function dropboxAction(action) {
-if(!currentUser||dropboxBusy)return;
-const e=epoch,g=++dropboxGeneration;dropboxBusy=true;
-for(const id of ['dropbox-connect','dropbox-disconnect','dropbox-files','dropbox-refresh'])byId(id).disabled=true;
-try{
-const data=await jsonFetch(action?'/api/connections/dropbox/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
-if(e!==epoch||g!==dropboxGeneration)return;
-const d=data.dropbox,status=d?.status;
-byId('dropbox-connect').disabled=status!=='disconnected';
-byId('dropbox-disconnect').hidden=status!=='connected';byId('dropbox-files').hidden=status!=='connected';
-byId('dropbox-disconnect').disabled=false;byId('dropbox-files').disabled=false;
-byId('dropbox-status').textContent=status==='connected'?'Verbunden · Dateimetadaten':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
-const root=byId('dropbox-file-list');
-if(status!=='connected'||action==='files')root.replaceChildren();
-if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',String(item.name)+' · '+(item.kind==='folder'?'Ordner':'Datei')));if(!root.children.length)root.append(element('p','muted','Keine freigegebenen Dateien gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Einträge werden angezeigt.'));}
-}catch(error){if(e===epoch&&g===dropboxGeneration){byId('dropbox-status').textContent=String(error.message||error);byId('dropbox-file-list').replaceChildren();byId('dropbox-files').hidden=true;byId('dropbox-disconnect').disabled=false;}}
-finally{if(e===epoch&&g===dropboxGeneration){dropboxBusy=false;byId('dropbox-refresh').disabled=false;}}
-}
-async function onedriveAction(action) {
-if(!currentUser||onedriveBusy)return;
-const e=epoch,g=++onedriveGeneration;onedriveBusy=true;
-for(const id of ['onedrive-connect','onedrive-disconnect','onedrive-files','onedrive-refresh'])byId(id).disabled=true;
-try{
-const data=await jsonFetch(action?'/api/connections/onedrive/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
-if(e!==epoch||g!==onedriveGeneration)return;
-const d=data.onedrive,status=d?.status;
-byId('onedrive-connect').disabled=status!=='disconnected';
-byId('onedrive-disconnect').hidden=status!=='connected';byId('onedrive-files').hidden=status!=='connected';
-byId('onedrive-disconnect').disabled=false;byId('onedrive-files').disabled=false;
-byId('onedrive-status').textContent=status==='connected'?'Verbunden · Dateimetadaten':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
-const root=byId('onedrive-file-list');
-if(status!=='connected'||action==='files')root.replaceChildren();
-if(action==='files'){for(const item of (d.files||[]))root.append(element('p','',String(item.name)+' · '+(item.kind==='folder'?'Ordner':'Datei')));if(!root.children.length)root.append(element('p','muted','Keine freigegebenen Dateien gefunden.'));if(d.has_more)root.append(element('p','muted','Die ersten 30 Einträge werden angezeigt.'));}
-}catch(error){if(e===epoch&&g===onedriveGeneration){byId('onedrive-status').textContent=String(error.message||error);byId('onedrive-file-list').replaceChildren();byId('onedrive-files').hidden=true;byId('onedrive-disconnect').disabled=false;}}
-finally{if(e===epoch&&g===onedriveGeneration){onedriveBusy=false;byId('onedrive-refresh').disabled=false;}}
+}catch(error){if(current()){
+el('status').textContent=String(error.message||error);el(c.list).replaceChildren();el(c.read).hidden=true;el('disconnect').disabled=false;
+if(c.oauth){el('authorize').hidden=true;el('authorize').removeAttribute?.('href');}
+}}
+finally{if(current()){state.busy=false;el('refresh').disabled=false;}}
 }
 const SKILLS=Object.freeze({
 code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
@@ -466,34 +378,9 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
-byId('onedrive-refresh').addEventListener('click',()=>onedriveAction(''));
-byId('onedrive-connect').addEventListener('click',()=>onedriveAction('start'));
-byId('onedrive-disconnect').addEventListener('click',()=>onedriveAction('disconnect'));
-byId('onedrive-files').addEventListener('click',()=>onedriveAction('files'));
-byId('dropbox-refresh').addEventListener('click',()=>dropboxAction(''));
-byId('dropbox-connect').addEventListener('click',()=>dropboxAction('start'));
-byId('dropbox-disconnect').addEventListener('click',()=>dropboxAction('disconnect'));
-byId('dropbox-files').addEventListener('click',()=>dropboxAction('files'));
-byId('notion-refresh').addEventListener('click',()=>notionAction(''));
-byId('notion-connect').addEventListener('click',()=>notionAction('start'));
-byId('notion-disconnect').addEventListener('click',()=>notionAction('disconnect'));
-byId('notion-pages').addEventListener('click',()=>notionAction('pages'));
-byId('cf-refresh').addEventListener('click',()=>cfAction(''));
-byId('cf-connect').addEventListener('click',()=>cfAction('start'));
-byId('cf-disconnect').addEventListener('click',()=>cfAction('disconnect'));
-byId('cf-workers').addEventListener('click',()=>cfAction('workers'));
-byId('calendar-refresh').addEventListener('click',()=>calendarAction(''));
-byId('calendar-connect').addEventListener('click',()=>calendarAction('start'));
-byId('calendar-disconnect').addEventListener('click',()=>calendarAction('disconnect'));
-byId('calendar-events').addEventListener('click',()=>calendarAction('events'));
-byId('gmail-refresh').addEventListener('click',()=>gmailAction(''));
-byId('gmail-connect').addEventListener('click',()=>gmailAction('start'));
-byId('gmail-disconnect').addEventListener('click',()=>gmailAction('disconnect'));
-byId('gmail-messages').addEventListener('click',()=>gmailAction('messages'));
-byId('drive-refresh').addEventListener('click',()=>driveAction(''));
-byId('drive-connect').addEventListener('click',()=>driveAction('start'));
-byId('drive-disconnect').addEventListener('click',()=>driveAction('disconnect'));
-byId('drive-files').addEventListener('click',()=>driveAction('files'));
+for(const [id,c] of Object.entries(connectorUI)){
+for(const [control,action] of [['refresh',''],['connect','start'],['disconnect','disconnect'],[c.read,c.read]])byId(id+'-'+control).addEventListener('click',()=>connectorAction(id,action));
+}
 byId('github-status-refresh').addEventListener('click',()=>githubAction(''));
 byId('github-connect').addEventListener('click',()=>githubAction('start'));
 byId('github-finish').addEventListener('click',()=>githubAction('finish'));
