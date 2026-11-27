@@ -43,6 +43,8 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+resetExtensionTools();
+resetConnections();
 const provider=byId('chat-provider'); if(provider){provider.value=''; provider.hidden=true;}
 historyItems = []; byId('history').replaceChildren(); byId('search-results').replaceChildren(); byId('search-input').value = ''; byId('goal').value = ''; byId('status').textContent = ''; byId('sysInfo').textContent = ''; byId('plugin-result').textContent = '';
 byId('health').textContent = 'Core wird geprüft'; byId('connection-info').dataset.mode = 'unknown'; byId('model-label').textContent = 'Verbindung wird geprüft'; resetResult(); renderHistory();
@@ -199,7 +201,173 @@ function sidebar(open) { if (mobile.matches) { byId('appView').classList.toggle(
 function syncSidebar() { byId('appView').classList.remove('sidebar-open'); byId('main').inert = false; byId('backdrop').hidden = true; const open = !mobile.matches && !byId('appView').classList.contains('sidebar-collapsed'); byId('sidebar').inert = !open; byId('open-sidebar').setAttribute('aria-expanded', String(open)); }
 function showDialog(id) { if (currentUser) byId(id).showModal(); }
 function applyChatSize() { document.documentElement.dataset.chatSize = chatSize; byId('chat-size').value = chatSize; }
-function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; showDialog('plugins-dialog'); }
+let githubBusy=false, githubGeneration=0;
+const connectorUI={
+drive:{api:'google',key:'google_drive',read:'files',list:'file-list',oauth:true,label:'Dateimetadaten',format:i=>String(i.name)},
+gmail:{read:'messages',list:'message-list',oauth:true,label:'Nachrichtenmetadaten',format:i=>[i.subject||'(Ohne Betreff)',i.from,i.date].filter(Boolean).join(' · ')},
+calendar:{read:'events',list:'event-list',oauth:true,label:'Kalendertermine',format:i=>[i.title||'(Ohne Titel)',i.start,i.end,i.all_day?'Ganztägig':''].filter(Boolean).join(' · ')},
+cf:{api:'cloudflare',key:'cloudflare',read:'workers',list:'worker-list',label:'Worker-Lesezugriff',format:i=>[i.name,i.modified_on].filter(Boolean).join(' · ')},
+notion:{read:'pages',list:'page-list',label:'Seiten-Lesezugriff',format:i=>String(i.title)},
+dropbox:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem},
+onedrive:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem},
+slack:{read:'channels',list:'channel-list',label:'Kanalmetadaten',format:i=>'#'+String(i.name)},
+outlook:{read:'messages',list:'message-list',label:'Nachrichtenmetadaten',format:i=>[i.subject||'(Ohne Betreff)',i.from,i.date].filter(Boolean).join(' · ')},
+mcp:{read:'tools',list:'tool-list',label:'Freigegebene Tools',format:i=>[i.name,i.description].filter(Boolean).join(' · ')}
+};
+function formatFileItem(i){return String(i.name)+' · '+(i.kind==='folder'?'Ordner':'Datei');}
+const connectorState=Object.fromEntries(Object.keys(connectorUI).map(k=>[k,{busy:false,generation:0}]));
+function resetConnections(){
+resetMcpPanel();
+for(const [id,c] of Object.entries(connectorUI)){
+const state=connectorState[id];state.generation++;state.busy=false;
+const el=suffix=>byId(id+'-'+suffix);
+el('status').textContent='Status noch nicht geprüft.';
+el('connect').disabled=true;el('disconnect').hidden=true;el(c.read).hidden=true;el('refresh').disabled=false;el(c.list).replaceChildren();
+if(c.oauth){el('authorize').hidden=true;el('authorize').removeAttribute?.('href');}
+}
+githubGeneration++;githubBusy=false;
+byId('github-connection-status').textContent='Status noch nicht geprüft.';
+byId('github-connect').disabled=true;byId('github-device').hidden=true;
+byId('github-device-code').textContent='';byId('github-disconnect').hidden=true;
+byId('github-repositories').hidden=true;byId('github-repository-list').replaceChildren();
+}
+function renderGithub(data) {
+const status=data?.status;
+byId('github-connect').disabled=githubBusy||status!=='disconnected';
+byId('github-device').hidden=status!=='pending'||(!data.user_code&&!byId('github-device-code').textContent);
+if(data.user_code)byId('github-device-code').textContent=String(data.user_code);
+if(status!=='pending')byId('github-device-code').textContent='';
+byId('github-finish').disabled=githubBusy;
+byId('github-disconnect').hidden=!['pending','connected'].includes(status);
+byId('github-disconnect').disabled=githubBusy;
+byId('github-repositories').hidden=status!=='connected';
+byId('github-repositories').disabled=githubBusy;
+byId('github-connection-status').textContent=status==='connected'?'Verbunden: '+String(data.login):status==='pending'?'Freigabe offen'+(data.retry_after?' · frühestens in '+data.retry_after+' Sekunden prüfen':''):status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Einrichtung erforderlich: GitHub-OAuth-App fehlt.':'Für diesen Zugang nicht verfügbar.';
+if(status!=='connected')byId('github-repository-list').replaceChildren();
+}
+async function githubAction(action) {
+if(!currentUser||githubBusy)return;
+const e=epoch,g=++githubGeneration;githubBusy=true;
+for(const id of ['github-connect','github-finish','github-disconnect','github-repositories'])byId(id).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/github/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(e!==epoch||g!==githubGeneration)return;
+githubBusy=false;renderGithub(data.github);
+if(action==='repositories'){
+const root=byId('github-repository-list');root.replaceChildren();
+for(const item of (data.github.repositories||[])){
+if(!/^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/.test(item.url))continue;
+const a=element('a','',item.name);a.href=item.url;a.target='_blank';a.rel='noopener noreferrer';const p=element('p');p.append(a);root.append(p);
+}
+if(!root.children.length)root.append(element('p','muted','Keine öffentlichen Repositorys gefunden.'));
+}
+}catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=true;}}
+finally{if(e===epoch&&g===githubGeneration)githubBusy=false;}
+}
+function resetMcpPanel(){byId('mcp-call-panel').hidden=true;byId('mcp-name').replaceChildren();byId('mcp-arguments').value='{}';byId('mcp-confirm').checked=false;byId('mcp-output').textContent='';byId('mcp-run').disabled=false;}
+async function connectorAction(id,action){
+const c=connectorUI[id],state=connectorState[id];
+if(!currentUser||state.busy||!['','start','disconnect',c.read].includes(action))return;
+if(id==='mcp')resetMcpPanel();
+const e=epoch,g=++state.generation;state.busy=true;
+const el=suffix=>byId(id+'-'+suffix);
+const current=()=>e===epoch&&g===state.generation;
+for(const name of ['connect','disconnect',c.read,'refresh'])el(name).disabled=true;
+try{
+const data=await jsonFetch(action?'/api/connections/'+(c.api||id)+'/'+action:'/api/connections',action?{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}:{});
+if(!current())return;
+const result=data[c.key||id],status=result?.status;
+el('connect').disabled=status!=='disconnected';
+el('disconnect').hidden=!['pending','connected'].includes(status);
+el(c.read).hidden=status!=='connected';
+el('disconnect').disabled=false;el(c.read).disabled=false;
+if(c.oauth){
+const link=el('authorize');
+if(status!=='pending'){link.hidden=true;link.removeAttribute?.('href');}
+if(action==='start'&&typeof result.authorization_url==='string'&&result.authorization_url.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')){link.href=result.authorization_url;link.hidden=false;}
+}
+el('status').textContent=status==='connected'?'Verbunden · '+c.label:status==='pending'?'Freigabe erforderlich':status==='disconnected'?'Nicht verbunden':status==='not_configured'?'Lesezugang noch nicht eingerichtet.':'Nicht verfügbar';
+const root=el(c.list);
+if(status!=='connected'||action===c.read)root.replaceChildren();
+if(action===c.read){
+for(const item of (result[c.read]||[]))root.append(element('p','',c.format(item)));
+if(!root.children.length)root.append(element('p','muted','Keine Einträge gefunden.'));
+if(result.has_more||result.truncated)root.append(element('p','muted','Weitere Einträge verfügbar; Anzeige begrenzt.'));
+if(id==='mcp'&&status==='connected'){const select=byId('mcp-name');for(const item of (result.tools||[])){const option=element('option','',String(item.name));option.value=item.name;select.append(option);}byId('mcp-call-panel').hidden=!select.children.length;}
+}
+}catch(error){if(current()){
+el('status').textContent=String(error.message||error);el(c.list).replaceChildren();el(c.read).hidden=true;el('disconnect').disabled=false;
+if(c.oauth){el('authorize').hidden=true;el('authorize').removeAttribute?.('href');}
+}}
+finally{if(current()){state.busy=false;el('refresh').disabled=false;}}
+}
+async function runMcpTool(){
+const state=connectorState.mcp;
+if(!currentUser||state.busy||byId('mcp-call-panel').hidden||!byId('mcp-confirm').checked)return;
+let args;try{args=JSON.parse(byId('mcp-arguments').value);if(!args||Array.isArray(args)||typeof args!=='object'||byId('mcp-arguments').value.length>4000)throw Error();}catch{byId('mcp-output').textContent='Bitte ein JSON-Objekt eingeben.';return;}
+const name=byId('mcp-name').value,e=epoch,g=++state.generation;
+if(!name)return;
+state.busy=true;byId('mcp-confirm').checked=false;byId('mcp-run').disabled=true;
+byId('mcp-output').textContent='Aufruf läuft …';
+try{
+const data=await jsonFetch('/api/connections/mcp/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,arguments:args,confirmed:true})});
+if(e===epoch&&g===state.generation)byId('mcp-output').textContent=(data.mcp.is_error?'Tool-Fehler: ':'')+String(data.mcp.output||'(Keine Textausgabe)');
+}catch(error){if(e===epoch&&g===state.generation)byId('mcp-output').textContent=String(error.message||error);}
+finally{if(e===epoch&&g===state.generation){state.busy=false;byId('mcp-run').disabled=false;}}
+}
+const SKILLS=Object.freeze({
+code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
+research:'Trenne gesicherte Fakten, Annahmen und offene Recherchefragen. Erfinde keine Quellen oder ausgeführten Websuchen.',
+writing:'Überarbeite Stil, Struktur und Verständlichkeit. Erhalte die ursprüngliche Aussage.',
+data:'Prüfe Datenqualität, Einheiten, Berechnungen und Unsicherheit. Trenne Befunde von Interpretationen.',
+planning:'Erstelle einen priorisierten Plan mit Abhängigkeiten, Meilensteinen und überprüfbaren Ergebnissen.',
+translation:'Übersetze sinngenau, erhalte Fachbegriffe und kennzeichne mehrdeutige Stellen.'
+});
+function filterExtensions(){
+const q=byId('extension-search').value.trim().toLocaleLowerCase('de'), category=byId('extension-category').value||'all';
+let count=0, connectors=0;
+for(const card of document.querySelectorAll('[data-extension-category]')){
+const kind=card.dataset.extensionCategory;
+const match=(category==='all'||category===kind)&&(!q||card.textContent.toLocaleLowerCase('de').includes(q));
+card.hidden=!match;if(match){count++;if(kind==='connector')connectors++;}
+}
+byId('connector-section').hidden=connectors===0;
+byId('extension-count').textContent=count+' passende Bereiche';
+}
+function applySkill(){
+if(!currentUser||busy)return;
+const name=byId('skill-select').value, rule=Object.hasOwn(SKILLS,name)?SKILLS[name]:null;
+if(!rule)return;
+const goal=byId('goal'), marker='\n\nArbeitsweise: '+rule;
+if(!goal.value.trim()){byId('skill-status').textContent='Schreibe zuerst eine Aufgabe in den Chat.';return;}
+if(!goal.value.endsWith(marker)){
+if(goal.value.length+marker.length>20000){byId('skill-status').textContent='Der Entwurf ist zu lang.';return;}
+goal.value+=marker;
+}
+byId('skill-status').textContent='Skill hinzugefügt. Noch nichts gesendet.';setBusy(false);
+}
+function formatJsonTool(){
+if(!currentUser||busy)return;
+const input=byId('json-tool-input').value, out=byId('json-tool-output');
+out.textContent='';
+if(input.length>20000||!input.trim()){byId('json-tool-status').textContent='JSON eingeben (maximal 20.000 Zeichen).';return;}
+try{const formatted=JSON.stringify(JSON.parse(input),null,2);if(formatted.length>80000)throw new Error();out.textContent=formatted;byId('json-tool-status').textContent='Gültiges JSON.';}
+catch(error){byId('json-tool-status').textContent='Ungültiges oder zu großes JSON.';}
+}
+function calculateUnit(){
+if(!currentUser||busy)return;
+const raw=byId('unit-value').value.trim();
+const value=Number(raw);
+const units={'km-mi':[1/1.609344,'mi'],'mi-km':[1.609344,'km'],'kg-lb':[1/0.45359237,'lb'],'lb-kg':[0.45359237,'kg'],'h-min':[60,'min'],'min-h':[1/60,'h']};
+const kind=byId('unit-conversion').value, conversion=Object.hasOwn(units,kind)?units[kind]:null;
+const result=conversion?value*conversion[0]:NaN;
+byId('unit-result').textContent=raw&&Number.isFinite(result)?new Intl.NumberFormat('de-DE',{maximumSignificantDigits:12}).format(result)+' '+conversion[1]:'Bitte einen gültigen Wert eingeben.';
+}
+function resetExtensionTools(){
+byId('extension-search').value='';byId('extension-category').value='all';
+byId('skill-status').textContent='';byId('json-tool-input').value='';byId('json-tool-output').textContent='';byId('json-tool-status').textContent='';byId('unit-value').value='';byId('unit-result').textContent='';
+}
+function openPlugins() { if (!currentUser) return; byId('plugin-result').textContent = ''; filterExtensions(); showDialog('plugins-dialog'); }
 function analyzeDraft() {
 if (!currentUser || busy) return;
 const value = byId('goal').value; const trimmed = value.trim();
@@ -231,6 +399,20 @@ byId('new-chat').addEventListener('click', newChat); byId('export-chat').addEven
 byId('open-sidebar').addEventListener('click', () => sidebar(true)); byId('close-sidebar').addEventListener('click', () => sidebar(false)); byId('backdrop').addEventListener('click', () => sidebar(false));
 byId('search-open').addEventListener('click', () => { renderSearch(); showDialog('search-dialog'); byId('search-input').focus(); }); byId('search-input').addEventListener('input', renderSearch);
 byId('settings-open').addEventListener('click', () => showDialog('settings-dialog')); byId('connection-info').addEventListener('click', () => showDialog('settings-dialog')); byId('task-options').addEventListener('click', () => showDialog('settings-dialog'));
+for(const [id,c] of Object.entries(connectorUI)){
+for(const [control,action] of [['refresh',''],['connect','start'],['disconnect','disconnect'],[c.read,c.read]])byId(id+'-'+control).addEventListener('click',()=>connectorAction(id,action));
+}
+byId('mcp-run').addEventListener('click',runMcpTool);
+byId('github-status-refresh').addEventListener('click',()=>githubAction(''));
+byId('github-connect').addEventListener('click',()=>githubAction('start'));
+byId('github-finish').addEventListener('click',()=>githubAction('finish'));
+byId('github-disconnect').addEventListener('click',()=>githubAction('disconnect'));
+byId('github-repositories').addEventListener('click',()=>githubAction('repositories'));
+byId('extension-search').addEventListener('input',filterExtensions);
+byId('extension-category').addEventListener('change',filterExtensions);
+byId('skill-apply').addEventListener('click',applySkill);
+byId('json-tool-format').addEventListener('click',formatJsonTool);
+byId('unit-calculate').addEventListener('click',calculateUnit);
 byId('plugins-open').addEventListener('click', openPlugins); byId('composer-plugins').addEventListener('click', openPlugins);
 byId('plugin-analyze').addEventListener('click', analyzeDraft); byId('plugin-structure').addEventListener('click', structureDraft);
 byId('chat-size').addEventListener('change', () => { const value = byId('chat-size').value; if (!['standard', 'large'].includes(value)) return; chatSize = value; applyChatSize(); try { localStorage.setItem('tankai.ui.chatSize', chatSize); } catch (error) { toast('Textgröße kann nicht dauerhaft gespeichert werden.'); } });
