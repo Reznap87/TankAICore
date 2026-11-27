@@ -211,11 +211,13 @@ notion:{read:'pages',list:'page-list',label:'Seiten-Lesezugriff',format:i=>Strin
 dropbox:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem},
 onedrive:{read:'files',list:'file-list',label:'Dateimetadaten',format:formatFileItem},
 slack:{read:'channels',list:'channel-list',label:'Kanalmetadaten',format:i=>'#'+String(i.name)},
-outlook:{read:'messages',list:'message-list',label:'Nachrichtenmetadaten',format:i=>[i.subject||'(Ohne Betreff)',i.from,i.date].filter(Boolean).join(' · ')}
+outlook:{read:'messages',list:'message-list',label:'Nachrichtenmetadaten',format:i=>[i.subject||'(Ohne Betreff)',i.from,i.date].filter(Boolean).join(' · ')},
+mcp:{read:'tools',list:'tool-list',label:'Freigegebene Tools',format:i=>[i.name,i.description].filter(Boolean).join(' · ')}
 };
 function formatFileItem(i){return String(i.name)+' · '+(i.kind==='folder'?'Ordner':'Datei');}
 const connectorState=Object.fromEntries(Object.keys(connectorUI).map(k=>[k,{busy:false,generation:0}]));
 function resetConnections(){
+resetMcpPanel();
 for(const [id,c] of Object.entries(connectorUI)){
 const state=connectorState[id];state.generation++;state.busy=false;
 const el=suffix=>byId(id+'-'+suffix);
@@ -262,9 +264,11 @@ if(!root.children.length)root.append(element('p','muted','Keine öffentlichen Re
 }catch(error){if(e===epoch&&g===githubGeneration){githubBusy=false;byId('github-connection-status').textContent=String(error.message||error);for(const id of ['github-finish','github-disconnect','github-repositories'])byId(id).disabled=false;byId('github-connect').disabled=true;}}
 finally{if(e===epoch&&g===githubGeneration)githubBusy=false;}
 }
+function resetMcpPanel(){byId('mcp-call-panel').hidden=true;byId('mcp-name').replaceChildren();byId('mcp-arguments').value='{}';byId('mcp-confirm').checked=false;byId('mcp-output').textContent='';byId('mcp-run').disabled=false;}
 async function connectorAction(id,action){
 const c=connectorUI[id],state=connectorState[id];
 if(!currentUser||state.busy||!['','start','disconnect',c.read].includes(action))return;
+if(id==='mcp')resetMcpPanel();
 const e=epoch,g=++state.generation;state.busy=true;
 const el=suffix=>byId(id+'-'+suffix);
 const current=()=>e===epoch&&g===state.generation;
@@ -289,12 +293,27 @@ if(action===c.read){
 for(const item of (result[c.read]||[]))root.append(element('p','',c.format(item)));
 if(!root.children.length)root.append(element('p','muted','Keine Einträge gefunden.'));
 if(result.has_more||result.truncated)root.append(element('p','muted','Weitere Einträge verfügbar; Anzeige begrenzt.'));
+if(id==='mcp'&&status==='connected'){const select=byId('mcp-name');for(const item of (result.tools||[])){const option=element('option','',String(item.name));option.value=item.name;select.append(option);}byId('mcp-call-panel').hidden=!select.children.length;}
 }
 }catch(error){if(current()){
 el('status').textContent=String(error.message||error);el(c.list).replaceChildren();el(c.read).hidden=true;el('disconnect').disabled=false;
 if(c.oauth){el('authorize').hidden=true;el('authorize').removeAttribute?.('href');}
 }}
 finally{if(current()){state.busy=false;el('refresh').disabled=false;}}
+}
+async function runMcpTool(){
+const state=connectorState.mcp;
+if(!currentUser||state.busy||byId('mcp-call-panel').hidden||!byId('mcp-confirm').checked)return;
+let args;try{args=JSON.parse(byId('mcp-arguments').value);if(!args||Array.isArray(args)||typeof args!=='object'||byId('mcp-arguments').value.length>4000)throw Error();}catch{byId('mcp-output').textContent='Bitte ein JSON-Objekt eingeben.';return;}
+const name=byId('mcp-name').value,e=epoch,g=++state.generation;
+if(!name)return;
+state.busy=true;byId('mcp-confirm').checked=false;byId('mcp-run').disabled=true;
+byId('mcp-output').textContent='Aufruf läuft …';
+try{
+const data=await jsonFetch('/api/connections/mcp/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,arguments:args,confirmed:true})});
+if(e===epoch&&g===state.generation)byId('mcp-output').textContent=(data.mcp.is_error?'Tool-Fehler: ':'')+String(data.mcp.output||'(Keine Textausgabe)');
+}catch(error){if(e===epoch&&g===state.generation)byId('mcp-output').textContent=String(error.message||error);}
+finally{if(e===epoch&&g===state.generation){state.busy=false;byId('mcp-run').disabled=false;}}
 }
 const SKILLS=Object.freeze({
 code:'Analysiere die Anforderungen, liefere nachvollziehbaren Code, nenne Tests und offene Annahmen.',
@@ -383,6 +402,7 @@ byId('settings-open').addEventListener('click', () => showDialog('settings-dialo
 for(const [id,c] of Object.entries(connectorUI)){
 for(const [control,action] of [['refresh',''],['connect','start'],['disconnect','disconnect'],[c.read,c.read]])byId(id+'-'+control).addEventListener('click',()=>connectorAction(id,action));
 }
+byId('mcp-run').addEventListener('click',runMcpTool);
 byId('github-status-refresh').addEventListener('click',()=>githubAction(''));
 byId('github-connect').addEventListener('click',()=>githubAction('start'));
 byId('github-finish').addEventListener('click',()=>githubAction('finish'));
