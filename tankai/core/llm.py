@@ -723,7 +723,7 @@ class OpenRouterFreeLLM(OpenAILLM):
             model=selected,
             api_key=api_key or _require_env("OPENROUTER_API_KEY"),
             base_url=_OPENROUTER_FREE_URL,
-            max_tokens=512,
+            max_tokens=2048,
             timeout_seconds=30.0,
             max_retries=0,
         )
@@ -733,7 +733,7 @@ class OpenRouterFreeLLM(OpenAILLM):
             raise DispatchDenied("OpenRouter-Free requires explicit server request admission")
         tokens = kwargs.pop("max_tokens", self.max_tokens)
         temperature = kwargs.pop("temperature", self.temperature)
-        if kwargs or type(tokens) is not int or not 1 <= tokens <= 512:
+        if kwargs or type(tokens) is not int or not 1 <= tokens <= 2048:
             raise DispatchDenied("invalid free model request parameters")
         messages = []
         if system:
