@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tankai import __version__
+from tankai import TankAI, __version__
 from tankai.core.llm import (
     LLMRateLimitExceeded,
     OpenRouterFreeLLM,
@@ -3096,9 +3096,16 @@ location.replace('/?connection=google');
         data = self._read_json()
         if data is None:
             return
-        if pilot is not None and set(data) - {"goal", "goal_description", "definition_of_done", "parallel"}:
-            self._json({"error": "Pilot-Einstellungen werden ausschließlich serverseitig festgelegt"}, 400)
+        free_requested = pilot is None and self.app.free_route_enabled
+        if (pilot is not None or free_requested) and set(data) - {"goal", "goal_description", "definition_of_done", "parallel"}:
+            self._json({"error": "Agenten-Einstellungen werden ausschließlich serverseitig festgelegt"}, 400)
             return
+        if free_requested:
+            try:
+                self.app.authorize_openrouter_free(context)
+            except FreeRouterForbidden:
+                self._json({"error": "OpenRouter-Free ist für diesen Zugang nicht freigegeben"}, 403)
+                return
         goal_raw = data.get("goal") or data.get("goal_description") or ""
         dod_raw = data.get("definition_of_done") or "Eine klare, überprüfbare Antwort liegt vor."
         if not isinstance(goal_raw, str) or not isinstance(dod_raw, str):
@@ -3132,7 +3139,15 @@ location.replace('/?connection=google');
                 # adapter, so it requires exactly the same shared owner pilot.
                 # Keep read-only history and account access available while
                 # reviewed prices/counters/sources are still missing.
-                if pilot is None and (not tank.llm.is_simulation or not tank.critic_llm.is_simulation):
+                free_route = (
+                    free_requested
+                    and type(tank.llm.delegate) is OpenRouterFreeLLM
+                    and type(tank.critic_llm.delegate) is OpenRouterFreeLLM
+                )
+                if free_requested and not free_route:
+                    self._json({"error": "Der kostenlose Agentenmodus benötigt zwei geschützte Free-Modellrollen"}, 503)
+                    return
+                if pilot is None and not free_route and (not tank.llm.is_simulation or not tank.critic_llm.is_simulation):
                     self.app.auth.audit(
                         "run", user_id=context.user_id, workspace_id=context.workspace_id,
                         success=False, details='{"reason":"monetary_admission_required"}',
@@ -3142,17 +3157,38 @@ location.replace('/?connection=google');
                         "error_code": "monetary_admission_required",
                     }, 503)
                     return
+                if free_route:
+                    # A separate, ephemeral pipeline cannot inherit external tools,
+                    # workspace memory, paid adapters, or background consolidation.
+                    main_adapter = tank.llm.delegate
+                    critic_adapter = tank.critic_llm.delegate
+                    if critic_adapter is main_adapter:
+                        critic_adapter = OpenRouterFreeLLM(model=main_adapter.model)
+                    tank = TankAI(
+                        llm=main_adapter, critic_llm=critic_adapter,
+                        require_independent_critic=tank.require_independent_critic,
+                        require_research_evidence=True, max_retries=0,
+                        max_llm_calls_per_run=14, verbose=False,
+                        memory_db=None, use_ltm=False, enable_tools=False,
+                        run_store_path=None, parallel=parallel,
+                    )
+                    tank.tools.register_defaults(enable_web_research=False)
                 tank.parallel = parallel
                 def admit_provider_call(identity: str) -> None:
-                    if pilot is not None:
-                        pilot.authorize(context, self.app.auth)
-                    self.app.provider_limiter.consume(context.user_id, identity)
+                    if free_route:
+                        self.app.authorize_openrouter_free(context)
+                        self.app.consume_openrouter_free_quota()
+                    else:
+                        if pilot is not None:
+                            pilot.authorize(context, self.app.auth)
+                        self.app.provider_limiter.consume(context.user_id, identity)
 
                 tank.llm_call_budget.set_call_guard(admit_provider_call)
                 reset_llm_response_identities(tank.llm)
                 reset_llm_response_identities(tank.critic_llm)
                 try:
-                    with (pilot.scope(context, self.app.auth, tank) if pilot else nullcontext(None)) as pilot_job_id:
+                    with (openrouter_free_scope() if free_route else
+                          pilot.scope(context, self.app.auth, tank) if pilot else nullcontext(None)) as pilot_job_id:
                         if pilot is not None:
                             sources = pilot.sources_for(context, self.app.auth)
                             result = tank.run(goal_description=goal, definition_of_done=dod,
@@ -3182,7 +3218,8 @@ location.replace('/?connection=google');
                     return
                 response_main_llm = response_main_llms[0] if response_main_llms else None
                 response_critic_llm = response_critic_llms[0] if response_critic_llms else None
-                if model_identity_verified and response_main_llm == response_critic_llm:
+                if (model_identity_verified and response_main_llm == response_critic_llm
+                        and (not free_route or tank.require_independent_critic)):
                     self._json({
                         "error": "Hauptmodell und Critic haben dieselbe Modellidentität bestätigt",
                         "error_code": "critic_identity_not_independent",
@@ -3232,7 +3269,7 @@ location.replace('/?connection=google');
                         if model_identity_verified else tank.critic_independent
                     ),
                     "verification_passed": result.verification_passed,
-                    "release_ready": result.release_ready,
+                    "release_ready": result.release_ready and not free_route,
                     "plan_gate_passed": result.plan_gate_passed,
                     "failed_step_ids": result.failed_step_ids,
                     "web_research": result.web_research_provider,
@@ -3240,6 +3277,13 @@ location.replace('/?connection=google');
                     "source_urls": result.source_urls,
                     "ltm": tank.ltm.summary() if tank.ltm else "",
                 }
+                if free_route:
+                    payload["answer_mode"] = "free_agent"
+                    payload["free_model_admission"] = {
+                        "per_minute": 20, "per_day": 50,
+                        "run_calls": tank.llm_call_budget.snapshot(),
+                        "external_tools_enabled": False,
+                    }
                 if pilot is not None:
                     payload["monetary_admission"] = pilot.status(pilot_job_id)
                     payload["evidence_mode"] = "supplied"
@@ -3247,6 +3291,10 @@ location.replace('/?connection=google');
                 runtime.history.append(payload)
             self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id, success=True, details=json.dumps({"goal_id": result.goal_id, "status": payload["status"]}))
             self._json(payload)
+        except FreeRouterForbidden:
+            self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id,
+                                success=False, details='{"reason":"free_owner_membership_changed"}')
+            self._json({"error": "OpenRouter-Free ist für diesen Zugang nicht mehr freigegeben"}, 403)
         except OwnerPilotForbidden:
             self.app.auth.audit("run", user_id=context.user_id, workspace_id=context.workspace_id,
                                 success=False, details='{"reason":"owner_pilot_membership_changed"}')

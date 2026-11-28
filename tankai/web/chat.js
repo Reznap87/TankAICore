@@ -300,7 +300,8 @@ const main=String(data.main_llm||'').trim(), observedMain=data.observed_main_llm
 if(data.model_identity_verified!==true||!main||!Array.isArray(observedMain)||observedMain.length!==1||observedMain[0]!==main)return false;
 if(!criticUsed)return true;
 const critic=String(data.critic_llm||'').trim(), observedCritic=data.observed_critic_llms;
-return !!critic&&Array.isArray(observedCritic)&&observedCritic.length===1&&observedCritic[0]===critic&&critic!==main;
+const sameFreeModel=data.answer_mode==='free_agent'&&data.critic_independent===false&&data.release_ready===false&&main.startsWith('openrouter_free:')&&critic===main;
+return !!critic&&Array.isArray(observedCritic)&&observedCritic.length===1&&observedCritic[0]===critic&&(critic!==main||sameFreeModel);
 }
 function releaseVerified(data) {
 return data.answer_mode!=='direct'&&data.status==='completed'&&data.execution_mode==='live'&&data.critic_used!==false&&providerIdentityVerified(data,true)&&data.critic_independent===true&&data.plan_gate_passed===true&&data.verification_passed===true&&data.release_ready===true;
