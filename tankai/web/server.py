@@ -72,6 +72,7 @@ from tankai.web.runtime import WorkspaceRuntimeManager, WorkspaceRuntimeUnavaila
 from tankai.web.quick_question import issue_receipt, read_receipt
 from tankai.web import connections, google_connection, cloudflare_connection, notion_connection, dropbox_connection, onedrive_connection, slack_connection, outlook_connection, mcp_connection
 from tankai.web.auth_state import AuthState, AuthStateUnavailable, bootstrap_owner
+from tankai.web.owner_recovery import apply_owner_recovery
 
 _SESSION_COOKIE = "tankai_session"
 _LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000001"
@@ -385,7 +386,18 @@ class AppContext:
         owner_config = _env("TANKAI_BOOTSTRAP_OWNER")
         if owner_config and auth_state is None:
             raise RuntimeError("Owner bootstrap requires durable auth state")
-        bootstrap_owner(auth, owner_config)
+        recovery_config = _env("TANKAI_OWNER_RECOVERY")
+        if recovery_config:
+            if auth_state is None:
+                raise RuntimeError("Owner recovery requires durable auth state")
+            apply_owner_recovery(
+                auth, bootstrap_config=owner_config, recovery_config=recovery_config
+            )
+        else:
+            # Recovery is valid only for an owner restored from durable state.
+            # Never let the ordinary first-run bootstrap manufacture the very
+            # identity whose continued existence recovery is meant to prove.
+            bootstrap_owner(auth, owner_config)
         if auth_state is not None:
             auth_state.save(auth)
         job_queue = None
