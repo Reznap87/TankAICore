@@ -38,10 +38,21 @@ try {
   assert.deepEqual(new Uint8Array(await restored.arrayBuffer()), bytes);
   assert.equal((await call('PUT', new Uint8Array(20), '1')).status, 400);
   assert.equal((await call('POST')).status, 405);
-  const registration = (ip) => runtime.dispatchFetch('https://tankaicore.com/api/auth/register', {
-    method: 'POST', headers: ip ? { 'CF-Connecting-IP': ip } : {},
+  const registration = (ip, headers = {}) => runtime.dispatchFetch('https://tankaicore.com/api/auth/register', {
+    method: 'POST', headers: {
+      ...(ip ? { 'CF-Connecting-IP': ip } : {}),
+      'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin', ...headers,
+    }, body: '{}',
   });
   assert.equal((await registration()).status, 503);
+  // Rejected browser requests must not consume the shared-IP reservation.
+  // Both are simple cross-origin request shapes that another site can send
+  // without reading the response.
+  const attackedIp = '192.0.2.9';
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await registration(attackedIp, { 'Content-Type': 'text/plain' })).status, 415);
+    assert.equal((await registration(attackedIp, { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+  }
   // The test has no container binding, so permitted requests reach the container
   // path and return 503. The limiter must still reject the fourth attempt.
   for (let i = 0; i < 3; i++) assert.equal((await registration('192.0.2.10')).status, 503);
@@ -135,12 +146,12 @@ try {
       const count = outcome === '400' ? 60 : 50;
       for (let n = 0; n < count; n++) {
         const response = await worker.dispatchFetch('https://tankaicore.com/api/auth/register', {
-          method: 'POST', headers: { 'CF-Connecting-IP': `198.51.100.${n + 1}`, 'X-Test-Outcome': outcome },
+          method: 'POST', headers: { 'CF-Connecting-IP': `198.51.100.${n + 1}`, 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin', 'X-Test-Outcome': outcome }, body: '{}',
         });
         assert.equal(response.status, outcome === 'throw' ? 503 : Number(outcome), `${outcome} request ${n}`);
       }
       const last = await worker.dispatchFetch('https://tankaicore.com/api/auth/register', {
-        method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.250', 'X-Test-Outcome': '201' },
+        method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.250', 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin', 'X-Test-Outcome': '201' }, body: '{}',
       });
       assert.equal(last.status, outcome === '400' ? 201 : 429, `daily quota after ${outcome}`);
     } finally {
