@@ -321,3 +321,104 @@ def test_quick_question_is_not_saved_until_explicit_promotion(monkeypatch, tmp_p
         history = client.get("/api/history")[2]
         assert len(history) == 1 and history[0]["goal"] == "Nur kurz"
         assert len(fake_openrouter.calls) == 1
+
+
+@pytest.mark.parametrize("parallel", [False, True])
+def test_free_agent_pipeline_uses_shared_quota_and_local_tools(
+    monkeypatch, tmp_path, fake_openrouter, parallel,
+):
+    import json
+    _setup_free(monkeypatch, tmp_path)
+    with serving(None) as (app, base):
+        client = Client(base)
+        status, _, login = client.post("/api/auth/login", {
+            "email": "free-owner@example.test",
+            "password": "Safe-free-test-password-123",
+        })
+        assert status == 200
+        assert client.get("/api/health")[0] == 200
+        quota_calls = []
+        consume = type(app).consume_openrouter_free_quota
+
+        def count_quota(self):
+            consume(self)
+            quota_calls.append(True)
+
+        def respond(self, **parameters):
+            fake_openrouter.calls.append(parameters)
+            prompt = parameters["messages"][-1]["content"]
+            system = parameters["messages"][0]["content"]
+            if prompt.startswith("Erstelle einen Plan"):
+                content = json.dumps({
+                    "rationale": "Zwei Berechnungen",
+                    "steps": [
+                        {"description": "Berechne 17 mal 24", "specialist_type": "analysis",
+                         "expected_output": "Ergebnis"},
+                        {"description": "Prüfe das Produkt", "specialist_type": "analysis",
+                         "expected_output": "Kontrollrechnung"},
+                    ],
+                })
+            elif "Du bist der Critic" in system:
+                content = '{"passed":true,"score":1.0,"issues":[],"suggestions":[]}'
+            elif "Du bist der Synthesizer" in system:
+                content = "Das Ergebnis ist 408."
+            else:
+                content = "TOOL:calculator{expression=17*24}"
+            return SimpleNamespace(
+                model="nvidia/synthetic-free:free",
+                choices=[SimpleNamespace(message=SimpleNamespace(content=content),
+                                         finish_reason="stop")],
+            )
+
+        monkeypatch.setattr(type(app), "consume_openrouter_free_quota", count_quota)
+        monkeypatch.setattr(type(fake_openrouter.clients[0]), "create", respond)
+        status, _, rejected = client.post("/api/run", {
+            "goal": "Berechnung", "provider": "paid",
+        }, csrf=login["csrf_token"])
+        assert status == 400, rejected
+        assert fake_openrouter.calls == []
+
+        status, _, result = client.post("/api/run", {
+            "goal": "Berechne 17 mal 24", "definition_of_done": "Zwei Berechnungen",
+            "parallel": parallel,
+        }, csrf=login["csrf_token"])
+        assert status == 200, result
+        assert result["answer_mode"] == "free_agent"
+        assert result["execution_mode"] == "live"
+        assert result["status"] == "completed"
+        assert result["model_identity_verified"] is True
+        assert result["critic_independent"] is False
+        assert result["release_ready"] is False
+        assert result["main_llm"] == result["critic_llm"]
+        assert len(result["plan"]["steps"]) == 2
+        assert any("408" in receipt["output_summary"] for receipt in result["receipts"])
+        assert result["web_research"] == "disabled"
+        assert result["free_model_admission"]["external_tools_enabled"] is False
+        assert len(fake_openrouter.calls) == len(quota_calls) == 8
+        assert result["free_model_admission"]["run_calls"]["used"] == 8
+        assert all(call["model"] == "openrouter/free" for call in fake_openrouter.calls)
+        assert client.get("/api/history")[2][0]["run_id"] == result["run_id"]
+        with pytest.raises(DispatchDenied):
+            get_llm("openrouter").complete("outside authorized request")
+        assert len(fake_openrouter.calls) == 8
+
+
+def test_free_agent_denies_exhausted_shared_quota_before_model_call(
+    monkeypatch, tmp_path, fake_openrouter,
+):
+    _setup_free(monkeypatch, tmp_path)
+    with serving(None) as (app, base):
+        client = Client(base)
+        status, _, login = client.post("/api/auth/login", {
+            "email": "free-owner@example.test",
+            "password": "Safe-free-test-password-123",
+        })
+        assert status == 200
+        for _ in range(20):
+            app.consume_openrouter_free_quota()
+        status, _, result = client.post("/api/run", {
+            "goal": "Berechne 17 mal 24",
+        }, csrf=login["csrf_token"])
+        assert status == 429, result
+        assert fake_openrouter.calls == []
+        assert client.get("/api/history")[2] == []
