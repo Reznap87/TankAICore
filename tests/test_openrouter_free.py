@@ -96,7 +96,7 @@ def test_free_adapter_accepts_only_free_models_and_requires_scope(fake_openroute
         )
     assert len(fake_openrouter.calls) == 1
     assert fake_openrouter.calls[0]["model"] == "openrouter/free"
-    assert fake_openrouter.calls[0]["max_tokens"] == 512
+    assert fake_openrouter.calls[0]["max_tokens"] == 2048
     assert fake_openrouter.calls[0]["extra_body"] == {
         "reasoning": {"effort": "low", "exclude": True}
     }
@@ -111,8 +111,38 @@ def test_free_adapter_accepts_only_free_models_and_requires_scope(fake_openroute
     with pytest.raises(ValueError):
         get_llm("openrouter", base_url="https://example.invalid/v1")
     with openrouter_free_scope(), pytest.raises(DispatchDenied):
-        model.complete("test prompt", max_tokens=513)
+        model.complete("test prompt", max_tokens=2049)
     assert len(fake_openrouter.calls) == 1
+
+
+@pytest.mark.parametrize("tokens", [0, -1, True, 2049])
+def test_free_adapter_rejects_invalid_output_budget_before_dispatch(fake_openrouter, tokens):
+    adapter = get_llm("openrouter")
+    with openrouter_free_scope(), pytest.raises(DispatchDenied):
+        adapter.complete("test", max_tokens=tokens)
+    assert fake_openrouter.calls == []
+
+
+def test_free_adapter_reserves_room_for_visible_text(fake_openrouter):
+    adapter = get_llm("openrouter")
+    original = fake_openrouter.clients[0]
+    # Model the observed failure: reasoning consumes the old output cap.
+    create = original.create
+
+    class BudgetSensitiveCompletions:
+        def __call__(self, **parameters):
+            original.reply_content = (
+                "Sichtbare Antwort" if parameters["max_tokens"] >= 1024 else ""
+            )
+            original.finish_reason = "stop" if original.reply_content else "length"
+            return create(**parameters)
+
+    from unittest.mock import patch
+    with patch.object(type(original), "create", lambda self, **kw: BudgetSensitiveCompletions()(**kw)):
+        with openrouter_free_scope():
+            assert adapter.complete("test") == "Sichtbare Antwort"
+    assert len(fake_openrouter.calls) == 1
+    assert fake_openrouter.calls[0]["max_tokens"] == 2048
 
 
 def test_free_adapter_rejects_unproved_response_model(fake_openrouter):
