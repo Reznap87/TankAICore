@@ -57,4 +57,6 @@ html[data-chat-size=large] .answer-content,html[data-chat-size=large] .message-b
 #extension-count,#skill-status,#json-tool-status,#unit-result{color:var(--muted);font-size:13px}
 #json-tool-output{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto}
 
+.skill-document{white-space:pre-wrap;overflow-wrap:anywhere;max-height:22rem;overflow:auto;font-size:.85rem;}
+
 #question-search-dialog textarea{display:block;width:100%;resize:vertical;min-height:100px;max-height:40vh;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);margin:8px 0 12px}#question-search-dialog .secondary-button{display:inline-block;margin:4px 8px 4px 0}#question-search-status{color:var(--muted);min-height:1em}

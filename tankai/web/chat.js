@@ -45,6 +45,8 @@ selectedResult = null; selectedIndex = -1; byId('threadHistory').replaceChildren
 byId('welcome').hidden = false; byId('suggestions').hidden = false; byId('messages').hidden = true; byId('appView').classList.remove('conversation'); byId('topbar-title').textContent = 'TankAI'; document.title = 'TankAI – Dein Chat';
 }
 function resetWorkspace() {
+byId('auto-skills').checked=false;
+byId('skill-store-results').replaceChildren();
 clearQuestionSearch();
 resetExtensionTools();
 resetConnections();
@@ -121,7 +123,7 @@ historyItems.forEach((item, index) => { const button = element('button', 'histor
 }
 function resultKey(item) { return item.run_id || JSON.stringify([item.goal, item.final_answer, item.duration_seconds]); }
 function sameWs(item) { const id = currentUser?.workspace?.id; return id && item?.workspace_id === id; }
-const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'reply_to', 'critic_used', 'release_ready', 'verification_passed', 'plan_gate_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent', 'duration_seconds', 'receipts_count', 'receipts', 'plan'];
+const historyReceiptFields = ['run_id', 'workspace_id', 'goal', 'final_answer', 'status', 'execution_mode', 'answer_mode', 'reply_to', 'critic_used', 'release_ready', 'verification_passed', 'plan_gate_passed', 'main_llm', 'critic_llm', 'observed_main_llms', 'observed_critic_llms', 'configured_main_llm', 'configured_critic_llm', 'model_identity_verified', 'critic_independent', 'duration_seconds', 'receipts_count', 'receipts', 'plan', 'skill_guidance'];
 function historyReceiptIndex(data, expected) {
 if(!expected||typeof expected.run_id!=='string'||!expected.run_id)return -1;
 const matches=data.map((item,index)=>({item,index})).filter(({item})=>item&&item.run_id===expected.run_id);
@@ -164,6 +166,7 @@ byId('outCard').hidden = false; byId('answer').textContent = String(data.final_a
 const badges = byId('badges'); badges.replaceChildren(); const mode = String(data.execution_mode || 'unknown').toLowerCase(); const simulated = data.status === 'simulated' || mode === 'simulation' || mode === 'mixed'; const direct = data.answer_mode === 'direct'; const criticUsed = !direct && data.critic_used !== false; const identityVerified=mode==='live'&&providerIdentityVerified(data,criticUsed); const verifiedRelease=releaseVerified(data);
 const resultLabel = mode === 'mixed' ? 'Teilweise Simulation · keine verifizierte Live-Antwort' : simulated ? 'Simulation · keine verifizierte KI-Antwort' : mode !== 'live' ? 'Ausführungsmodus nicht belegt' : !identityVerified ? 'Live-Modellnachweis nicht bestätigt' : direct ? 'KI-Antwort · ungeprüft' : verifiedRelease ? 'Prüfung bestanden' : 'Nicht freigegeben';
 badges.append(badge(resultLabel, verifiedRelease ? 'b-ok' : 'b-warn'));
+if(data.skill_guidance?.mode==='advisory_only'&&data.skill_guidance.local_adapter_executed===false&&Array.isArray(data.skill_guidance.selected))badges.append(badge('Skill-Beratung: '+(data.skill_guidance.selected.join(', ')||'kein Treffer'),'b-info'));
 if(mode==='live')badges.append(badge(identityVerified?'Modellidentität providerbestätigt':'Modellidentität nicht providerbestätigt',identityVerified?'b-ok':'b-warn'));
 badges.append(badge('Hauptmodell: ' + modelDisplay(data.main_llm), data.main_llm ? 'b-info' : 'b-warn'));
 badges.append(badge(criticUsed ? 'Prüfmodell: ' + modelDisplay(data.critic_llm) : 'Prüfmodell: nicht verwendet', criticUsed && data.critic_llm ? 'b-info' : 'b-warn'));
@@ -187,7 +190,7 @@ resetResult(); setBusy(true); renderHistory();
 byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation'); byId('questionRow').hidden = false; byId('question').textContent = goal;
 byId('status').textContent = advanced ? 'TankAI bearbeitet deine Aufgabe und prüft das Ergebnis …' : nvidia ? 'TankAI fragt '+(provider.value==='nvidia_glm'?'GLM 5.3 Flash':'GPT-OSS-20B')+' (NVIDIA-Testbetrieb) …' : 'TankAI fragt das Live-Modell …';
 try {
-const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal, ...(parentRun ? {reply_to:parentRun} : {}), ...(nvidia ? {provider:provider.value} : {}) }) });
+const data = await jsonFetch(advanced ? '/api/run' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(advanced ? { goal, definition_of_done: definition, parallel } : { message: goal, ...(parentRun ? {reply_to:parentRun} : {}), ...(nvidia ? {provider:provider.value} : {}), ...(byId('auto-skills').checked ? {auto_skills:true} : {}) }) });
 if (requestEpoch !== epoch) return;
 if (!sameWs(data)) throw new Error('Antwort stammt nicht aus dem aktiven Workspace');
 if((!advanced||data.execution_mode==='live')&&['main_llm','final_answer'].some(k=>typeof data[k]!=='string'||!data[k].trim()))throw new Error('Modell-ID oder Antworttext fehlt');
@@ -370,6 +373,111 @@ function resetExtensionTools(){
 byId('extension-search').value='';byId('extension-category').value='all';
 byId('skill-status').textContent='';byId('json-tool-input').value='';byId('json-tool-output').textContent='';byId('json-tool-status').textContent='';byId('unit-value').value='';byId('unit-result').textContent='';
 }
+async function loadSkills(action, skillId) {
+const e = epoch, root = byId('skill-store-results');
+if (!currentUser || busy) return;
+root.textContent = 'Skills werden geladen …';
+try {
+const data = await jsonFetch('/api/skills', action ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({skill_id:skillId,action})} : {});
+if (e !== epoch) return;
+if (data.workspace_id !== currentUser.workspace.id || !Array.isArray(data.skills)) throw new Error('Skill-Nachweis fehlt');
+root.replaceChildren();
+for (const skill of data.skills) {
+const card = element('div','settings-section');
+card.append(element('strong','',skill.id),element('p','',skill.title),element('p','muted',skill.enabled?'Aktiv für Entwurfshilfe':skill.imported?'Importiert · inaktiv':'Im Katalog verfügbar'));
+const source = element('a','','NVIDIA-Original');
+const url = new URL(skill.source);
+if (url.origin === 'https://github.com' && url.pathname.startsWith('/NVIDIA/skills/blob/')) { source.href = url.href; source.target = '_blank'; source.rel = 'noopener noreferrer'; card.append(source); }
+if (skill.imported && skill.document_available) {
+const read = element('button','secondary-button','Original-Skill ansehen');
+read.type='button';
+const preview = element('pre','skill-document'); preview.hidden=true;
+read.addEventListener('click',async()=>{
+if(e!==epoch || !currentUser || !root.contains(card))return;
+if(!preview.hidden){preview.hidden=true;return;}
+read.disabled=true; preview.textContent='Dokument wird geladen …'; preview.hidden=false;
+try{
+const doc=await jsonFetch('/api/skills/document?id='+encodeURIComponent(skill.id));
+if(e!==epoch || !root.contains(card))return;
+if(doc.workspace_id!==currentUser.workspace.id || doc.id!==skill.id || doc.revision!==skill.revision || typeof doc.content!=='string' || doc.execution_available!==false)throw new Error('Dokumentnachweis fehlt');
+preview.textContent=doc.content;
+}catch(error){if(e===epoch && root.contains(card))preview.textContent=String(error.message||error);}
+finally{read.disabled=false;}
+}); card.append(read,preview);
+}
+const action = skill.enabled?'disable':skill.imported?'enable':'import';
+const toggle = element('button','secondary-button',action==='disable'?'Deaktivieren':action==='enable'?'Aktivieren':'Skill importieren');
+toggle.type='button'; toggle.addEventListener('click',()=>loadSkills(action,skill.id)); card.append(toggle);
+if (skill.enabled && typeof skill.guidance === 'string') {
+const use = element('button','secondary-button','Entwurfshilfe einfügen'); use.type='button';
+use.addEventListener('click',()=>{
+if (e!==epoch || busy || !currentUser) return;
+const goal=byId('goal'); const next=goal.value+(goal.value?'\n\n':'')+'Skill-Entwurfshilfe ('+skill.id+'): '+skill.guidance;
+if (next.length>20000) { toast('Entwurf zu lang'); return; }
+goal.value=next; setBusy(false); byId('plugins-dialog').close(); goal.focus();
+}); card.append(use);
+}
+if(skill.enabled && skill.local_adapter_available){
+const examples={
+'rag-eval':{ranked_ids:['doc1','doc2'],relevant_ids:['doc2']},
+'nemo-retriever':{query:'Beispiel',documents:[{id:'doc1',text:'Ein Beispieltext'}]},
+'data-designer':{required_fields:['id','text'],rows:[{id:1,text:'Beispiel'}]},
+'rag-blueprint':{source_inventory:false,access_control:false,index_strategy:false,retrieval_evaluation:false,deletion_policy:false}
+};
+const input=element('textarea'), output=element('pre','skill-document'), run=element('button','secondary-button','Lokalen Adapter ausführen');
+input.setAttribute('aria-label','Skill-Eingabe als JSON'); input.rows=6; input.maxLength=60000;
+input.value=JSON.stringify(examples[skill.id],null,2); run.type='button';
+run.addEventListener('click',async()=>{
+if(e!==epoch||!currentUser||busy||!root.contains(card))return;
+run.disabled=true; output.textContent='Berechnung läuft …';
+try{
+const payload=JSON.parse(input.value);
+const result=await jsonFetch('/api/skills/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skill_id:skill.id,payload})});
+if(e!==epoch||!root.contains(card))return;
+if(result.workspace_id!==currentUser.workspace.id||result.skill_id!==skill.id||result.adapter!==skill.local_adapter||result.external_calls!==0||result.nvidia_execution!==false)throw new Error('Runner-Nachweis fehlt');
+output.textContent=JSON.stringify(result,null,2);
+}catch(error){if(e===epoch&&root.contains(card))output.textContent=String(error.message||error);}
+finally{run.disabled=false;}
+});
+card.append(element('p','muted','Lokaler TankAI-Adapter; keine NVIDIA-Laufzeit, keine externen Aufrufe. Eingabe als JSON.'),input,run,output);
+}
+root.append(card);
+}
+const enabled=new Set(data.skills.filter(skill=>skill.enabled).map(skill=>skill.id));
+const workflow=element('div','settings-section');
+workflow.append(element('h3','','Lokaler Skill-Workflow'),element('p','muted','Dokumente suchen und die Treffer automatisch bewerten. Keine Modellaufrufe oder externe Übertragung durch den Workflow.'));
+if(!enabled.has('nemo-retriever')||!enabled.has('rag-eval')){
+workflow.append(element('p','','Aktiviere nemo-retriever und rag-eval.'));
+}else{
+const input=element('textarea'),output=element('pre','skill-document'),run=element('button','secondary-button','Suche und Bewertung starten'),use=element('button','secondary-button','Ergebnis in Chat-Entwurf übernehmen');
+input.rows=7; input.maxLength=60000; input.setAttribute('aria-label','Workflow-Eingabe als JSON');
+input.value=JSON.stringify({query:'Beispiel',documents:[{id:'doc1',text:'Beispieltext'},{id:'doc2',text:'Ein Beispiel'}],relevant_ids:['doc2']},null,2);
+run.type='button'; use.type='button'; use.disabled=true; let summary=null;
+run.addEventListener('click',async()=>{
+if(e!==epoch||!currentUser||busy||!root.contains(workflow))return;
+run.disabled=true; use.disabled=true; summary=null; output.textContent='Workflow läuft …';
+try{
+const result=await jsonFetch('/api/skills/workflow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(JSON.parse(input.value))});
+if(e!==epoch||!root.contains(workflow))return;
+if(result.workspace_id!==currentUser.workspace.id||result.workflow_id!=='retrieval-evaluation'||result.execution_mode!=='local_deterministic'||result.external_calls!==0||result.nvidia_execution!==false||!Array.isArray(result.steps)||result.steps.length!==2||result.steps[0].skill_id!=='nemo-retriever'||result.steps[1].skill_id!=='rag-eval'||!result.steps.every(step=>step.status==='completed'))throw new Error('Workflow-Nachweis fehlt');
+const metrics=result.steps[1].result;
+if(!['precision','recall','reciprocal_rank'].every(k=>typeof metrics?.[k]==='number'&&Number.isFinite(metrics[k])&&metrics[k]>=0&&metrics[k]<=1))throw new Error('Metrik-Nachweis fehlt');
+summary=JSON.stringify({precision:metrics.precision,recall:metrics.recall,reciprocal_rank:metrics.reciprocal_rank,top_k:result.top_k});
+output.textContent=JSON.stringify(result,null,2); use.disabled=false;
+}catch(error){if(e===epoch&&root.contains(workflow))output.textContent=String(error.message||error);}
+finally{run.disabled=false;}
+});
+use.addEventListener('click',()=>{
+if(e!==epoch||!currentUser||busy||!root.contains(workflow)||!summary)return;
+const goal=byId('goal'), next=goal.value+(goal.value?'\n\n':'')+'Erkläre diese lokal berechneten Retrieval-Metriken (keine NVIDIA-Ausführung): '+summary;
+if(next.length>20000){toast('Entwurf zu lang');return;}
+goal.value=next; setBusy(false); byId('plugins-dialog').close(); goal.focus();
+});
+workflow.append(input,run,output,use,element('p','muted','Nur numerische Metriken werden in den Entwurf übernommen. Erst Senden startet den regulären Chat.'));
+}
+root.append(workflow);
+} catch(error) { if(e===epoch)root.textContent='Skill-Store nicht verfügbar: '+String(error.message||error); }
+}
 function updateQuestionSearch(){
 const q=byId('question-search-input').value.trim(),valid=!!q&&q.length<=2000&&!!currentUser&&!busy,link=byId('question-search-web');
 byId('question-search-chat').disabled=!valid;link.hidden=!valid;
@@ -464,6 +572,7 @@ byId('github-finish').addEventListener('click',()=>githubAction('finish'));
 byId('github-disconnect').addEventListener('click',()=>githubAction('disconnect'));
 byId('github-repositories').addEventListener('click',()=>githubAction('repositories'));
 byId('extension-search').addEventListener('input',filterExtensions);
+byId('skills-load').addEventListener('click', () => loadSkills());
 byId('extension-category').addEventListener('change',filterExtensions);
 byId('skill-apply').addEventListener('click',applySkill);
 byId('json-tool-format').addEventListener('click',formatJsonTool);

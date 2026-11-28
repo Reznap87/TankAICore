@@ -445,13 +445,15 @@ class AppContext:
             self.root_lease = None
 
 
-# Keep the UI in separate source files; inline its assets into the existing
-# per-response nonce policy so no new public asset routes or CSP exceptions are needed.
+# Keep the HTML bounded; serve the versioned script as a separate same-origin
+# resource. The HTML script element still requires the per-response CSP nonce.
 _WEB_ROOT = Path(__file__).parent
+_CHAT_SCRIPT = (_WEB_ROOT / "chat.js").read_bytes()
+_CHAT_SCRIPT_PATH = "/assets/chat-" + hashlib.sha256(_CHAT_SCRIPT).hexdigest() + ".js"
 HTML_TEMPLATE = (
     (_WEB_ROOT / "chat.html").read_text(encoding="utf-8")
     .replace("__CHAT_STYLES__", (_WEB_ROOT / "chat.css").read_text(encoding="utf-8"))
-    .replace("__CHAT_SCRIPT__", (_WEB_ROOT / "chat.js").read_text(encoding="utf-8"))
+    .replace("__CHAT_SCRIPT_PATH__", _CHAT_SCRIPT_PATH)
 )
 
 
@@ -1111,6 +1113,14 @@ class Handler(BaseHTTPRequestHandler):
         if self._reject_if_draining():
             return
         path = urlsplit(self.path).path
+        if path == _CHAT_SCRIPT_PATH:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8")
+            self._security_headers()
+            self.send_header("Content-Length", str(len(_CHAT_SCRIPT)))
+            self.end_headers()
+            self.wfile.write(_CHAT_SCRIPT)
+            return
         brand_asset = _BRAND_ASSETS.get(path)
         if brand_asset is not None:
             content_type, body = brand_asset
@@ -1256,6 +1266,46 @@ location.replace('/?connection=google');
                             "slack": slack_connection.status(context) if allowed else {"status": "unavailable"},
                             "outlook": outlook_connection.status(context) if allowed else {"status": "unavailable"},
                             "mcp": mcp_connection.status(context) if allowed else {"status": "unavailable"}})
+            return
+        if path == "/api/skills/document":
+            context = self._auth_context()
+            if not context:
+                return
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            query = parse_qs(urlsplit(self.path).query)
+            if set(query) != {"id"} or len(query["id"]) != 1:
+                self._json({"error": "Ungültige Skill-ID"}, 400)
+                return
+            try:
+                from tankai.web.skill_store import document
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, **document(runtime.root, context.user_id, query["id"][0])})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skill_document")
+            return
+        if path == "/api/skills":
+            context = self._auth_context()
+            if not context:
+                return
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            try:
+                from tankai.web.skill_store import catalog
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, "skills": catalog(runtime.root, context.user_id)})
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skills")
             return
         if path == "/api/auth/me":
             context = self._auth_context()
@@ -1613,6 +1663,70 @@ location.replace('/?connection=google');
                 self._json({"mcp": result})
             except connections.ConnectionError as exc:
                 self._json({"error": str(exc)}, 409)
+            return
+        if path == "/api/skills/workflow":
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            data = self._read_json(max_bytes=64_000)
+            if data is None:
+                return
+            try:
+                from tankai.web.skill_store import run_retrieval_workflow
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, **run_retrieval_workflow(runtime.root, context.user_id, data)})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skill_workflow")
+            return
+        if path == "/api/skills/run":
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            data = self._read_json(max_bytes=64_000)
+            if data is None:
+                return
+            if set(data) != {"skill_id", "payload"} or not isinstance(data["skill_id"], str):
+                self._json({"error": "Ungültiger Skill-Auftrag"}, 400)
+                return
+            try:
+                from tankai.web.skill_store import run_local
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, **run_local(runtime.root, context.user_id, data["skill_id"], data["payload"])})
+            except PermissionError as exc:
+                self._json({"error": str(exc)}, 403)
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skill_run")
+            return
+        if path == "/api/skills":
+            if self.app.auth_mode != "session":
+                self._json({"error": "Skills benötigen eine Anmeldung"}, 403)
+                return
+            data = self._read_json(max_bytes=2000)
+            if data is None:
+                return
+            if set(data) != {"skill_id", "action"} or not all(isinstance(v, str) for v in data.values()):
+                self._json({"error": "Ungültiger Skill-Auftrag"}, 400)
+                return
+            try:
+                from tankai.web.skill_store import change
+                with self.app.runtimes.acquire(tenant_id=context.tenant_id, workspace_id=context.workspace_id) as runtime:
+                    self._json({"workspace_id": context.workspace_id, "skills": change(runtime.root, context.user_id, data["skill_id"], data["action"])})
+            except ValueError as exc:
+                self._json({"error": str(exc)}, 400)
+            except WorkspaceRuntimeUnavailable:
+                self._runtime_unavailable()
+            except Exception:
+                self._internal_error("skills")
             return
         if path == "/api/auth/logout":
             mcp_connection.disconnect(context, all_workspaces=True)
@@ -2697,9 +2811,9 @@ location.replace('/?connection=google');
         data = self._read_json(max_bytes=22_000)
         if data is None:
             return
-        if (set(data) not in ({"message"}, {"message", "reply_to"},
-                              {"message", "provider"}, {"message", "reply_to", "provider"},
-                              {"message", "temporary"})
+        if (set(data) - {"message", "reply_to", "provider", "auto_skills", "temporary"}
+                or ("temporary" in data and set(data) != {"message", "temporary"})
+                or type(data.get("auto_skills", False)) is not bool
                 or type(data.get("message")) is not str
                 or ("temporary" in data and data["temporary"] is not True)
                 or ("provider" in data and data["provider"] not in ("nvidia_free", "nvidia_glm"))):
@@ -2782,6 +2896,17 @@ location.replace('/?connection=google');
                         "error_code": "conversation_unavailable",
                     }, 409)
                     return
+                selected_skills = []
+                if data.get("auto_skills", False):
+                    if not free_route or self.app.auth_mode != "session":
+                        self._json({"error": "Automatische Skill-Auswahl ist nur im Free-Chat mit Anmeldung verfügbar"}, 403)
+                        return
+                    from tankai.web.skill_store import select_guidance
+                    selected_skills = select_guidance(runtime.root, context.user_id, message)
+                skill_guidance = ""
+                if selected_skills:
+                    skill_guidance = (" Freigegebene TankAI-Entwurfshilfe (nur beratend; keine Tools oder ausgeführten Aktionen): "
+                                      + " ".join(item["id"] + ": " + item["guidance"] for item in selected_skills))
                 prompt = message
                 if prior_turns:
                     context_lines = []
@@ -2829,6 +2954,7 @@ location.replace('/?connection=google');
                                 "und keine unabhängige Faktenprüfung. "
                                 "Behaupte keine ausgeführten Aktionen oder geprüften "
                                 "aktuellen Quellen. Kennzeichne Unsicherheit."
+                                + skill_guidance
                             ),
                         )
                 finally:
@@ -2875,6 +3001,10 @@ location.replace('/?connection=google');
                     "source_ids": [],
                     "source_urls": [],
                 }
+                if data.get("auto_skills", False):
+                    payload["skill_guidance"] = {"mode": "advisory_only",
+                                                 "selected": [item["id"] for item in selected_skills],
+                                                 "local_adapter_executed": False}
                 if nvidia_requested:
                     payload["free_model_admission"] = {
                         "route": "nvidia_free", "per_minute": 10, "per_day": 50
