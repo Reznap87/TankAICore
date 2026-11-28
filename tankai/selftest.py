@@ -775,19 +775,29 @@ def run_selftest() -> int:
         failed += 1
 
     try:
+        from hashlib import sha256
+
         from tankai.web.server import (
             HTML_TEMPLATE,
+            _CHAT_SCRIPT,
+            _CHAT_SCRIPT_PATH,
             _CROSS_ORIGIN_SECURITY_HEADERS,
             _render_html,
         )
         rendered_html = _render_html("selftest-nonce")
-        assert ".innerHTML" not in rendered_html
-        assert "catch{}" not in rendered_html
-        assert "textContent" in rendered_html
+        script = _CHAT_SCRIPT.decode("utf-8")
+        assert "innerHTML" not in rendered_html and "innerHTML" not in script
+        assert "catch{}" not in rendered_html and "catch{}" not in script
+        assert "textContent" in script
         assert "__CSP_NONCE__" in HTML_TEMPLATE
         assert "__CSP_NONCE__" not in rendered_html
-        assert '<style nonce="selftest-nonce">' in rendered_html
-        assert '<script nonce="selftest-nonce">' in rendered_html
+        assert "__CHAT_SCRIPT_PATH__" not in rendered_html
+        assert rendered_html.count('<style nonce="selftest-nonce">') == 1
+        assert rendered_html.count(
+            f'<script nonce="selftest-nonce" src="{_CHAT_SCRIPT_PATH}"></script>'
+        ) == 1
+        assert rendered_html.count("<script ") == 1
+        assert _CHAT_SCRIPT_PATH == "/assets/chat-" + sha256(_CHAT_SCRIPT).hexdigest() + ".js"
         assert "style=" not in rendered_html
         assert dict(_CROSS_ORIGIN_SECURITY_HEADERS) == {
             "Cross-Origin-Opener-Policy": "same-origin",
