@@ -5,14 +5,14 @@ import vm from 'node:vm';
 // Exercises the actual UI event handlers against a synthetic DOM and fake server.
 // Native browser constraint validation, rendering, and HTTP are outside this test.
 class Element {
-  constructor() { this.hidden = false; this.disabled = false; this.required = false; this.checked = false; this.value = ''; this.textContent = ''; this.children = []; this.dataset = {}; this.handlers = {}; this.attrs = {}; this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } }; }
+  constructor(tag = '', namespace = '') { this.tagName = tag; this.namespaceURI = namespace; this.hidden = false; this.disabled = false; this.required = false; this.checked = false; this.value = ''; this.textContent = ''; this.children = []; this.dataset = {}; this.handlers = {}; this.attrs = {}; this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } }; }
   addEventListener(type, fn) { this.handlers[type] = fn; }
   setAttribute(key, value) { this.attrs[key] = value; }
   replaceChildren(...children) { this.children = children; } append(...children) { this.children.push(...children); } focus() {} click() {} showModal() { this.open = true; } close() { this.open = false; } querySelectorAll() { return []; }
 }
 const elements = new Map();
 const byId = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
-const document = { getElementById: byId, documentElement: { dataset: {} }, querySelectorAll: () => [], querySelector: () => ({ content: '' }), addEventListener() {}, createElement: () => new Element(), createElementNS: () => new Element() };
+const document = { getElementById: byId, documentElement: { dataset: {} }, querySelectorAll: () => [], querySelector: () => ({ content: '' }), addEventListener() {}, createElement: tag => new Element(tag), createElementNS: (namespace, tag) => new Element(tag, namespace) };
 const calls = [];
 let exportedText = '';
 let registered = false;
@@ -102,7 +102,8 @@ class Blob { constructor(parts) { this.parts = parts; } }
 const context = { document, fetch, Blob, URL: { createObjectURL(blob) { exportedText = blob.parts.join(''); return 'blob:synthetic'; }, revokeObjectURL() {} }, matchMedia: media, localStorage: { getItem() { return null; }, setItem() {} }, setInterval(fn) { refreshInterval = fn; }, setTimeout() {}, clearTimeout() {}, console, requestAnimationFrame() {} };
 const source = await readFile(new URL('../tankai/web/chat.js', import.meta.url), 'utf8');
 const displayAssertions = "if (modelDisplay('openrouter_free:openrouter_free:https://openrouter.ai/api/v1') !== 'OpenRouter Free · Automatische Modellauswahl' || modelDisplay('openrouter_free:baidu/ernie:free:https://openrouter.ai/api/v1') !== 'OpenRouter Free · baidu/ernie') throw new Error('OpenRouter model label exposes URL or mislabels router');";
-vm.runInNewContext(source.replace("setTheme(); applyChatSize(); syncSidebar(); refreshHealth(); loadMe();", displayAssertions + "\nsetTheme(); applyChatSize(); syncSidebar(); refreshHealth(); loadMe();"), context);
+const richAssertions = "\n{\n  const target = element('div');\n  const fence = String.fromCharCode(96).repeat(3);\n  renderAnswer(target, [\n    '## Überschrift', '**Fett** und *kursiv*', '- erster', '- zweiter',\n    '$17 \\\\times 23 = 391$', '\\\\[\\\\frac{1}{2} + x^2\\\\]',\n    fence+'python', 'print(\"<script>\")', fence,\n    '[sicher](https://example.test/)', '[unsicher](javascript:alert)',\n    '<img src=x onerror=alert(1)>', '<svg onload=alert(1)>'\n  ].join('\\n'));\n  const walk = n => [n, ...n.children.flatMap(walk)];\n  const nodes = walk(target);\n  const has = (tag, content) => nodes.some(n => n.tagName === tag && n.textContent === content);\n  if (!nodes.some(n => n.tagName === 'h3') || !has('strong','Fett') || !has('em','kursiv') ||\n      nodes.filter(n => n.tagName === 'li').length !== 2 ||\n      !nodes.some(n => n.tagName === 'mfrac' && n.namespaceURI === MATH_NS) ||\n      !nodes.some(n => n.tagName === 'msup') || !has('mo','×') ||\n      !has('code','print(\"<script>\")')) throw new Error('Rich answer structure missing');\n  const links = nodes.filter(n => n.tagName === 'a');\n  if (links.length !== 1 || links[0].attrs.href !== 'https://example.test/' ||\n      links[0].attrs.rel !== 'noopener noreferrer' ||\n      nodes.some(n => ['script','img','svg','iframe','object'].includes(n.tagName)) ||\n      !has('span','[unsicher](javascript:alert)') ||\n      !has('span','<img src=x onerror=alert(1)>')) throw new Error('Unsafe model markup');\n  renderAnswer(target, '\\\\(\\\\unsupported{x}\\\\)');\n  if (!walk(target).some(n => n.textContent === '\\\\(\\\\unsupported{x}\\\\)')) throw new Error('Unsupported math lost');\n  renderAnswer(target, 'a'.repeat(24001));\n  if (target.textContent.length !== 24001) throw new Error('Large answer truncated');\n}\n";
+vm.runInNewContext(source.replace("setTheme(); applyChatSize(); syncSidebar(); refreshHealth(); loadMe();", () => displayAssertions + "\n" + richAssertions + "\nsetTheme(); applyChatSize(); syncSidebar(); refreshHealth(); loadMe();"), context);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 await flush(); await flush();
 assert.equal(healthCalls, 2, '401 must trigger a fresh health check');

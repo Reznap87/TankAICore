@@ -20,6 +20,152 @@ try { const stored = localStorage.getItem('tankai.ui.theme'); if (['dark', 'ligh
 catch (error) { console.info('Theme unavailable.'); }
 try { const stored = localStorage.getItem('tankai.ui.chatSize'); if (['standard', 'large'].includes(stored)) chatSize = stored; } catch (error) { console.info('Text size unavailable.'); }
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = String(text); return node; }
+
+/* Model output is untrusted. A bounded Markdown/TeX subset, using fixed
+ * DOM elements only. Unsupported syntax remains literal. */
+const MATH_NS = 'http://www.w3.org/1998/Math/MathML';
+const mathSymbols = new Map(Object.entries({
+ times:'×', cdot:'·', div:'÷', pm:'±', le:'≤', leq:'≤', ge:'≥', geq:'≥',
+ neq:'≠', approx:'≈', infty:'∞', pi:'π', alpha:'α', beta:'β', theta:'θ',
+ lambda:'λ', mu:'μ', sigma:'σ', Delta:'Δ', sum:'∑', int:'∫', to:'→'
+}));
+function renderMath(source, display) {
+ if (!source.trim() || source.length > 512) return null;
+ const node = (tag, value) => {
+   const n = document.createElementNS(MATH_NS, tag);
+   if (value !== undefined) n.textContent = value;
+   return n;
+ };
+ let pos = 0;
+ const ws = () => { while (pos < source.length && /\s/u.test(source[pos])) pos++; };
+ function atom(depth) {
+   if (depth > 8) throw new Error('math depth');
+   ws(); const c = source[pos++];
+   if (c === '{') {
+     const row = seq(depth+1, true);
+     if (source[pos++] !== '}') throw new Error('unclosed group');
+     return row;
+   }
+   if (c === '\\') {
+     const cmd = /^[A-Za-z]+/u.exec(source.slice(pos))?.[0];
+     if (!cmd) throw new Error('unsupported math');
+     pos += cmd.length;
+     if (cmd === 'frac' || cmd === 'sqrt') {
+       const n = node(cmd === 'frac' ? 'mfrac' : 'msqrt');
+       const group = () => { ws(); if (source[pos] !== '{') throw new Error('expected group'); return atom(depth+1); };
+       n.append(group()); if (cmd === 'frac') n.append(group()); return n;
+     }
+     const symbol = mathSymbols.get(cmd);
+     if (!symbol) throw new Error('unsupported math');
+     return node(/\p{L}/u.test(symbol) ? 'mi' : 'mo', symbol);
+   }
+   if (c && /[0-9]/u.test(c)) {
+     const rest = /^[0-9]*(?:\.[0-9]+)?/u.exec(source.slice(pos))[0];
+     pos += rest.length; return node('mn',c+rest);
+   }
+   if (c && /\p{L}/u.test(c)) return node('mi',c);
+   if (c && '+-−=×÷·*/(),.;:<>≤≥≠±∑∫∞→|[]'.includes(c)) return node('mo',c);
+   throw new Error('unsupported math');
+ }
+ function seq(depth, grouped) {
+   if (depth > 8) throw new Error('math depth');
+   const row = node('mrow'); ws();
+   while (pos < source.length && !(grouped && source[pos] === '}')) {
+     let base = atom(depth), sub = null, sup = null; ws();
+     while (source[pos] === '_' || source[pos] === '^') {
+       const op = source[pos++], value = atom(depth+1);
+       if (op === '_') { if (sub) throw new Error('duplicate subscript'); sub = value; }
+       else { if (sup) throw new Error('duplicate superscript'); sup = value; }
+       ws();
+     }
+     if (sub || sup) {
+       const n = node(sub && sup ? 'msubsup' : sub ? 'msub' : 'msup');
+       n.append(base); if (sub) n.append(sub); if (sup) n.append(sup); base = n;
+     }
+     row.append(base);
+   }
+   return row;
+ }
+ try {
+   const math = node('math');
+   math.setAttribute('display', display ? 'block' : 'inline');
+   math.setAttribute('aria-label', source);
+   math.append(seq(0,false));
+   return pos === source.length ? math : null;
+ } catch (error) { return null; }
+}
+function appendInline(root, source) {
+ const plain = text => { if (text) root.append(element('span','',text)); };
+ // Do not process arbitrarily long lines or recursively parse inline markup.
+ if (source.length > 2048) { plain(source); return; }
+ const pattern = /(\x60[^\x60\n]+\x60|\*\*[^*\n]+\*\*|\*[^*\n]+\*|__[^_\n]+__|~~[^~\n]+~~|\\\([^\n]+?\\\)|(?<![\w$])\$(?![\s$])[^$\n]+?\$(?![\w$])|\[[^\]\n]+\]\([^\s()\n]+\))/gu;
+ let end = 0;
+ for (const match of source.matchAll(pattern)) {
+   const value = match[0]; plain(source.slice(end,match.index)); end = match.index+value.length;
+   if (value.startsWith('\x60')) root.append(element('code','',value.slice(1,-1)));
+   else if (value.startsWith('**') || value.startsWith('__')) root.append(element('strong','',value.slice(2,-2)));
+   else if (value.startsWith('*')) root.append(element('em','',value.slice(1,-1)));
+   else if (value.startsWith('~~')) root.append(element('s','',value.slice(2,-2)));
+   else if (value.startsWith('[')) {
+     const link = /^\[([^\]]+)\]\(([^)]+)\)$/u.exec(value);
+     // Explicit HTTP(S) links only. No external image loading or arbitrary HTML.
+     if (link && /^https?:\/\/[A-Za-z0-9][^\s\\<>"'\u0000-\u001f\u007f]*$/iu.test(link[2]) && !link[2].split('/')[2].includes('@')) {
+       const n = element('a','',link[1]); n.setAttribute('href',link[2]); n.setAttribute('target','_blank'); n.setAttribute('rel','noopener noreferrer'); root.append(n);
+     } else plain(value);
+   } else {
+     const tex = value.startsWith('\\(') ? value.slice(2,-2) : value.slice(1,-1);
+     const math = value.startsWith('\\(') || /[\\=+*/^_<>−×÷]/u.test(tex) ? renderMath(tex,false) : null;
+     if (math) root.append(math); else plain(value);
+   }
+ }
+ plain(source.slice(end));
+}
+function renderAnswer(root, value) {
+ root.replaceChildren();
+ const source = String(value ?? '');
+ if (source.length > 24000) { root.textContent = source; return; }
+ const lines = source.replace(/\r\n?/gu,'\n').split('\n');
+ if (lines.length > 800) { root.textContent = source; return; }
+ let list = null, listTag = '';
+ for (let i=0;i<lines.length;i++) {
+   const line = lines[i];
+   const fence = /^ {0,3}\x60{3}([A-Za-z0-9_+.#-]{0,32})\s*$/u.exec(line);
+   if (fence) {
+     list = null; const body = [];
+     while (i+1<lines.length && !/^ {0,3}\x60{3}\s*$/u.test(lines[i+1])) body.push(lines[++i]);
+     if (i+1<lines.length) i++;
+     const pre = element('pre','answer-code');
+     if (fence[1]) pre.setAttribute('data-language',fence[1]);
+     pre.append(element('code','',body.join('\n'))); root.append(pre); continue;
+   }
+   const start = /^\s*(\$\$|\\\[)(.*)$/u.exec(line);
+   if (start) {
+     const delimiter = start[1] === '$$' ? '$$' : '\\]';
+     let content = start[2], j=i;
+     while (!content.trimEnd().endsWith(delimiter) && j+1<lines.length && j-i<16 && content.length<=512) content += '\n'+lines[++j];
+     if (content.trimEnd().endsWith(delimiter)) {
+       const math = renderMath(content.trimEnd().slice(0,-delimiter.length).trim(),true);
+       const block = element('div','answer-math');
+       if (math) block.append(math); else block.textContent = lines.slice(i,j+1).join('\n');
+       root.append(block); list=null; i=j; continue;
+     }
+   }
+   const item = /^ {0,3}(?:([-+*])|(\d{1,6})[.)])\s+(.+)$/u.exec(line);
+   if (item) {
+     const tag = item[2] ? 'ol' : 'ul';
+     if (!list || listTag !== tag) {
+       list=element(tag,'answer-list'); listTag=tag;
+       if (item[2]) list.setAttribute('start',item[2]); root.append(list);
+     }
+     const li=element('li'); appendInline(li,item[3]); list.append(li); continue;
+   }
+   list=null; if (!line.trim()) continue;
+   const heading = /^(#{1,6})\s+(.+)$/u.exec(line), quote = /^>\s?(.*)$/u.exec(line);
+   const block=element(heading?'h'+Math.min(heading[1].length+1,6):quote?'blockquote':'p','answer-line');
+   appendInline(block,heading?heading[2]:quote?quote[1]:line); root.append(block);
+ }
+}
+
 function icon(name) { const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); node.setAttribute('aria-hidden', 'true'); const use = document.createElementNS(node.namespaceURI, 'use'); use.setAttribute('href', '#i-' + name); node.append(use); return node; }
 function toast(message) { clearTimeout(toastTimer); byId('toast').textContent = message; byId('toast').hidden = false; toastTimer = setTimeout(() => { byId('toast').hidden = true; }, 6000); }
 function setTheme() { const value = theme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : theme; document.documentElement.dataset.theme = value; byId('theme').value = theme; document.querySelector('meta[name="theme-color"]').content = value === 'dark' ? '#171b22' : '#f6f8fc'; }
@@ -146,7 +292,7 @@ if(!x || x.answer_mode!=='direct' || x.execution_mode!=='live' || !providerIdent
 turns.unshift(x); id=x.reply_to;
 }
 root.replaceChildren();
-for(const x of turns){const q=element('div','message'),a=element('article','answer-card');q.append(element('div','message-bubble',x.goal));a.append(element('div','answer-content',x.final_answer));root.append(q,a)}
+for(const x of turns){const q=element('div','message'),a=element('article','answer-card');q.append(element('div','message-bubble',x.goal));const answer=element('div','answer-content');renderAnswer(answer,x.final_answer);a.append(answer);root.append(q,a)}
 root.hidden=!turns.length;
 }
 function providerIdentityVerified(data, criticUsed) {
@@ -162,7 +308,7 @@ return data.answer_mode!=='direct'&&data.status==='completed'&&data.execution_mo
 function renderResult(data) {
 selectedResult = data; renderThread(data); byId('welcome').hidden = true; byId('suggestions').hidden = true; byId('messages').hidden = false; byId('appView').classList.add('conversation');
 byId('questionRow').hidden = false; byId('question').textContent = String(data.goal || '');
-byId('outCard').hidden = false; byId('answer').textContent = String(data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
+byId('outCard').hidden = false; renderAnswer(byId('answer'), data.final_answer || 'Der Core hat keinen Antworttext geliefert.');
 const badges = byId('badges'); badges.replaceChildren(); const mode = String(data.execution_mode || 'unknown').toLowerCase(); const simulated = data.status === 'simulated' || mode === 'simulation' || mode === 'mixed'; const direct = data.answer_mode === 'direct'; const criticUsed = !direct && data.critic_used !== false; const identityVerified=mode==='live'&&providerIdentityVerified(data,criticUsed); const verifiedRelease=releaseVerified(data);
 const resultLabel = mode === 'mixed' ? 'Teilweise Simulation · keine verifizierte Live-Antwort' : simulated ? 'Simulation · keine verifizierte KI-Antwort' : mode !== 'live' ? 'Ausführungsmodus nicht belegt' : !identityVerified ? 'Live-Modellnachweis nicht bestätigt' : direct ? 'KI-Antwort · ungeprüft' : verifiedRelease ? 'Prüfung bestanden' : 'Nicht freigegeben';
 badges.append(badge(resultLabel, verifiedRelease ? 'b-ok' : 'b-warn'));
