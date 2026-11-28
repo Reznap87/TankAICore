@@ -54,6 +54,20 @@ class WorkspaceHistory:
                 handle.flush()
                 os.fsync(handle.fileno())
 
+    def append_once(self, payload: dict[str, Any]) -> None:
+        """Idempotently promote a verified temporary response without a model call."""
+        with self._lock:
+            if self.path.exists():
+                with self.path.open(encoding="utf-8") as handle:
+                    for line in handle:
+                        try:
+                            item = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if isinstance(item, dict) and item.get("run_id") == payload["run_id"]:
+                            return
+            self.append(payload)
+
     def list_recent(self, n: int = 20) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []

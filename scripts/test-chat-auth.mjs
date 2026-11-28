@@ -74,6 +74,10 @@ async function fetch(url, options = {}) {
   }
   else if (url === '/api/chat') {
     const payload = JSON.parse(options.body);
+    if (payload.temporary === true) {
+      assert.equal(payload.message, 'KI & Technik');
+      return {ok:true,status:200,json:async()=>({workspace_id:'synthetic',goal:payload.message,final_answer:'Temporäre Testantwort',answer_mode:'direct',execution_mode:'live',main_llm:'openrouter_free:synthetic:free',observed_main_llms:['openrouter_free:synthetic:free'],model_identity_verified:true,receipt:'synthetic-receipt'})};
+    }
     assert.equal(payload.message, 'Direkte Frage');
     const call = directCalls++;
     if (call === 6) assert.equal(payload.reply_to, secondDirectRun, 'a provider-attested turn remains eligible for a follow-up');
@@ -145,6 +149,34 @@ await byId('login-form').handlers.submit({ preventDefault() {} });
 assert.equal(byId('appView').hidden, false, 'login receipt for the canonical mixed-case address must open the app');
 assert.equal(byId('health').textContent, 'Core verbunden');
 assert.equal(byId('model-label').textContent, 'Live-Chat bereit · konfiguriert: openai:synthetic-main');
+const beforeQuestionSearch = calls.length;
+byId('question-search-open').handlers.click();
+assert.equal(byId('question-search-dialog').open,true);
+assert.equal(byId('question-search-chat').disabled,true);
+assert.equal(byId('question-search-web').hidden,true);
+byId('question-search-input').value='KI & Technik';
+byId('question-search-input').handlers.input();
+assert.equal(byId('question-search-web').attrs.href,'https://duckduckgo.com/?q=KI%20%26%20Technik');
+await byId('question-search-chat').handlers.click();
+assert.equal(byId('question-search-answer').textContent,'Temporäre Testantwort');
+assert.equal(byId('question-search-save').disabled,false);
+assert.equal(calls.length,beforeQuestionSearch+1);
+assert.equal(byId('goal').value,'');
+byId('question-search-discard').handlers.click();
+assert.equal(byId('question-search-answer').textContent,'');
+assert.equal(byId('question-search-input').value,'');
+assert.equal(byId('question-search-save').disabled,true);
+assert.equal(calls.length,beforeQuestionSearch+1,'discard must not save a chat');
+byId('question-search-open').handlers.click();
+byId('question-search-input').value='KI & Technik';
+byId('question-search-input').handlers.input();
+await byId('question-search-chat').handlers.click();
+byId('goal').value='Ungesendeter Entwurf';
+await byId('question-search-save').handlers.click();
+assert.equal(byId('goal').value,'Ungesendeter Entwurf');
+assert.match(byId('question-search-status').textContent,/ungesendeter Entwurf/);
+byId('question-search-discard').handlers.click();
+byId('new-chat').handlers.click();
 const beforeLocalTools = calls.length;
 byId('chat-size').value = 'large';
 byId('chat-size').handlers.change();
