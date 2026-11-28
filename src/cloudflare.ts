@@ -31,6 +31,7 @@ type TankAIRuntimeEnv = Env & {
   TANKAI_GOOGLE_CLIENT_ID?: string;
   TANKAI_GOOGLE_CLIENT_SECRET?: string;
   TANKAI_BOOTSTRAP_OWNER?: string;
+  TANKAI_OWNER_RECOVERY?: string;
   TANKAI_ALLOW_REGISTRATION?: string;
   TANKAI_LIVE_PROVIDER_ENABLED?: string;
   TANKAI_LLM?: string;
@@ -123,6 +124,7 @@ export class TankAIContainer extends Container<TankAIRuntimeEnv> {
     TANKAI_AUTH_STATE_URL: clean(this.env.TANKAI_AUTH_STATE_TOKEN) ? "https://tankai-core.reznaplecram.workers.dev/_tankai/auth-state" : "",
     TANKAI_AUTH_STATE_TOKEN: clean(this.env.TANKAI_AUTH_STATE_TOKEN),
     TANKAI_BOOTSTRAP_OWNER: clean(this.env.TANKAI_BOOTSTRAP_OWNER),
+    TANKAI_OWNER_RECOVERY: clean(this.env.TANKAI_OWNER_RECOVERY),
     TANKAI_ALLOW_REGISTRATION: enabled(this.env.TANKAI_ALLOW_REGISTRATION) ? "1" : "0",
     TANKAI_HOST: "0.0.0.0",
     TANKAI_PORT: "8765",
