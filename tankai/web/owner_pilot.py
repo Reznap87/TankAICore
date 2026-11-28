@@ -66,6 +66,11 @@ class OwnerPilot:
             tariffs=self._tariffs, endpoints=self._endpoints, input_token_bound=self._counter,
             clock=self._clock, authorize=authorize)
 
+    @property
+    def approved_identities(self) -> frozenset[tuple[str, str]]:
+        """Freigegebene (Provider, Modell)-Paare; leer = kein bezahlter Aufruf."""
+        return frozenset(self._endpoints)
+
     def authorize_identity(self, context: AuthContext, auth: AuthStore) -> None:
         """Require fresh owner membership before exposing scoped pilot metadata."""
         if (type(context) is not AuthContext or context.user_id != self.ledger.policy.owner_id
