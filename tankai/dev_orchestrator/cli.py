@@ -96,6 +96,53 @@ def build_parser() -> argparse.ArgumentParser:
     cycle.add_argument("--reason", required=True)
     sub.add_parser("demo", help="Erzeugt einen kontrollierten Spawn mit getrennten Pfaden")
 
+    sub.add_parser("code-proposal-schema", help="Zeigt das Schema für Agenten-Dateivorschläge")
+    prepare = sub.add_parser("prepare-code-proposal", help="Bereitet einen Datei-Vorschlag als Worker-Job vor")
+    prepare.add_argument("--agent", required=True)
+    prepare.add_argument("--proposal", required=True)
+    prepare.add_argument("--checks", required=True, help="Operatorseitige Tests, Gates und Isolation")
+    prepare.add_argument("--output", required=True, help="Neuer Pfad für den vorbereiteten Job")
+    prepare.add_argument("--python-executable", default="python3")
+
+    sub.add_parser("code-response-schema", help="Zeigt das Schema gebundener Agentenantworten")
+    request = sub.add_parser("prepare-code-request", help="Bereitet Ziel und festen Codekontext vor")
+    request.add_argument("--agent", required=True)
+    request.add_argument("--repository", required=True)
+    request.add_argument("--context-file", action="append", required=True)
+    request.add_argument("--checks", required=True)
+    request.add_argument("--data-class", choices=("public", "internal"), default="internal")
+    request.add_argument("--output", required=True)
+
+    response = sub.add_parser("prepare-code-response", help="Prüft die Antwort auf einen Codeauftrag")
+    response.add_argument("--agent", required=True)
+    response.add_argument("--repository", required=True)
+    response.add_argument("--request", required=True)
+    response.add_argument("--response", required=True)
+    response.add_argument("--checks", required=True)
+    response.add_argument("--python-executable", default="python3")
+    response.add_argument("--output", required=True)
+
+    sub.add_parser("code-repair-request-schema", help="Zeigt das Schema begrenzter Korrekturaufträge")
+    repair = sub.add_parser("prepare-code-repair-request", help="Bereitet einen Auftrag nach fehlgeschlagenem Test vor")
+    repair.add_argument("--repository", required=True)
+    repair.add_argument("--previous-job", required=True)
+    repair.add_argument("--run", required=True)
+    repair.add_argument("--edit-file", action="append", required=True)
+    repair.add_argument("--context-file", action="append", required=True)
+    repair.add_argument("--data-class", choices=("public", "internal"), default="internal")
+    repair.add_argument("--output", required=True)
+    for name in ("prepare-code-repair-response", "authorize-code-repair"):
+        command = sub.add_parser(name, help="Prüft oder reserviert eine gebundene Codekorrektur")
+        command.add_argument("--repository", required=True)
+        command.add_argument("--previous-job", required=True)
+        command.add_argument("--request", required=True)
+        command.add_argument("--response", required=True)
+        command.add_argument("--python-executable", default="python3")
+        if name == "prepare-code-repair-response":
+            command.add_argument("--output", required=True)
+        else:
+            command.add_argument("--workspace-root", required=True)
+
     run = sub.add_parser(
         "run-pipeline",
         help="Führt einen genehmigten Worker-Job in einem isolierten Git-Worktree aus",
@@ -112,6 +159,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=os.environ.get("TANKAI_REQUIRE_WORKER_ISOLATION", "0") == "1",
     )
+
+    resume = sub.add_parser("resume-pipeline", help="Setzt einen gespeicherten Worker-Commit fort")
+    resume.add_argument("--repository", required=True)
+    resume.add_argument("--workspace-root", required=True)
+    resume.add_argument("--job", required=True)
+    resume.add_argument("--run", required=True, help="Gespeicherte Worker-Run-ID")
+    resume.add_argument("--container-runtime", default=os.environ.get("TANKAI_WORKER_CONTAINER_RUNTIME", "docker"))
+    resume.add_argument("--require-container-isolation", action="store_true",
+                        default=os.environ.get("TANKAI_REQUIRE_WORKER_ISOLATION", "0") == "1")
 
     pool = sub.add_parser(
         "run-pool",
@@ -173,9 +229,28 @@ def _load_integration_job(path: str) -> IntegrationJob:
     return IntegrationJob.model_validate(payload)
 
 
+def _write_new_json(path: str, payload: dict) -> None:
+    descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(payload, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "code-proposal-schema":
+            from .code_proposal import CodeProposal
+            print(json.dumps(CodeProposal.model_json_schema(), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "code-response-schema":
+            from .code_request import CodeResponse
+            print(json.dumps(CodeResponse.model_json_schema(), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "code-repair-request-schema":
+            from .code_repair import CodeRepairRequestPackage
+            print(json.dumps(CodeRepairRequestPackage.model_json_schema(), ensure_ascii=False, indent=2))
+            return 0
         if args.command == "init":
             orchestrator = DevelopmentOrchestrator.initialize(
                 args.state,
@@ -191,7 +266,91 @@ def main(argv: list[str] | None = None) -> int:
         else:
             orchestrator = DevelopmentOrchestrator(ProjectStateStore(args.state))
 
-        if args.command == "begin-cycle":
+        if args.command == "prepare-code-proposal":
+            from .code_proposal import CodeProposal, ProposalChecks, load_proposal_json, prepare_code_proposal
+            try:
+                proposal = CodeProposal.model_validate(load_proposal_json(args.proposal))
+                checks = ProposalChecks.model_validate(load_proposal_json(args.checks, limit=262_144))
+            except (ValueError, OSError) as exc:
+                raise ValueError("Codevorschlag oder Prüfvertrag ist nicht gültig lesbar") from exc
+            job = prepare_code_proposal(proposal, state=orchestrator.state(), agent_id=args.agent,
+                                        checks=checks, python_executable=args.python_executable)
+            # Preserve existing jobs/reviews, including symlink destinations.
+            _write_new_json(args.output, job.model_dump(mode="json"))
+            print(json.dumps({"prepared": True, "submitted": False, "executed": False,
+                              "proposal_sha256": proposal.digest(), "files": len(proposal.files),
+                              "output": str(Path(args.output).resolve())}, ensure_ascii=False))
+            return 0
+        elif args.command in {"prepare-code-request", "prepare-code-response"}:
+            from .code_proposal import ProposalChecks, load_proposal_json
+            from .code_request import CodeRequestPackage, CodeResponse, build_code_request, prepare_code_response
+            try:
+                checks = ProposalChecks.model_validate(load_proposal_json(args.checks, limit=262_144))
+                if args.command == "prepare-code-request":
+                    package = build_code_request(
+                        state=orchestrator.state(), agent_id=args.agent, repository=args.repository,
+                        context_paths=args.context_file, checks=checks, data_class=args.data_class,
+                    )
+                    payload = package.model_dump(mode="json")
+                    metadata = {"request_prepared": True, "request_sha256": package.request_sha256,
+                                "context_files": len(package.request.context_files), "model_called": False}
+                else:
+                    package = CodeRequestPackage.model_validate(load_proposal_json(args.request, limit=131_072))
+                    response = CodeResponse.model_validate(load_proposal_json(args.response, limit=16_384))
+                    job = prepare_code_response(
+                        package, response, state=orchestrator.state(), agent_id=args.agent,
+                        repository=args.repository, checks=checks, python_executable=args.python_executable,
+                    )
+                    payload = job.model_dump(mode="json")
+                    metadata = {"prepared": True, "request_sha256": package.request_sha256,
+                                "proposal_sha256": response.proposal.digest(), "model_called": False}
+            except PydanticValidationError as exc:
+                raise ValueError("Codeauftrag oder Agentenantwort verletzt den Vertrag") from exc
+            _write_new_json(args.output, payload)
+            print(json.dumps({**metadata, "submitted": False, "executed": False,
+                              "output": str(Path(args.output).resolve())}, ensure_ascii=False))
+            return 0
+        elif args.command in {"prepare-code-repair-request", "prepare-code-repair-response", "authorize-code-repair"}:
+            from .code_proposal import load_proposal_json
+            from .code_request import CodeResponse
+            from .code_repair import (
+                CodeRepairRequestPackage, authorize_code_repair, build_code_repair_request,
+                prepare_code_repair_response,
+            )
+            try:
+                previous = WorkerPipelineJob.model_validate(load_proposal_json(args.previous_job, limit=524_288))
+                if args.command == "prepare-code-repair-request":
+                    package = build_code_repair_request(
+                        state=orchestrator.state(), previous_job=previous, run_id=args.run,
+                        repository=args.repository, editable_paths=args.edit_file,
+                        context_paths=args.context_file, data_class=args.data_class,
+                    )
+                    _write_new_json(args.output, package.model_dump(mode="json"))
+                    result = {"request_prepared": True, "request_sha256": package.request_sha256,
+                              "attempt": package.request.attempt, "output": str(Path(args.output).resolve())}
+                else:
+                    package = CodeRepairRequestPackage.model_validate(load_proposal_json(args.request, limit=131_072))
+                    response = CodeResponse.model_validate(load_proposal_json(args.response, limit=16_384))
+                    if args.command == "prepare-code-repair-response":
+                        job = prepare_code_repair_response(
+                            package, response, state=orchestrator.state(), previous_job=previous,
+                            repository=args.repository, python_executable=args.python_executable,
+                        )
+                        _write_new_json(args.output, job.model_dump(mode="json"))
+                        result = {"prepared": True, "output": str(Path(args.output).resolve()),
+                                  "request_sha256": package.request_sha256, "attempt": package.request.attempt}
+                    else:
+                        authorization = authorize_code_repair(
+                            package, response, orchestrator=orchestrator, previous_job=previous,
+                            workspace_manager=GitWorkspaceManager(args.repository, args.workspace_root),
+                            python_executable=args.python_executable,
+                        )
+                        result = {"authorized": True, **authorization.model_dump(mode="json")}
+            except PydanticValidationError as exc:
+                raise ValueError("Korrekturauftrag oder Antwort verletzt den begrenzten Vertrag") from exc
+            print(json.dumps({**result, "submitted": False, "executed": False, "model_called": False}, ensure_ascii=False))
+            return 0
+        elif args.command == "begin-cycle":
             orchestrator.begin_cycle(reason=args.reason)
         elif args.command == "demo":
             state = orchestrator.state()
@@ -218,15 +377,17 @@ def main(argv: list[str] | None = None) -> int:
                     base_commit=state.current_commit,
                     acceptance_criteria=["Modul besitzt isolierte Integrationstests"],
                 ))
-        elif args.command == "run-pipeline":
+        elif args.command in {"run-pipeline", "resume-pipeline"}:
             job = _load_pipeline_job(args.job)
             manager = GitWorkspaceManager(args.repository, args.workspace_root)
-            result = WorkerPipelineRunner(
+            runner = WorkerPipelineRunner(
                 orchestrator,
                 manager,
                 container_executor=DockerCommandExecutor(args.container_runtime),
                 require_container_isolation=args.require_container_isolation,
-            ).run(job)
+            )
+            result = (runner.resume(job, run_id=args.run) if args.command == "resume-pipeline"
+                      else runner.run(job))
             print(json.dumps({
                 "run": result.run.model_dump(mode="json"),
                 "workspace": {
@@ -285,6 +446,7 @@ def main(argv: list[str] | None = None) -> int:
         WorkerPoolError,
         IntegrationExecutionError,
         PydanticValidationError,
+        OSError,
         RuntimeError,
         ValueError,
     ) as exc:

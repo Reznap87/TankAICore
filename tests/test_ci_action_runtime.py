@@ -22,10 +22,10 @@ NODE24_ACTION_PINS = {
 }
 EXPECTED_COUNTS = Counter(
     {
-        "actions/checkout": 6,
-        "actions/setup-python": 3,
+        "actions/checkout": 7,
+        "actions/setup-python": 4,
         "actions/setup-node": 3,
-        "actions/upload-artifact": 1,
+        "actions/upload-artifact": 2,
     }
 )
 
