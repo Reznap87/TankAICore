@@ -10,6 +10,7 @@ import re
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from typing import Optional
 
 from rich.console import Console
@@ -20,7 +21,7 @@ from ..agents.critic import Critic
 from ..agents.planner import Planner
 from ..agents.specialist import Specialist
 from ..agents.synthesizer import Synthesizer
-from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, LLMRateLimitExceeded, get_llm, llm_identity
+from .llm import BaseLLM, BudgetedLLM, LLMCallBudget, LLMRateLimitExceeded, OpenRouterFreeLLM, get_llm, llm_identity
 from .memory import Memory
 from .long_term_memory import LongTermMemory
 from .tools import ToolRegistry
@@ -962,8 +963,15 @@ class TankAI:
             return i, step, result_text, critique, local_receipts, local_critiques
 
         with ThreadPoolExecutor(max_workers=min(8, len(plan.steps))) as pool:
+            # Free-provider authorization is request-local. Each parallel task
+            # receives its own context; never grant admission from a worker.
+            free_context = (
+                type(self.llm.delegate) is OpenRouterFreeLLM
+                and type(self.critic_llm.delegate) is OpenRouterFreeLLM
+            )
             futures = {
-                pool.submit(execute_one, (i, step)): i
+                (pool.submit(copy_context().run, execute_one, (i, step))
+                 if free_context else pool.submit(execute_one, (i, step))): i
                 for i, step in enumerate(plan.steps, 1)
             }
             results_map = {}
