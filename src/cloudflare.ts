@@ -268,6 +268,11 @@ export default {
     let registration: { bucket: string; id: string; token: string } | undefined;
     if (url.pathname === "/api/auth/register" && request.method === "POST") {
       if (!enabled((env as TankAIRuntimeEnv).TANKAI_ALLOW_REGISTRATION)) return Response.json({ error: "Registrierung ist deaktiviert" }, { status: 403 });
+      const [contentType = ""] = clean(request.headers.get("Content-Type") ?? undefined).split(";", 1).map(value => value.trim().toLowerCase());
+      if (contentType !== "application/json") return Response.json({ error: "Content-Type application/json erforderlich" }, { status: 415 });
+      if (clean(request.headers.get("Sec-Fetch-Site") ?? undefined).toLowerCase() === "cross-site") {
+        return Response.json({ error: "Seitenübergreifende Authentifizierung nicht erlaubt" }, { status: 403 });
+      }
       const ip = request.headers.get("CF-Connecting-IP");
       const token = clean((env as TankAIRuntimeEnv).TANKAI_AUTH_STATE_TOKEN);
       if (!ip || !/^[A-Za-z0-9_-]{43,128}$/.test(token)) return Response.json({ error: "Registrierung vorübergehend nicht verfügbar" }, { status: 503 });
